@@ -22,7 +22,7 @@ import org.stypox.dicio.R
 import org.stypox.dicio.io.input.InputEvent
 import org.stypox.dicio.io.input.SttInputDevice
 import org.stypox.dicio.io.input.SttState
-import org.stypox.dicio.io.input.external_popup.ExternalPopupInputDevice
+import org.stypox.dicio.io.input.GoogleSpeechInputDevice
 import org.stypox.dicio.settings.datastore.InputDevice
 import org.stypox.dicio.settings.datastore.InputDevice.INPUT_DEVICE_EXTERNAL_POPUP
 import org.stypox.dicio.settings.datastore.InputDevice.INPUT_DEVICE_NOTHING
@@ -107,7 +107,7 @@ class SttInputDeviceWrapperImpl(
             INPUT_DEVICE_UNSET,
             INPUT_DEVICE_VOSK,
             INPUT_DEVICE_EXTERNAL_POPUP ->
-                ExternalPopupInputDevice(appContext, activityForResultManager, localeManager)
+                GoogleSpeechInputDevice(appContext, localeManager)
             INPUT_DEVICE_NOTHING -> null
         }
     }
