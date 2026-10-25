@@ -127,7 +127,7 @@ private fun MainSettingsScreen(
             inputDevice().Render(
                 when (val inputDevice = settings.inputDevice) {
                     InputDevice.UNRECOGNIZED,
-                    InputDevice.INPUT_DEVICE_UNSET -> InputDevice.INPUT_DEVICE_VOSK
+                    InputDevice.INPUT_DEVICE_UNSET -> InputDevice.INPUT_DEVICE_EXTERNAL_POPUP
                     else -> inputDevice
                 },
                 viewModel::setInputDevice,

@@ -173,10 +173,6 @@ dependencies {
     implementation(libs.kotlin.serialization)
     implementation(libs.navigation)
 
-    // Vosk
-    implementation(libs.jna) { artifact { type = "aar" } }
-    implementation(libs.vosk.android)
-
     // LiteRT / Tensorflow Lite
     implementation(libs.litert)
 

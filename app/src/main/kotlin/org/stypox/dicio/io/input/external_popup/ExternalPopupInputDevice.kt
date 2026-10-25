@@ -103,6 +103,8 @@ class ExternalPopupInputDevice(
         // "Always"/"Just once", and also wouldn't make it possible to check for availability like
         // with .resolveIntent() (since the intent always resolves to the choooser).
         return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            // Never resolve back into Dicio's own speech popup/service.
+            setPackage("com.google.android.katniss")
             putExtra(
                 RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
@@ -132,7 +134,9 @@ class ExternalPopupInputDevice(
                 ExternalPopupState.WaitingForResult(eventListener)
         )) {
             try {
+                Log.i(TAG, "Starting Google speech input")
                 activityForResultManager.launch(getIntent(), this::onActivityResult)
+                return true
             } catch (e: Throwable) {
                 Log.e(TAG, "Could not start STT activity", e)
                 _state.compareAndSet(
@@ -151,6 +155,7 @@ class ExternalPopupInputDevice(
         val eventListener = _state.value as? ExternalPopupState.WaitingForResult ?: return
 
         if (result.resultCode == RESULT_OK && !results.isNullOrEmpty()) {
+            Log.i(TAG, "Google speech input returned ${results.size} hypotheses")
             // this is not atomic but there is no alternative in Kotlin to compare, update and get
             // the previous value
             _state.compareAndSet(

@@ -1,15 +1,13 @@
-# Personal TV build: bundled Russian recognition model
+# Personal TV build: Google speech input
 
-This fork bundles `vosk-model-small-ru-0.22` supplied locally by the owner,
-from the Vosk small Russian model distribution:
-https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip
+The bundled Vosk model and Vosk/JNA dependencies have been removed.
+Speech input uses the existing external-popup adapter, pinned to
+`com.google.android.katniss`, returning recognized text to Dicio skills.
 
-Model information and licensing are published at https://alphacephei.com/vosk/models.
-The model's README is retained inside the archive. No recognition library is added.
+Legacy stored Vosk input preferences resolve to this adapter. No new library is added.
 
-For Russian, pressing the existing model download button copies the bundled archive
-instead of making a network request. The existing extraction and model-loading
-code is reused. Other languages retain their existing download behavior.
+This requires Google app for Android TV to be enabled. It does not require the
+Google TV launcher. Microphone routing and result delivery require device testing.
 
 This does not enable the wake word, grant microphone permission, or change the
 default assistant. The debug build uses the upstream branch-based application ID

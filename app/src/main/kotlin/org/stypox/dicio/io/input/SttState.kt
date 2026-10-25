@@ -22,7 +22,7 @@ package org.stypox.dicio.io.input
 import org.stypox.dicio.ui.util.Progress
 
 /**
- * This is almost symmetrical to [org.stypox.dicio.io.input.vosk.VoskState], except that there are
+ * UI-facing states for speech input, except that there are
  * no implementation-defined fields. For this reason, if in the future another STT engine will be
  * used, this class and the whole UI layer could be kept the same.
  */
