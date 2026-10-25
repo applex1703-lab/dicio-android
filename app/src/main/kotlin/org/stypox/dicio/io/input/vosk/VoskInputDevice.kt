@@ -82,6 +82,7 @@ class VoskInputDevice(
     private val filesDir: File = appContext.filesDir
     private val cacheDir: File = appContext.cacheDir
     private val assets = appContext.assets
+    private val recordingContext = appContext
     private val modelZipFile: File get() = File(filesDir, "vosk-model.zip")
     private val sameModelUrlCheck: File get() = File(filesDir, "vosk-model-url")
     private val modelDirectory: File get() = File(filesDir, "vosk-model")
@@ -374,7 +375,7 @@ class VoskInputDevice(
                 val model = Model(modelDirectory.absolutePath)
                 val recognizer = Recognizer(model, SAMPLE_RATE)
                 recognizer.setMaxAlternatives(ALTERNATIVE_COUNT)
-                speechService = SpeechService(recognizer, SAMPLE_RATE)
+                speechService = RemoteMicSpeechService(recognizer, SAMPLE_RATE, recordingContext)
             } catch (e: IOException) {
                 Log.e(TAG, "Can't load Vosk model", e)
                 _state.value = ErrorLoading(e)
