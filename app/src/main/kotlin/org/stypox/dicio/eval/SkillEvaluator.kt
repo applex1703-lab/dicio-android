@@ -7,6 +7,10 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -38,9 +42,12 @@ class SkillEvaluatorImpl(
     private val skillContext: SkillContextInternal,
     private val skillHandler: SkillHandler,
     private val sttInputDevice: SttInputDeviceWrapper,
+    private val polzaSettings: org.stypox.dicio.llm.PolzaSettings,
+    private val polzaClient: org.stypox.dicio.llm.PolzaClient,
 ) : SkillEvaluator {
 
-    private val scope = CoroutineScope(Dispatchers.Default)
+    private val scope = CoroutineScope(Dispatchers.Main.immediate)
+    private var inputJob: Job? = null
 
     private val skillRanker: SkillRanker
         get() = skillHandler.skillRanker.value
@@ -58,7 +65,8 @@ class SkillEvaluatorImpl(
 
     override fun processInputEvent(event: InputEvent) {
         scope.launch {
-            suspendProcessInputEvent(event)
+            inputJob?.cancel()
+            inputJob = launch { suspendProcessInputEvent(event) }
         }
     }
 
@@ -68,6 +76,7 @@ class SkillEvaluatorImpl(
                 addErrorInteractionFromPending(event.throwable)
             }
             is InputEvent.Final -> {
+                if (event.utterances.isEmpty()) return
                 _state.value = _state.value.copy(
                     pendingQuestion = PendingQuestion(
                         userInput = event.utterances[0].first,
@@ -75,7 +84,32 @@ class SkillEvaluatorImpl(
                         skillBeingEvaluated = null,
                     )
                 )
-                evaluateMatchingSkill(event.utterances.map { it.first })
+                val config = try {
+                    withContext(Dispatchers.IO) { polzaSettings.load() }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    addErrorInteractionFromPending(IllegalStateException("Не удалось прочитать настройки polza.ai."))
+                    return
+                }
+                if (config.enabled) {
+                    try {
+                        val answer = polzaClient.answer(config, event.utterances[0].first)
+                        val output = object : org.stypox.dicio.io.graphical.HeadlineSpeechSkillOutput {
+                            override fun getSpeechOutput(ctx: org.dicio.skill.context.SkillContext) = answer
+                        }
+                        addInteractionFromPending(output)
+                        withContext(Dispatchers.Main) { skillContext.speechOutputDevice.speak(answer) }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        addErrorInteractionFromPending(error)
+                    }
+                } else {
+                    withContext(Dispatchers.Default) {
+                        evaluateMatchingSkill(event.utterances.map { it.first })
+                    }
+                }
             }
             InputEvent.None -> {
                 _state.value = _state.value.copy(pendingQuestion = null)
@@ -103,6 +137,8 @@ class SkillEvaluatorImpl(
                     Pair(input, skillWithResult)
                 }
             } ?: Pair(utterances[0], skillRanker.getFallbackSkill(skillContext, utterances[0]))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (throwable: Throwable) {
             addErrorInteractionFromPending(throwable)
             return
@@ -136,6 +172,7 @@ class SkillEvaluatorImpl(
             skillContext.previousOutput =
                 _state.value.interactions.lastOrNull()?.questionsAnswers?.lastOrNull()?.answer
             val output = chosenSkill.generateOutput(skillContext)
+            coroutineContext.ensureActive()
 
             val interactionPlan = output.getInteractionPlan(skillContext)
             addInteractionFromPending(output)
@@ -167,12 +204,10 @@ class SkillEvaluatorImpl(
                 }
             }
 
-            if (interactionPlan.reopenMicrophone) {
-                skillContext.speechOutputDevice.runWhenFinishedSpeaking {
-                    sttInputDevice.tryLoad(this::processInputEvent)
-                }
-            }
+            // Manual TV input: preserve dialogue state, but never reopen the microphone.
 
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (throwable: Throwable) {
             addErrorInteractionFromPending(throwable)
             return
@@ -226,7 +261,9 @@ class SkillEvaluatorModule {
         skillContext: SkillContextInternal,
         skillHandler: SkillHandler,
         sttInputDevice: SttInputDeviceWrapper,
+        polzaSettings: org.stypox.dicio.llm.PolzaSettings,
+        polzaClient: org.stypox.dicio.llm.PolzaClient,
     ): SkillEvaluator {
-        return SkillEvaluatorImpl(skillContext, skillHandler, sttInputDevice)
+        return SkillEvaluatorImpl(skillContext, skillHandler, sttInputDevice, polzaSettings, polzaClient)
     }
 }

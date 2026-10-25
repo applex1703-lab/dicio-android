@@ -82,6 +82,7 @@ private fun MainSettingsScreen(
     }
 
     LazyColumn(modifier) {
+        item { org.stypox.dicio.llm.PolzaSettingsCard() }
         /* GENERAL SETTINGS */
         item { SettingsCategoryTitle(stringResource(R.string.pref_general), topPadding = 4.dp) }
         item {
