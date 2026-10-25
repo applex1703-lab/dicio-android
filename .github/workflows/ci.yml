@@ -48,7 +48,10 @@ jobs:
           cache: 'gradle'
 
       - name: Build debug APK and run jvm tests
-        run: ./gradlew assembleDebug lintDebug testDebugUnitTest --stacktrace
+        # Repository archives may not preserve the executable bit on gradlew.
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug lintDebug testDebugUnitTest --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v6

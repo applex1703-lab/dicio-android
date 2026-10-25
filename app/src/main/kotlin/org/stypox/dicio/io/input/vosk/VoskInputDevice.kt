@@ -81,6 +81,7 @@ class VoskInputDevice(
 
     private val filesDir: File = appContext.filesDir
     private val cacheDir: File = appContext.cacheDir
+    private val assets = appContext.assets
     private val modelZipFile: File get() = File(filesDir, "vosk-model.zip")
     private val sameModelUrlCheck: File get() = File(filesDir, "vosk-model-url")
     private val modelDirectory: File get() = File(filesDir, "vosk-model")
@@ -273,7 +274,24 @@ class VoskInputDevice(
 
         operationsJob = scope.launch(Dispatchers.IO) {
             try {
-                downloadBinaryFilesWithPartial(
+                if (modelUrl == MODEL_URLS["ru"] &&
+                    assets.list("")?.contains("vosk-model-small-ru-0.22.zip") == true
+                ) {
+                    // Personal TV build: use the bundled model, without a network request.
+                    // Publish the ZIP and URL marker only after the complete asset was copied.
+                    val partial = File.createTempFile("vosk-bundled-", ".part", cacheDir)
+                    try {
+                        assets.open("vosk-model-small-ru-0.22.zip").use { input ->
+                            partial.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        if (!partial.renameTo(modelZipFile)) {
+                            throw IOException("Cannot publish bundled Vosk model")
+                        }
+                        sameModelUrlCheck.writeText(modelUrl)
+                    } finally {
+                        partial.delete()
+                    }
+                } else downloadBinaryFilesWithPartial(
                     urlsFiles = listOf(FileToDownload(modelUrl, modelZipFile, sameModelUrlCheck)),
                     httpClient = okHttpClient,
                     cacheDir = cacheDir,
