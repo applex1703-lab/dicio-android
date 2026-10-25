@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -33,6 +34,8 @@ fun PolzaSettingsCard() {
             model = config.model
             key = config.apiKey
             ready = true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             status = "Не удалось прочитать настройки polza.ai."
         }
@@ -43,9 +46,11 @@ fun PolzaSettingsCard() {
             "Управление приложениями через LLM пока не подключено. Запросы могут быть платными.")
         Switch(checked = enabled, onCheckedChange = { enabled = it }, enabled = ready && !saving)
         OutlinedTextField(value = model, onValueChange = { model = it },
-            label = { Text("ID модели из каталога polza.ai") }, singleLine = true)
+            label = { Text("ID модели из каталога polza.ai") }, singleLine = true,
+            enabled = ready && !saving)
         OutlinedTextField(value = key, onValueChange = { key = it },
             label = { Text("API-ключ (пустое поле удаляет ключ)") }, singleLine = true,
+            enabled = ready && !saving,
             visualTransformation = PasswordVisualTransformation())
         Button(enabled = ready && !saving, onClick = {
             saving = true
@@ -56,11 +61,30 @@ fun PolzaSettingsCard() {
                     }
                     withContext(Dispatchers.IO) { settings.save(PolzaSettings.Config(enabled, model, key)) }
                     status = "Сохранено. Проверка подключения — текстовым запросом на главном экране."
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (_: Exception) {
                     status = "Не удалось сохранить: проверьте ключ, модель и доступность хранилища."
                 } finally { saving = false }
             }
         }) { Text("Сохранить") }
+        Button(enabled = !saving, onClick = {
+            saving = true
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) { settings.reset() }
+                    enabled = false
+                    model = ""
+                    key = ""
+                    ready = true
+                    status = "Настройки и сохранённый API-ключ удалены."
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    status = "Не удалось сбросить настройки."
+                } finally { saving = false }
+            }
+        }) { Text("Сбросить настройки polza.ai") }
         Text(status)
     }
 }

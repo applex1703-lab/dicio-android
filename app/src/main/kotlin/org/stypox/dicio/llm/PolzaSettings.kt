@@ -18,12 +18,19 @@ import javax.inject.Singleton
 class PolzaSettings @Inject constructor(@ApplicationContext context: Context) {
     private val file = java.io.File(context.noBackupFilesDir, "polza-settings.json")
 
-    data class Config(val enabled: Boolean, val model: String, val apiKey: String)
+    data class Config(val enabled: Boolean, val model: String, val apiKey: String) {
+        override fun toString() = "Config(enabled=$enabled, model=$model, apiKey=[REDACTED])"
+    }
 
-    @Synchronized
-    fun load(): Config {
-        if (!file.exists()) return Config(false, "", "")
-        val data = org.json.JSONObject(file.readText())
+    fun load(): Config = synchronized(LOCK) {
+        val atomic = android.util.AtomicFile(file)
+        val contents = try {
+            atomic.openRead().bufferedReader().use { it.readText() }
+        } catch (error: java.io.FileNotFoundException) {
+            if (file.exists()) throw error
+            return@synchronized Config(false, "", "")
+        }
+        val data = org.json.JSONObject(contents)
         val encrypted = data.optString("key")
         val apiKey = if (encrypted.isEmpty()) "" else {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -31,11 +38,10 @@ class PolzaSettings @Inject constructor(@ApplicationContext context: Context) {
                 Base64.decode(data.getString("iv"), Base64.NO_WRAP)))
             String(cipher.doFinal(Base64.decode(encrypted, Base64.NO_WRAP)), Charsets.UTF_8)
         }
-        return Config(data.optBoolean("enabled"), data.optString("model"), apiKey)
+        Config(data.optBoolean("enabled"), data.optString("model"), apiKey)
     }
 
-    @Synchronized
-    fun save(config: Config) {
+    fun save(config: Config): Unit = synchronized(LOCK) {
         val data = org.json.JSONObject().put("enabled", config.enabled)
             .put("model", config.model.trim())
         if (config.apiKey.isNotBlank()) {
@@ -56,6 +62,10 @@ class PolzaSettings @Inject constructor(@ApplicationContext context: Context) {
         }
     }
 
+    fun reset(): Unit = synchronized(LOCK) {
+        android.util.AtomicFile(file).delete()
+    }
+
     private fun key(): SecretKey {
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
             throw IllegalStateException("Защищённое хранение ключа требует Android 6 или новее.")
@@ -70,5 +80,8 @@ class PolzaSettings @Inject constructor(@ApplicationContext context: Context) {
             }.generateKey()
     }
 
-    companion object { private const val ALIAS = "dicio.polza.api-key" }
+    companion object {
+        private const val ALIAS = "dicio.polza.api-key"
+        private val LOCK = Any()
+    }
 }
