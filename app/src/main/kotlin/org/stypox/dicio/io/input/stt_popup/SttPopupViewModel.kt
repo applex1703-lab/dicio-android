@@ -56,6 +56,7 @@ class SttPopupViewModel @Inject constructor(
 
     private fun onReceiveInputEvent(inputEvent: InputEvent) {
         when (inputEvent) {
+            InputEvent.Started -> Unit
             is InputEvent.Partial -> {
                 // the text field will show the partial value, but the previous value will be kept
                 _textFieldValue.value = inputEvent.utterance

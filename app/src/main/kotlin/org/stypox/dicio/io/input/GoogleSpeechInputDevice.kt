@@ -70,6 +70,7 @@ class GoogleSpeechInputDevice(
         main.post {
             if (closed || listener != null) return@post
             listener = eventListener
+            eventListener(InputEvent.Started)
             val session = ++generation
             state.value = SttState.WaitingForResult
             try {

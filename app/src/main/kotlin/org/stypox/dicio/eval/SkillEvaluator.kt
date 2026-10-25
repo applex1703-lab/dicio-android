@@ -7,7 +7,6 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.coroutineContext
@@ -36,6 +35,8 @@ interface SkillEvaluator {
     var permissionRequester: suspend (List<Permission>) -> Boolean
 
     fun processInputEvent(event: InputEvent)
+
+    fun cancelPendingInput()
 }
 
 class SkillEvaluatorImpl(
@@ -47,7 +48,7 @@ class SkillEvaluatorImpl(
 ) : SkillEvaluator {
 
     private val scope = CoroutineScope(Dispatchers.Main.immediate)
-    private var inputJob: Job? = null
+    private val requests = LatestInputRequest(scope)
 
     private val skillRanker: SkillRanker
         get() = skillHandler.skillRanker.value
@@ -65,13 +66,24 @@ class SkillEvaluatorImpl(
 
     override fun processInputEvent(event: InputEvent) {
         scope.launch {
-            inputJob?.cancel()
-            inputJob = launch { suspendProcessInputEvent(event) }
+            requests.replace { suspendProcessInputEvent(event) }
+        }
+    }
+
+    override fun cancelPendingInput() {
+        scope.launch {
+            requests.cancel()
+            _state.value = _state.value.copy(pendingQuestion = null)
+            skillContext.speechOutputDevice.stopSpeaking()
         }
     }
 
     private suspend fun suspendProcessInputEvent(event: InputEvent) {
         when (event) {
+            InputEvent.Started -> {
+                _state.value = _state.value.copy(pendingQuestion = null)
+                skillContext.speechOutputDevice.stopSpeaking()
+            }
             is InputEvent.Error -> {
                 addErrorInteractionFromPending(event.throwable)
             }
@@ -95,6 +107,7 @@ class SkillEvaluatorImpl(
                 if (config.enabled) {
                     try {
                         val answer = polzaClient.answer(config, event.utterances[0].first)
+                        coroutineContext.ensureActive()
                         val output = object : org.stypox.dicio.io.graphical.HeadlineSpeechSkillOutput {
                             override fun getSpeechOutput(ctx: org.dicio.skill.context.SkillContext) = answer
                         }

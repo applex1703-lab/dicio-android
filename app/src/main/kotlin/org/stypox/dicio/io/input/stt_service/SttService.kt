@@ -55,6 +55,7 @@ class SttService : RecognitionService() {
         var beginningOfSpeech = true
         val willStartListening = sttInputDevice.tryLoad { inputEvent ->
             when (inputEvent) {
+                InputEvent.Started -> Unit
                 is InputEvent.Error -> {
                     logRemoteExceptions { listener.error(SpeechRecognizer.ERROR_SERVER) }
                 }

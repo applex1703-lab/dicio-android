@@ -98,6 +98,7 @@ class MainActivity : BaseActivity() {
     override fun onStop() {
         super.onStop()
         isInForeground -= 1
+        skillEvaluator.cancelPendingInput()
 
         // once the activity is swiped away from the lock screen (or put in the background in any
         // other way), we don't want to show it on the lock screen anymore

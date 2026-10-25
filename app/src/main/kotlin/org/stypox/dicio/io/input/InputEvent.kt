@@ -25,6 +25,8 @@ package org.stypox.dicio.io.input
  * finishes being produced.
  */
 sealed interface InputEvent {
+    /** An explicit recording request began, before any speech or partial result. */
+    data object Started : InputEvent
     /**
      * Partial user input, e.g. while the user is talking.
      */
