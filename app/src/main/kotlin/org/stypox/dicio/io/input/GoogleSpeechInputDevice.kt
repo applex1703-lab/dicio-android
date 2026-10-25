@@ -27,15 +27,44 @@ class GoogleSpeechInputDevice(
     private var listener: ((InputEvent) -> Unit)? = null
     private var closed = false
     private var generation = 0
-    private val timeout = Runnable { complete(InputEvent.Error(IOException("Google speech input timed out"))) }
+    private val timeout = Runnable {
+        releaseRecognizer()
+        complete(InputEvent.Error(IOException("Google speech input timed out")))
+    }
 
     override fun tryLoad(thenStartListeningEventListener: ((InputEvent) -> Unit)?): Boolean {
         if (closed) return false
+        main.post {
+            if (!closed) {
+                try {
+                    prepareRecognizer()
+                } catch (error: Exception) {
+                    state.value = SttState.ErrorLoading(error)
+                }
+            }
+        }
         thenStartListeningEventListener?.let { start(it) }
         return true
     }
 
     override fun onClick(eventListener: (InputEvent) -> Unit) { start(eventListener) }
+
+    // Creating a client does not start recording. Keep the connection between explicit requests.
+    private fun prepareRecognizer(): SpeechRecognizer {
+        return recognizer ?: SpeechRecognizer.createSpeechRecognizer(context, ComponentName(
+            "com.google.android.katniss",
+            "com.google.android.apps.tvsearch.voice.recognition.KatnissRecognitionService",
+        )).also {
+            recognizer = it
+            Log.i(TAG, "Google recognizer created (not listening)")
+        }
+    }
+
+    private fun releaseRecognizer() {
+        val previous = recognizer
+        recognizer = null
+        previous?.destroy()
+    }
 
     private fun start(eventListener: (InputEvent) -> Unit) {
         main.post {
@@ -44,11 +73,7 @@ class GoogleSpeechInputDevice(
             val session = ++generation
             state.value = SttState.WaitingForResult
             try {
-                val service = SpeechRecognizer.createSpeechRecognizer(context, ComponentName(
-                    "com.google.android.katniss",
-                    "com.google.android.apps.tvsearch.voice.recognition.KatnissRecognitionService",
-                ))
-                recognizer = service
+                val service = prepareRecognizer()
                 service.setRecognitionListener(object : RecognitionListener {
                     private fun current() = !closed && session == generation && listener != null
                     override fun onReadyForSpeech(params: Bundle?) {
@@ -57,7 +82,9 @@ class GoogleSpeechInputDevice(
                             Log.i(TAG, "Google ready for speech")
                         }
                     }
-                    override fun onBeginningOfSpeech() { }
+                    override fun onBeginningOfSpeech() {
+                        if (current()) Log.i(TAG, "Google speech beginning session=$session")
+                    }
                     override fun onRmsChanged(rmsdB: Float) { }
                     override fun onBufferReceived(buffer: ByteArray?) { }
                     override fun onEndOfSpeech() {
@@ -66,9 +93,14 @@ class GoogleSpeechInputDevice(
                     override fun onError(error: Int) {
                         if (!current()) return
                         Log.w(TAG, "Google recognition error=$error")
-                        complete(if (error == SpeechRecognizer.ERROR_NO_MATCH ||
-                            error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) InputEvent.None
-                        else InputEvent.Error(IOException("Google recognition error $error")))
+                        val message = when (error) {
+                            SpeechRecognizer.ERROR_NO_MATCH ->
+                                "Речь не распознана. Повторите запрос после начала прослушивания."
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+                                "Речь не поступила. Для микрофона пульта запустите запись кнопкой OK."
+                            else -> "Google recognition error $error"
+                        }
+                        complete(InputEvent.Error(IOException(message)))
                     }
                     override fun onResults(results: Bundle?) {
                         if (!current()) return
@@ -80,9 +112,18 @@ class GoogleSpeechInputDevice(
                             }
                         }
                         Log.i(TAG, "Google returned ${hypotheses.size} hypotheses to Dicio")
-                        complete(if (hypotheses.isEmpty()) InputEvent.None else InputEvent.Final(hypotheses))
+                        complete(if (hypotheses.isEmpty()) {
+                            InputEvent.Error(IOException("Google returned no recognized text"))
+                        } else InputEvent.Final(hypotheses))
                     }
-                    override fun onPartialResults(partialResults: Bundle?) { }
+                    override fun onPartialResults(partialResults: Bundle?) {
+                        if (!current()) return
+                        val text = partialResults
+                            ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                            ?.firstOrNull { it.isNotBlank() } ?: return
+                        // Only final results execute skills; partial results update the UI.
+                        listener?.invoke(InputEvent.Partial(text))
+                    }
                     override fun onEvent(eventType: Int, params: Bundle?) { }
                 })
                 main.postDelayed(timeout, 30000)
@@ -91,9 +132,13 @@ class GoogleSpeechInputDevice(
                 service.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 })
                 Log.i(TAG, "Google recognition requested")
-            } catch (error: Exception) { complete(InputEvent.Error(error)) }
+            } catch (error: Exception) {
+                releaseRecognizer()
+                complete(InputEvent.Error(error))
+            }
         }
     }
 
@@ -102,9 +147,6 @@ class GoogleSpeechInputDevice(
         listener = null
         generation++
         main.removeCallbacks(timeout)
-        val previous = recognizer
-        recognizer = null
-        previous?.destroy()
         state.value = SttState.Loaded
         if (!closed) target(event)
     }
@@ -117,6 +159,8 @@ class GoogleSpeechInputDevice(
         main.post {
             closed = true
             complete(InputEvent.None)
+            main.removeCallbacks(timeout)
+            releaseRecognizer()
         }
     }
 
