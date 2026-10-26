@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="polza_thinking">Думаю… Ожидаю ответ polza.ai</string>
     <string name="share">Поделиться</string>
     <string name="text_input_hint">Спроси меня что-нибудь…</string>
     <string name="here_is_what_i_can_do">Вот что я могу!</string>

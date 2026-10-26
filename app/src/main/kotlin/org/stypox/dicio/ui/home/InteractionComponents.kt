@@ -1,5 +1,7 @@
 package org.stypox.dicio.ui.home
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -147,7 +149,17 @@ fun InteractionList(
                     // pending question first appears and the LaunchedEffect below scrolls to it,
                     // there is enough space for the loading card below the question card that will
                     // only appear after the pending question has been confirmed
-                    Spacer(modifier = Modifier.height(72.dp))
+                    if (pendingQuestion.waitingForLlm) {
+                        MessageCard(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
+                            Row(modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                androidx.compose.material3.CircularProgressIndicator()
+                                Text(stringResource(org.stypox.dicio.R.string.polza_thinking))
+                            }
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.height(72.dp))
+                    }
                 }
             } else {
                 countedItem(canBeAnchor = true) {

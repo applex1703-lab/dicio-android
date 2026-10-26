@@ -106,8 +106,12 @@ class SkillEvaluatorImpl(
                 }
                 if (config.enabled) {
                     try {
+                        _state.value = _state.value.copy(pendingQuestion =
+                            _state.value.pendingQuestion?.copy(waitingForLlm = true))
+                        val startedAt = android.os.SystemClock.elapsedRealtime()
                         val answer = polzaClient.answer(config, event.utterances[0].first)
                         coroutineContext.ensureActive()
+                        Log.i("DicioPolza", "Response received elapsedMs=${android.os.SystemClock.elapsedRealtime() - startedAt} chars=${answer.length}")
                         val output = object : org.stypox.dicio.io.graphical.HeadlineSpeechSkillOutput {
                             override fun getSpeechOutput(ctx: org.dicio.skill.context.SkillContext) = answer
                         }

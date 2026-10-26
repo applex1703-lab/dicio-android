@@ -17,6 +17,7 @@ data class PendingQuestion(
     val userInput: String,
     val continuesLastInteraction: Boolean,
     val skillBeingEvaluated: SkillInfo?,
+    val waitingForLlm: Boolean = false,
 )
 
 data class InteractionLog(
