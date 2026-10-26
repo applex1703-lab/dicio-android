@@ -7,7 +7,10 @@ import android.service.voice.VoiceInteractionSessionService
 
 class TvVoiceSessionService : VoiceInteractionSessionService() {
     override fun onNewSession(args: Bundle?): VoiceInteractionSession {
-        check(Build.VERSION.SDK_INT >= 23) { "Voice session requires Android 6 or later." }
-        return TvVoiceSession(this)
+        if (Build.VERSION.SDK_INT >= 23) {
+            return TvVoiceSession(this)
+        }
+        // Android 5 retains the existing Activity assistant; no API 23 session is constructed.
+        return VoiceInteractionSession(this)
     }
 }
