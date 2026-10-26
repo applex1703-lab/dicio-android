@@ -19,6 +19,14 @@ class IntentProtocolTest : StringSpec({
         }
     }
     "Rutube search has bounded literal query and no other action parameters" {
+        IntentProtocol.parse(decision("search_youtube", query = "TCL43P635"), emptySet()) shouldBe
+            AssistantIntent.SearchYoutube("TCL43P635")
+        shouldThrow<IllegalStateException> {
+            IntentProtocol.parse(decision("search_youtube", settings = "WIFI", query = "test"), emptySet())
+        }
+        shouldThrow<IllegalStateException> {
+            IntentProtocol.parse(decision("search_youtube", query = ""), emptySet())
+        }
         IntentProtocol.parse(decision("search_rutube", query = " космос & звёзды? "), emptySet()) shouldBe
             AssistantIntent.SearchRutube("космос & звёзды?")
         for (query in listOf("", " ", "a".repeat(301), "hello\nworld")) {

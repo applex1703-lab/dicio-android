@@ -60,6 +60,17 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
         return when (decision) {
             is AssistantIntent.Reply -> Execution(decision.text, true)
             is AssistantIntent.Clarify -> Execution(decision.text, true)
+            is AssistantIntent.SearchYoutube -> withContext(Dispatchers.Main) {
+                coroutineContext.ensureActive()
+                val query = ContentSearch.validateQuery(decision.query)
+                val uri = android.net.Uri.Builder().scheme("https").authority("www.youtube.com")
+                    .path("/results").appendQueryParameter("search_query", query).build()
+                val intent = Intent(Intent.ACTION_VIEW, uri).setPackage(ContentSearch.YOUTUBE_PACKAGE)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                check(intent.resolveActivity(context.packageManager) != null) { "Поиск YouTube недоступен." }
+                context.startActivity(intent)
+                Execution("Открываю поиск в YouTube: $query", false)
+            }
             is AssistantIntent.SearchRutube -> withContext(Dispatchers.Main) {
                 coroutineContext.ensureActive()
                 val query = ContentSearch.validateQuery(decision.query)

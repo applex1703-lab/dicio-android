@@ -2,6 +2,7 @@ package org.stypox.dicio.llm
 
 internal object ContentSearch {
     const val RUTUBE_PACKAGE = "rtb.mobile.android"
+    const val YOUTUBE_PACKAGE = "com.google.android.youtube.tv"
 
     fun validateQuery(query: String): String {
         check(query.isNotBlank() && query.length <= 300 && query.none { it.isISOControl() }) {
