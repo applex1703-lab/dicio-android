@@ -18,7 +18,7 @@ import javax.inject.Singleton
 import kotlin.coroutines.coroutineContext
 
 @Singleton
-class TvActions @Inject constructor(@ApplicationContext private val context: Context) {
+class TvActions @Inject constructor(@ApplicationContext private val context: Context, private val mediaActions: MediaActions) {
     internal data class App(val id: String, val packageName: String, val label: String)
     private val catalogMutex = Mutex()
     private var cachedApps: List<App>? = null
@@ -55,9 +55,13 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
 
     internal data class Execution(val text: String, val speak: Boolean)
 
-    internal suspend fun execute(decision: AssistantIntent, apps: List<App>, locale: Locale): Execution {
+    internal suspend fun mediaSnapshot() = mediaActions.snapshot()
+
+    internal suspend fun execute(decision: AssistantIntent, apps: List<App>, locale: Locale,
+        media: MediaActions.Snapshot = MediaActions.Snapshot(emptyList())): Execution {
         coroutineContext.ensureActive()
         return when (decision) {
+            is AssistantIntent.Media -> mediaActions.execute(decision.command, media)
             is AssistantIntent.Reply -> Execution(decision.text, true)
             is AssistantIntent.Clarify -> Execution(decision.text, true)
             is AssistantIntent.SearchYoutube -> withContext(Dispatchers.Main) {

@@ -28,9 +28,9 @@ class PolzaClient @Inject constructor(client: OkHttpClient) {
     }
 
     internal suspend fun decide(config: PolzaSettings.Config, text: String,
-        apps: Map<String, String>): AssistantIntent {
+        apps: Map<String, String>, media: List<MediaTarget> = emptyList()): AssistantIntent {
         PolzaProtocol.validateInput(config, text)
-        return IntentProtocol.parse(complete(config, IntentProtocol.request(config.model, text, apps)), apps.keys)
+        return IntentProtocol.parse(complete(config, IntentProtocol.request(config.model, text, apps, media)), apps.keys, media)
     }
 
     private suspend fun complete(config: PolzaSettings.Config, payload: String): String {

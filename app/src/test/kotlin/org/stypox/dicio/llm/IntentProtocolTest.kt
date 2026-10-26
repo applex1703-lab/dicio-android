@@ -8,6 +8,7 @@ import kotlinx.serialization.json.*
 class IntentProtocolTest : StringSpec({
     fun decision(action: String, id: String = "", settings: String = "", text: String = "", query: String = "") = buildJsonObject {
         put("action", action); put("app_id", id); put("settings_section", settings); put("text", text); put("search_query", query)
+        put("media_id", ""); put("media_operation", ""); put("media_seconds", 0)
     }.toString()
 
     "only catalogued app IDs can launch" {
