@@ -31,12 +31,14 @@ import org.dicio.skill.standard.util.MatchHelper
 
 interface SkillEvaluator {
     val state: StateFlow<InteractionLog>
+    val voicePresentation: StateFlow<VoicePresentation>
 
     var permissionRequester: suspend (List<Permission>) -> Boolean
 
     fun processInputEvent(event: InputEvent)
 
     fun cancelPendingInput()
+    fun resetVoicePresentation()
 }
 
 class SkillEvaluatorImpl(
@@ -61,6 +63,9 @@ class SkillEvaluatorImpl(
         )
     )
     override val state: StateFlow<InteractionLog> = _state
+    private val _voicePresentation = MutableStateFlow(VoicePresentation())
+    override val voicePresentation: StateFlow<VoicePresentation> = _voicePresentation
+    override fun resetVoicePresentation() { _voicePresentation.value = VoicePresentation() }
 
     // must be kept up to date even when the activity is recreated, for this reason it is `var`
     override var permissionRequester: suspend (List<Permission>) -> Boolean = { false }
@@ -82,6 +87,7 @@ class SkillEvaluatorImpl(
     private suspend fun suspendProcessInputEvent(event: InputEvent) {
         when (event) {
             InputEvent.Started -> {
+                _voicePresentation.value = VoicePresentation()
                 _state.value = _state.value.copy(pendingQuestion = null)
                 skillContext.speechOutputDevice.stopSpeaking()
             }
@@ -90,6 +96,7 @@ class SkillEvaluatorImpl(
             }
             is InputEvent.Final -> {
                 if (event.utterances.isEmpty()) return
+                _voicePresentation.value = VoicePresentation(request = event.utterances[0].first, status = "Думаю…")
                 _state.value = _state.value.copy(
                     pendingQuestion = PendingQuestion(
                         userInput = event.utterances[0].first,
@@ -126,6 +133,9 @@ class SkillEvaluatorImpl(
                         Log.i("DicioPolza", "Response received elapsedMs=${android.os.SystemClock.elapsedRealtime() - startedAt} chars=${result.text.length} speak=${result.speak}")
                         val output = org.stypox.dicio.llm.AssistantOutput(result.text, result.speak)
                         addInteractionFromPending(output)
+                        _voicePresentation.value = _voicePresentation.value.copy(
+                            status = if (result.speak) "Ответ" else "Выполнено",
+                            answer = if (result.speak) result.text else "", dismiss = !result.speak)
                         if (result.speak) {
                             withContext(Dispatchers.Main) { skillContext.speechOutputDevice.speak(result.text) }
                         }
@@ -141,9 +151,12 @@ class SkillEvaluatorImpl(
                 }
             }
             InputEvent.None -> {
+                _voicePresentation.value = _voicePresentation.value.copy(status = "Речь не распознана",
+                    answer = "Нажмите кнопку Ассистента, чтобы попробовать снова.")
                 _state.value = _state.value.copy(pendingQuestion = null)
             }
             is InputEvent.Partial -> {
+                _voicePresentation.value = VoicePresentation(request = event.utterance, status = "Слушаю…")
                 _state.value = _state.value.copy(
                     pendingQuestion = PendingQuestion(
                         userInput = event.utterance,
@@ -205,6 +218,8 @@ class SkillEvaluatorImpl(
 
             val interactionPlan = output.getInteractionPlan(skillContext)
             addInteractionFromPending(output)
+            _voicePresentation.value = _voicePresentation.value.copy(status = "Ответ",
+                answer = output.getSpeechOutput(skillContext))
             output.getSpeechOutput(skillContext).let {
                 if (it.isNotBlank()) {
                     withContext (Dispatchers.Main) {
@@ -244,6 +259,8 @@ class SkillEvaluatorImpl(
     }
 
     private fun addErrorInteractionFromPending(throwable: Throwable) {
+        _voicePresentation.value = _voicePresentation.value.copy(status = "Не удалось выполнить запрос",
+            answer = throwable.localizedMessage ?: "Повторите запрос по кнопке Ассистента.", dismiss = false)
         Log.e(TAG, "Error while evaluating skills", throwable)
         addInteractionFromPending(ErrorSkillOutput(throwable, true))
     }
