@@ -27,7 +27,7 @@ class PolzaClientTest : StringSpec({
     }
     "successful HTTP response is decoded without contacting provider" {
         val fake = OkHttpClient.Builder().addInterceptor { chain ->
-            chain.request().url.host shouldBe "polza.ai"
+            chain.request().url.host shouldBe "routerai.ru"
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200)
                 .message("OK").body("""{"choices":[{"finish_reason":"stop","message":{"content":"test answer"}}]}""".toResponseBody()).build()
         }.build()

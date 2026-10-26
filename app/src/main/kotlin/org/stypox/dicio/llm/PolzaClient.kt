@@ -34,7 +34,7 @@ class PolzaClient @Inject constructor(client: OkHttpClient) {
     }
 
     private suspend fun complete(config: PolzaSettings.Config, payload: String): String {
-        val request = Request.Builder().url("https://polza.ai/api/v1/chat/completions")
+        val request = Request.Builder().url("https://routerai.ru/api/v1/chat/completions")
             .header("Authorization", "Bearer ${config.apiKey}")
             .post(payload.toRequestBody("application/json".toMediaType())).build()
         return suspendCancellableCoroutine { continuation ->
@@ -44,26 +44,26 @@ class PolzaClient @Inject constructor(client: OkHttpClient) {
                 override fun onFailure(call: Call, e: IOException) {
                     if (continuation.isActive) continuation.resumeWithException(
                         IOException(if (e is java.io.InterruptedIOException)
-                            "polza.ai: время ожидания истекло."
-                        else "Не удалось связаться с polza.ai. Проверьте сеть или повторите позже."))
+                            "RouterAI: время ожидания истекло."
+                        else "Не удалось связаться с RouterAI. Проверьте сеть или повторите позже."))
                 }
                 override fun onResponse(call: Call, response: Response) {
                     try {
                         val answer = response.use {
                             check(it.isSuccessful) { PolzaProtocol.httpError(it.code) }
-                            val body = it.body ?: error("polza.ai: пустой ответ.")
+                            val body = it.body ?: error("RouterAI: пустой ответ.")
                             val source = body.source()
                             source.request(PolzaProtocol.MAX_RESPONSE_BYTES + 1)
-                            check(source.buffer.size <= PolzaProtocol.MAX_RESPONSE_BYTES) { "polza.ai: ответ слишком большой." }
+                            check(source.buffer.size <= PolzaProtocol.MAX_RESPONSE_BYTES) { "RouterAI: ответ слишком большой." }
                             PolzaProtocol.answer(source.readUtf8())
                         }
                         if (continuation.isActive) continuation.resume(answer)
                     } catch (error: Exception) {
                         if (continuation.isActive) continuation.resumeWithException(
                             IllegalStateException(if (error is IOException)
-                                "polza.ai: не удалось прочитать ответ."
-                            else if (error is IllegalStateException) error.message ?: "Ошибка polza.ai."
-                            else "polza.ai: ошибка обработки ответа."))
+                                "RouterAI: не удалось прочитать ответ."
+                            else if (error is IllegalStateException) error.message ?: "Ошибка RouterAI."
+                            else "RouterAI: ошибка обработки ответа."))
                     }
                 }
             })

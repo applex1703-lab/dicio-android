@@ -105,7 +105,7 @@ class SkillEvaluatorImpl(
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
-                    addErrorInteractionFromPending(IllegalStateException("Не удалось прочитать настройки polza.ai."))
+                    addErrorInteractionFromPending(IllegalStateException("Не удалось прочитать настройки RouterAI."))
                     return
                 }
                 if (config.enabled) {

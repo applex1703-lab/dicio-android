@@ -16,7 +16,8 @@ import javax.inject.Singleton
 /** Provider settings stay outside backup; the API key is encrypted with a non-exportable key. */
 @Singleton
 class PolzaSettings @Inject constructor(@ApplicationContext context: Context) {
-    private val file = java.io.File(context.noBackupFilesDir, "polza-settings.json")
+    // Separate provider namespace: never migrate Polza credentials to RouterAI.
+    private val file = java.io.File(context.noBackupFilesDir, "routerai-settings.json")
 
     data class Config(val enabled: Boolean, val model: String, val apiKey: String) {
         override fun toString() = "Config(enabled=$enabled, model=$model, apiKey=[REDACTED])"
@@ -28,7 +29,7 @@ class PolzaSettings @Inject constructor(@ApplicationContext context: Context) {
             atomic.openRead().bufferedReader().use { it.readText() }
         } catch (error: java.io.FileNotFoundException) {
             if (file.exists()) throw error
-            return@synchronized Config(false, "", "")
+            return@synchronized Config(false, DEFAULT_MODEL, "")
         }
         val data = org.json.JSONObject(contents)
         val encrypted = data.optString("key")
@@ -81,7 +82,8 @@ class PolzaSettings @Inject constructor(@ApplicationContext context: Context) {
     }
 
     companion object {
-        private const val ALIAS = "dicio.polza.api-key"
+        const val DEFAULT_MODEL = "openai/gpt-6-luna"
+        private const val ALIAS = "dicio.routerai.api-key"
         private val LOCK = Any()
     }
 }

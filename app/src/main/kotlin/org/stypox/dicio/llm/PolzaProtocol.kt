@@ -7,9 +7,9 @@ internal object PolzaProtocol {
     const val MAX_RESPONSE_BYTES = 128 * 1024L
 
     fun validateInput(config: PolzaSettings.Config, text: String) {
-        require(config.apiKey.isNotBlank()) { "Укажите API-ключ polza.ai в настройках." }
+        require(config.apiKey.isNotBlank()) { "Укажите API-ключ RouterAI в настройках." }
         require(config.apiKey.all { it.code in 33..126 }) { "API-ключ содержит недопустимые символы." }
-        require(config.model.isNotBlank() && config.model.length <= 200) { "Укажите корректный ID модели polza.ai." }
+        require(config.model.isNotBlank() && config.model.length <= 200) { "Укажите корректный ID модели RouterAI." }
         require(text.isNotBlank() && text.length <= 8000) { "Запрос пустой или слишком длинный." }
     }
 
@@ -31,24 +31,24 @@ internal object PolzaProtocol {
     }.toString()
 
     fun httpError(code: Int): String = when (code) {
-        401, 403 -> "polza.ai: проверьте ключ и права доступа."
-        402 -> "polza.ai: недостаточно средств."
-        408, 504 -> "polza.ai: время ожидания истекло."
-        429 -> "polza.ai: превышен лимит запросов."
-        else -> "polza.ai: ошибка HTTP $code."
+        401, 403 -> "RouterAI: проверьте ключ и права доступа."
+        402 -> "RouterAI: недостаточно средств."
+        408, 504 -> "RouterAI: время ожидания истекло."
+        429 -> "RouterAI: превышен лимит запросов."
+        else -> "RouterAI: ошибка HTTP $code."
     }
 
     fun answer(body: String): String {
         val choice = try {
             Json.parseToJsonElement(body).jsonObject["choices"]!!.jsonArray.first().jsonObject
         } catch (_: Exception) {
-            throw IllegalStateException("polza.ai: неверный формат ответа.")
+            throw IllegalStateException("RouterAI: неверный формат ответа.")
         }
         check((choice["finish_reason"] as? JsonPrimitive)?.content == "stop") {
-            "polza.ai: ответ не завершён или отклонён. Повторите запрос."
+            "RouterAI: ответ не завершён или отклонён. Повторите запрос."
         }
         val message = choice["message"] as? JsonObject
-            ?: error("polza.ai: неверный формат сообщения.")
+            ?: error("RouterAI: неверный формат сообщения.")
         check(message["tool_calls"] == null || message["tool_calls"] == JsonNull) {
             "Вызовы инструментов пока не поддерживаются."
         }
@@ -57,7 +57,7 @@ internal object PolzaProtocol {
         }
         val content = message["content"] as? JsonPrimitive
         check(content != null && content.isString && content.content.isNotBlank()) {
-            "polza.ai: нет текста ответа."
+            "RouterAI: нет текста ответа."
         }
         return content.content.trim()
     }

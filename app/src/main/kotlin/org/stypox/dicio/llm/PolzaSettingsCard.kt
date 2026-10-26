@@ -37,17 +37,17 @@ fun PolzaSettingsCard() {
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            status = "Не удалось прочитать настройки polza.ai."
+            status = "Не удалось прочитать настройки RouterAI."
         }
     }
     Column(Modifier.padding(16.dp)) {
-        Text("polza.ai — ответы и действия LLM (экспериментально)")
+        Text("RouterAI — ответы и действия LLM (экспериментально)")
         Text("Включённый режим отправляет запросы провайдеру вместо обычных навыков. " +
-            "Модель получает названия доступных приложений и может выбрать их запуск, время или дату. " +
-            "Запросы могут быть платными. Другие действия пока недоступны.")
+            "Модель получает названия приложений и выбирает только разрешённые действия: запуск, " +
+            "поиск YouTube/Rutube, открытие разделов настроек, время и дату. Запросы могут быть платными.")
         Switch(checked = enabled, onCheckedChange = { enabled = it }, enabled = ready && !saving)
         OutlinedTextField(value = model, onValueChange = { model = it },
-            label = { Text("ID модели из каталога polza.ai") }, singleLine = true,
+            label = { Text("ID модели из каталога RouterAI") }, singleLine = true,
             enabled = ready && !saving)
         OutlinedTextField(value = key, onValueChange = { key = it },
             label = { Text("API-ключ (пустое поле удаляет ключ)") }, singleLine = true,
@@ -75,7 +75,7 @@ fun PolzaSettingsCard() {
                 try {
                     withContext(Dispatchers.IO) { settings.reset() }
                     enabled = false
-                    model = ""
+                    model = PolzaSettings.DEFAULT_MODEL
                     key = ""
                     ready = true
                     status = "Настройки и сохранённый API-ключ удалены."
@@ -85,7 +85,7 @@ fun PolzaSettingsCard() {
                     status = "Не удалось сбросить настройки."
                 } finally { saving = false }
             }
-        }) { Text("Сбросить настройки polza.ai") }
+        }) { Text("Сбросить настройки RouterAI") }
         Text(status)
     }
 }
