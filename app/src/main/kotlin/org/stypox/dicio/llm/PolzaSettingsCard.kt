@@ -41,9 +41,10 @@ fun PolzaSettingsCard() {
         }
     }
     Column(Modifier.padding(16.dp)) {
-        Text("polza.ai — текстовые ответы LLM (экспериментально)")
+        Text("polza.ai — ответы и действия LLM (экспериментально)")
         Text("Включённый режим отправляет запросы провайдеру вместо обычных навыков. " +
-            "Управление приложениями через LLM пока не подключено. Запросы могут быть платными.")
+            "Модель получает названия доступных приложений и может выбрать их запуск, время или дату. " +
+            "Запросы могут быть платными. Другие действия пока недоступны.")
         Switch(checked = enabled, onCheckedChange = { enabled = it }, enabled = ready && !saving)
         OutlinedTextField(value = model, onValueChange = { model = it },
             label = { Text("ID модели из каталога polza.ai") }, singleLine = true,

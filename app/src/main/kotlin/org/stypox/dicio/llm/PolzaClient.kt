@@ -24,9 +24,19 @@ class PolzaClient @Inject constructor(client: OkHttpClient) {
 
     suspend fun answer(config: PolzaSettings.Config, text: String): String {
         PolzaProtocol.validateInput(config, text)
+        return complete(config, PolzaProtocol.request(config.model, text))
+    }
+
+    internal suspend fun decide(config: PolzaSettings.Config, text: String,
+        apps: Map<String, String>): AssistantIntent {
+        PolzaProtocol.validateInput(config, text)
+        return IntentProtocol.parse(complete(config, IntentProtocol.request(config.model, text, apps)), apps.keys)
+    }
+
+    private suspend fun complete(config: PolzaSettings.Config, payload: String): String {
         val request = Request.Builder().url("https://polza.ai/api/v1/chat/completions")
             .header("Authorization", "Bearer ${config.apiKey}")
-            .post(PolzaProtocol.request(config.model, text).toRequestBody("application/json".toMediaType())).build()
+            .post(payload.toRequestBody("application/json".toMediaType())).build()
         return suspendCancellableCoroutine { continuation ->
             val call = http.newCall(request)
             continuation.invokeOnCancellation { call.cancel() }

@@ -45,6 +45,7 @@ class SkillEvaluatorImpl(
     private val sttInputDevice: SttInputDeviceWrapper,
     private val polzaSettings: org.stypox.dicio.llm.PolzaSettings,
     private val polzaClient: org.stypox.dicio.llm.PolzaClient,
+    private val tvActions: org.stypox.dicio.llm.TvActions,
 ) : SkillEvaluator {
 
     private val scope = CoroutineScope(Dispatchers.Main.immediate)
@@ -109,8 +110,11 @@ class SkillEvaluatorImpl(
                         _state.value = _state.value.copy(pendingQuestion =
                             _state.value.pendingQuestion?.copy(waitingForLlm = true))
                         val startedAt = android.os.SystemClock.elapsedRealtime()
-                        val answer = polzaClient.answer(config, event.utterances[0].first)
+                        val apps = tvActions.catalog()
+                        val decision = polzaClient.decide(config, event.utterances[0].first,
+                            apps.associate { it.id to it.label })
                         coroutineContext.ensureActive()
+                        val answer = tvActions.execute(decision, apps, skillContext.locale)
                         Log.i("DicioPolza", "Response received elapsedMs=${android.os.SystemClock.elapsedRealtime() - startedAt} chars=${answer.length}")
                         val output = object : org.stypox.dicio.io.graphical.HeadlineSpeechSkillOutput {
                             override fun getSpeechOutput(ctx: org.dicio.skill.context.SkillContext) = answer
@@ -280,7 +284,8 @@ class SkillEvaluatorModule {
         sttInputDevice: SttInputDeviceWrapper,
         polzaSettings: org.stypox.dicio.llm.PolzaSettings,
         polzaClient: org.stypox.dicio.llm.PolzaClient,
+        tvActions: org.stypox.dicio.llm.TvActions,
     ): SkillEvaluator {
-        return SkillEvaluatorImpl(skillContext, skillHandler, sttInputDevice, polzaSettings, polzaClient)
+        return SkillEvaluatorImpl(skillContext, skillHandler, sttInputDevice, polzaSettings, polzaClient, tvActions)
     }
 }
