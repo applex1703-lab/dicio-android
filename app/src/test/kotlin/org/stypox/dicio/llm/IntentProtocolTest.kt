@@ -6,8 +6,8 @@ import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.*
 
 class IntentProtocolTest : StringSpec({
-    fun decision(action: String, id: String = "", text: String = "") = buildJsonObject {
-        put("action", action); put("app_id", id); put("text", text)
+    fun decision(action: String, id: String = "", settings: String = "", text: String = "") = buildJsonObject {
+        put("action", action); put("app_id", id); put("settings_section", settings); put("text", text)
     }.toString()
 
     "only catalogued app IDs can launch" {
@@ -25,6 +25,15 @@ class IntentProtocolTest : StringSpec({
             IntentProtocol.parse(decision("get_time", text = "12:00"), emptySet())
         }
     }
+    "only allowlisted settings sections can open" {
+        IntentProtocol.parse(decision("open_settings", settings = "WIFI"), emptySet()) shouldBe
+            AssistantIntent.OpenSettings(SettingsSection.WIFI)
+        for (section in listOf("", "BLUETOOTH", "FACTORY")) {
+            shouldThrow<IllegalStateException> {
+                IntentProtocol.parse(decision("open_settings", settings = section), emptySet())
+            }
+        }
+    }
     "reply and clarification are distinct nonempty text results" {
         IntentProtocol.parse(decision("reply", text = "Привет"), emptySet()) shouldBe AssistantIntent.Reply("Привет")
         IntentProtocol.parse(decision("clarify", text = "Что открыть?"), emptySet()) shouldBe AssistantIntent.Clarify("Что открыть?")
@@ -32,7 +41,7 @@ class IntentProtocolTest : StringSpec({
     }
     "unknown actions malformed JSON and extra parameters fail closed" {
         for (body in listOf(decision("shell"), "not json", "{}",
-            """{"action":"get_date","app_id":"","text":"","command":"rm"}""")) {
+            """{"action":"get_date","app_id":"","settings_section":"","text":"","command":"rm"}""")) {
             shouldThrow<IllegalStateException> { IntentProtocol.parse(body, emptySet()) }
         }
     }
@@ -42,5 +51,7 @@ class IntentProtocolTest : StringSpec({
         schema["strict"]!!.jsonPrimitive.boolean shouldBe true
         val ids = schema["schema"]!!.jsonObject["properties"]!!.jsonObject["app_id"]!!.jsonObject["enum"]!!.jsonArray
         ids.map { it.jsonPrimitive.content } shouldBe listOf("", "app_7")
+        val sections = schema["schema"]!!.jsonObject["properties"]!!.jsonObject["settings_section"]!!.jsonObject["enum"]!!.jsonArray
+        sections.map { it.jsonPrimitive.content } shouldBe listOf("", "GENERAL", "WIFI", "APPS", "DISPLAY", "SOUND")
     }
 })

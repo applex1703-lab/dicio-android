@@ -60,6 +60,13 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
                 context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 "Отправлен запрос на открытие ${app.label}."
             }
+            is AssistantIntent.OpenSettings -> withContext(Dispatchers.Main) {
+                coroutineContext.ensureActive()
+                val intent = Intent(decision.section.action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                check(intent.resolveActivity(context.packageManager) != null) { "Этот раздел настроек недоступен на телевизоре." }
+                context.startActivity(intent)
+                "Открываю ${decision.section.label}."
+            }
         }
     }
 }
