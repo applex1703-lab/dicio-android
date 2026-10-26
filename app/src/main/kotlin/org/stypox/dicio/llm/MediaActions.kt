@@ -30,7 +30,7 @@ class MediaActions @Inject constructor(@ApplicationContext private val context: 
     }
 
     private val component get() = ComponentName(context, MediaAccessService::class.java)
-    private val manager get() = context.getSystemService(MediaSessionManager::class.java)
+    private val manager get() = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
 
     internal suspend fun snapshot(): Snapshot = withContext(Dispatchers.Main) {
         if (!NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)) {
