@@ -25,6 +25,10 @@ class IntentProtocolTest : StringSpec({
             IntentProtocol.parse(decision("get_time", text = "12:00"), emptySet())
         }
     }
+    "execution speaks answers but not visible device actions" {
+        TvActions.Execution("answer", true).speak shouldBe true
+        TvActions.Execution("opened", false).speak shouldBe false
+    }
     "only allowlisted settings sections can open" {
         IntentProtocol.parse(decision("open_settings", settings = "WIFI"), emptySet()) shouldBe
             AssistantIntent.OpenSettings(SettingsSection.WIFI)

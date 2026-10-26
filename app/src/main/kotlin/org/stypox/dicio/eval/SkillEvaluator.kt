@@ -114,13 +114,13 @@ class SkillEvaluatorImpl(
                         val decision = polzaClient.decide(config, event.utterances[0].first,
                             apps.associate { it.id to it.label })
                         coroutineContext.ensureActive()
-                        val answer = tvActions.execute(decision, apps, skillContext.locale)
-                        Log.i("DicioPolza", "Response received elapsedMs=${android.os.SystemClock.elapsedRealtime() - startedAt} chars=${answer.length}")
-                        val output = object : org.stypox.dicio.io.graphical.HeadlineSpeechSkillOutput {
-                            override fun getSpeechOutput(ctx: org.dicio.skill.context.SkillContext) = answer
-                        }
+                        val result = tvActions.execute(decision, apps, skillContext.locale)
+                        Log.i("DicioPolza", "Response received elapsedMs=${android.os.SystemClock.elapsedRealtime() - startedAt} chars=${result.text.length} speak=${result.speak}")
+                        val output = org.stypox.dicio.llm.AssistantOutput(result.text, result.speak)
                         addInteractionFromPending(output)
-                        withContext(Dispatchers.Main) { skillContext.speechOutputDevice.speak(answer) }
+                        if (result.speak) {
+                            withContext(Dispatchers.Main) { skillContext.speechOutputDevice.speak(result.text) }
+                        }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (error: Exception) {

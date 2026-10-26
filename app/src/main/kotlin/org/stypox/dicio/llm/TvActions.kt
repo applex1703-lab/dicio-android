@@ -38,13 +38,15 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
                 pm.getApplicationLabel(info).toString().take(120)) }
     }
 
-    internal suspend fun execute(decision: AssistantIntent, apps: List<App>, locale: Locale): String {
+    internal data class Execution(val text: String, val speak: Boolean)
+
+    internal suspend fun execute(decision: AssistantIntent, apps: List<App>, locale: Locale): Execution {
         coroutineContext.ensureActive()
         return when (decision) {
-            is AssistantIntent.Reply -> decision.text
-            is AssistantIntent.Clarify -> decision.text
-            AssistantIntent.Time -> "Сейчас ${LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm", locale))}"
-            AssistantIntent.Date -> LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy", locale))
+            is AssistantIntent.Reply -> Execution(decision.text, true)
+            is AssistantIntent.Clarify -> Execution(decision.text, true)
+            AssistantIntent.Time -> Execution("Сейчас ${LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm", locale))}", true)
+            AssistantIntent.Date -> Execution(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy", locale)), true)
             is AssistantIntent.OpenApp -> withContext(Dispatchers.Main) {
                 coroutineContext.ensureActive()
                 val app = apps.singleOrNull { it.id == decision.id } ?: error("Неизвестное приложение.")
@@ -58,14 +60,14 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
                     ?: pm.getLaunchIntentForPackage(app.packageName)
                     ?: error("Приложение нельзя запустить на этом ТВ.")
                 context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                "Отправлен запрос на открытие ${app.label}."
+                Execution("Открываю ${app.label}.", false)
             }
             is AssistantIntent.OpenSettings -> withContext(Dispatchers.Main) {
                 coroutineContext.ensureActive()
                 val intent = Intent(decision.section.action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 check(intent.resolveActivity(context.packageManager) != null) { "Этот раздел настроек недоступен на телевизоре." }
                 context.startActivity(intent)
-                "Открываю ${decision.section.label}."
+                Execution("Открываю ${decision.section.label}.", false)
             }
         }
     }
