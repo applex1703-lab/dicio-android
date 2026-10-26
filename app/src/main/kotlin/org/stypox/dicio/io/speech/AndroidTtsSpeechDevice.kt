@@ -15,6 +15,8 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale) : Spe
     private var initializedCorrectly = false
     private val runnablesWhenFinished: MutableList<Runnable> = ArrayList()
     private var lastUtteranceId = 0
+    @Volatile private var queuedAtMs = 0L
+    private val initializationStartedAt = android.os.SystemClock.elapsedRealtime()
 
     init {
         textToSpeech = TextToSpeech(context) { status: Int ->
@@ -23,11 +25,11 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale) : Spe
                     val errorCode = setLanguage(locale)
                     if (errorCode >= 0) { // errors are -1 or -2
                         initializedCorrectly = true
-                        Log.i(TAG, "TTS initialized language=${locale.toLanguageTag()} engine=${defaultEngine}")
+                        Log.i(TAG, "TTS initialized language=${locale.toLanguageTag()} engine=${defaultEngine} elapsedMs=${android.os.SystemClock.elapsedRealtime() - initializationStartedAt}")
                         setOnUtteranceProgressListener(object :
                             UtteranceProgressListener() {
                             override fun onStart(utteranceId: String) {
-                                Log.i(TAG, "TTS started id=$utteranceId")
+                                Log.i(TAG, "TTS started id=$utteranceId queueElapsedMs=${android.os.SystemClock.elapsedRealtime() - queuedAtMs}")
                             }
                             override fun onDone(utteranceId: String) {
                                 Log.i(TAG, "TTS completed id=$utteranceId")
@@ -60,6 +62,7 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale) : Spe
     override fun speak(speechOutput: String) {
         if (initializedCorrectly) {
             lastUtteranceId += 1
+            queuedAtMs = android.os.SystemClock.elapsedRealtime()
             Log.i(TAG, "TTS queued id=dicio_$lastUtteranceId chars=${speechOutput.length}")
             textToSpeech?.speak(
                 speechOutput, TextToSpeech.QUEUE_ADD, null,

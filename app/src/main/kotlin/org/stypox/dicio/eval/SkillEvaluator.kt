@@ -98,7 +98,10 @@ class SkillEvaluatorImpl(
                     )
                 )
                 val config = try {
-                    withContext(Dispatchers.IO) { polzaSettings.load() }
+                    val settingsStarted = android.os.SystemClock.elapsedRealtime()
+                    withContext(Dispatchers.IO) { polzaSettings.load() }.also {
+                        Log.i("DicioPolza", "Settings loaded elapsedMs=${android.os.SystemClock.elapsedRealtime() - settingsStarted}")
+                    }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
@@ -111,9 +114,13 @@ class SkillEvaluatorImpl(
                             _state.value.pendingQuestion?.copy(waitingForLlm = true))
                         val startedAt = android.os.SystemClock.elapsedRealtime()
                         val apps = tvActions.catalog()
+                        val catalogDone = android.os.SystemClock.elapsedRealtime()
+                        Log.i("DicioPolza", "Catalog ready elapsedMs=${catalogDone - startedAt} count=${apps.size}")
                         val decision = polzaClient.decide(config, event.utterances[0].first,
                             apps.associate { it.id to it.label })
                         coroutineContext.ensureActive()
+                        val providerDone = android.os.SystemClock.elapsedRealtime()
+                        Log.i("DicioPolza", "Decision received elapsedMs=${providerDone - catalogDone} type=${decision.javaClass.simpleName}")
                         val result = tvActions.execute(decision, apps, skillContext.locale)
                         Log.i("DicioPolza", "Response received elapsedMs=${android.os.SystemClock.elapsedRealtime() - startedAt} chars=${result.text.length} speak=${result.speak}")
                         val output = org.stypox.dicio.llm.AssistantOutput(result.text, result.speak)

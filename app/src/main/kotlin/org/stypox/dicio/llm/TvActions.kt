@@ -7,6 +7,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -18,10 +20,19 @@ import kotlin.coroutines.coroutineContext
 @Singleton
 class TvActions @Inject constructor(@ApplicationContext private val context: Context) {
     internal data class App(val id: String, val packageName: String, val label: String)
+    private val catalogMutex = Mutex()
+    private var cachedApps: List<App>? = null
+    private var cachedAt = 0L
+    private var cachedLocale = ""
 
-    internal suspend fun catalog(): List<App> = withContext(Dispatchers.IO) {
+    internal suspend fun catalog(): List<App> = withContext(Dispatchers.IO) { catalogMutex.withLock {
+        val now = android.os.SystemClock.elapsedRealtime()
+        val locale = androidx.core.os.ConfigurationCompat.getLocales(context.resources.configuration).toLanguageTags()
+        cachedApps?.let { apps ->
+            if (now - cachedAt < 30_000 && locale == cachedLocale) return@withLock apps
+        }
         val pm = context.packageManager
-        listOf(Intent.CATEGORY_LEANBACK_LAUNCHER, Intent.CATEGORY_LAUNCHER)
+        val apps = listOf(Intent.CATEGORY_LEANBACK_LAUNCHER, Intent.CATEGORY_LAUNCHER)
             .flatMap { category -> pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(category), 0) }
             .filter { it.activityInfo.enabled && it.activityInfo.applicationInfo.enabled }
             .map { it.activityInfo.applicationInfo }.distinctBy { it.packageName }
@@ -36,7 +47,11 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
             .also { check(it.size <= 300) { "Слишком большой каталог приложений." } }
             .mapIndexed { index, info -> App("app_$index", info.packageName,
                 pm.getApplicationLabel(info).toString().take(120)) }
-    }
+        cachedApps = apps
+        cachedAt = now
+        cachedLocale = locale
+        apps
+    } }
 
     internal data class Execution(val text: String, val speak: Boolean)
 
