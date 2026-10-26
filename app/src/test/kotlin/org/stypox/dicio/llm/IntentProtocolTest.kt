@@ -6,8 +6,8 @@ import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.*
 
 class IntentProtocolTest : StringSpec({
-    fun decision(action: String, id: String = "", settings: String = "", text: String = "") = buildJsonObject {
-        put("action", action); put("app_id", id); put("settings_section", settings); put("text", text)
+    fun decision(action: String, id: String = "", settings: String = "", text: String = "", query: String = "") = buildJsonObject {
+        put("action", action); put("app_id", id); put("settings_section", settings); put("text", text); put("search_query", query)
     }.toString()
 
     "only catalogued app IDs can launch" {
@@ -16,6 +16,21 @@ class IntentProtocolTest : StringSpec({
             shouldThrow<IllegalStateException> {
                 IntentProtocol.parse(decision("open_app", id), setOf("app_1"))
             }
+        }
+    }
+    "Rutube search has bounded literal query and no other action parameters" {
+        IntentProtocol.parse(decision("search_rutube", query = " космос & звёзды? "), emptySet()) shouldBe
+            AssistantIntent.SearchRutube("космос & звёзды?")
+        for (query in listOf("", " ", "a".repeat(301), "hello\nworld")) {
+            shouldThrow<IllegalStateException> {
+                IntentProtocol.parse(decision("search_rutube", query = query), emptySet())
+            }
+        }
+        shouldThrow<IllegalStateException> {
+            IntentProtocol.parse(decision("get_time", query = "cosmos"), emptySet())
+        }
+        shouldThrow<IllegalStateException> {
+            IntentProtocol.parse(decision("search_rutube", id = "app_1", query = "cosmos"), setOf("app_1"))
         }
     }
     "time and date have no invented output parameters" {

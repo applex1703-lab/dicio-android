@@ -60,6 +60,17 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
         return when (decision) {
             is AssistantIntent.Reply -> Execution(decision.text, true)
             is AssistantIntent.Clarify -> Execution(decision.text, true)
+            is AssistantIntent.SearchRutube -> withContext(Dispatchers.Main) {
+                coroutineContext.ensureActive()
+                val query = ContentSearch.validateQuery(decision.query)
+                val uri = android.net.Uri.Builder().scheme("rutube").authority("rutube.ru")
+                    .path("/search").appendQueryParameter("query", query).build()
+                val intent = Intent(Intent.ACTION_VIEW, uri).setPackage(ContentSearch.RUTUBE_PACKAGE)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                check(intent.resolveActivity(context.packageManager) != null) { "Поиск Rutube недоступен." }
+                context.startActivity(intent)
+                Execution("Открываю поиск в Rutube: $query", false)
+            }
             AssistantIntent.Time -> Execution("Сейчас ${LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm", locale))}", true)
             AssistantIntent.Date -> Execution(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy", locale)), true)
             is AssistantIntent.OpenApp -> withContext(Dispatchers.Main) {
