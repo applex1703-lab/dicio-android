@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="org.stypox.dicio.MainActivity"
     android:sessionService="org.stypox.dicio.voice.TvVoiceSessionService"
     android:recognitionService="org.stypox.dicio.io.input.stt_service.SttService"
     android:supportsAssist="true"

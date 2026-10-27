@@ -120,25 +120,7 @@ class MainActivity : BaseActivity() {
             sttInputDevice.tryLoad(null)
         }
 
-        WakeService.start(this)
-        wakeServiceJob?.cancel()
-        wakeServiceJob = lifecycleScope.launch {
-            wakeDevice.state
-                .map { it == NotLoaded || it == Loading || it == Loaded }
-                .combine(
-                    PermissionFlow.getInstance().getMultiplePermissionState(*wakeWordPermissions)
-                ) { wakeState, permGranted ->
-                    wakeState && permGranted.allGranted
-                }
-                // avoid restarting the service if the state changes but the resulting value
-                // in the flow remains true (which happens when the user stops the WakeService from
-                // the notification, which releases resources and makes the WakeDevice go from
-                // Loaded to NotLoaded)
-                .distinctUntilChanged()
-                .filter { it }
-                .collect { WakeService.start(this@MainActivity) }
-        }
-
+        // TV mode is manual-only. Never start the legacy microphone foreground service.
         sttPermissionJob?.cancel()
         sttPermissionJob = lifecycleScope.launch {
             // if the STT failed to load because of the missing permission, this will try again

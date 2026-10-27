@@ -98,9 +98,14 @@ class GoogleSpeechInputDevice(
                             SpeechRecognizer.ERROR_NO_MATCH ->
                                 "Речь не распознана. Повторите запрос после начала прослушивания."
                             SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
-                                "Речь не поступила. Для микрофона пульта запустите запись кнопкой OK."
+                                "Речь не поступила. Повторите запрос кнопкой Ассистента."
+                            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
+                                "Android запретил Google доступ к записи. Проверьте разрешение микрофона и выбор Google как системного распознавателя речи."
                             else -> "Google recognition error $error"
                         }
+                        // A rejected connection must not be retained for the next explicit press.
+                        if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ||
+                            error == SpeechRecognizer.ERROR_CLIENT) releaseRecognizer()
                         complete(InputEvent.Error(IOException(message)))
                     }
                     override fun onResults(results: Bundle?) {

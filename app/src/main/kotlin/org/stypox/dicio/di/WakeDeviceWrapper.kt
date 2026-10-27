@@ -128,12 +128,8 @@ class WakeDeviceWrapperImpl(
     }
 
     private fun buildInputDevice(setting: DataStoreWakeDevice): WakeDevice? {
-        return when (setting) {
-            UNRECOGNIZED,
-            WAKE_DEVICE_UNSET,
-            WAKE_DEVICE_OWW -> OpenWakeWordDevice(appContext, okHttpClient)
-            WAKE_DEVICE_NOTHING -> null
-        }
+        // Manual-only TV assistant: even stale/imported preferences cannot create a detector.
+        return null
     }
 
     override fun download() {
