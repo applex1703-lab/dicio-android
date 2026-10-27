@@ -1,6 +1,7 @@
 package org.stypox.dicio.io.speech
 
 import android.content.Context
+import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
@@ -12,7 +13,20 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
-class AndroidTtsSpeechDevice(private var context: Context, locale: Locale) : SpeechOutputDevice {
+class AndroidTtsSpeechDevice(private var context: Context, locale: Locale,
+    private val prepareSilently: Boolean = false) : SpeechOutputDevice {
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private var closed = false
+    private var pendingSpeech: String? = null
+    private var preparationFile: java.io.File? = null
+    private var preparationPending = false
+    private val preparationId = "prepare_${java.util.UUID.randomUUID()}"
+    private fun clearPreparation() {
+        preparationPending = false
+        preparationFile?.delete()
+        preparationFile = null
+        timings.remove(preparationId)
+    }
     private var textToSpeech: TextToSpeech? = null
     private var initializedCorrectly = false
     private val runnablesWhenFinished: MutableList<Runnable> = ArrayList()
@@ -29,6 +43,7 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale) : Spe
 
     init {
         textToSpeech = TextToSpeech(context) { status: Int ->
+            if (closed) return@TextToSpeech
             if (status == TextToSpeech.SUCCESS) {
                 textToSpeech?.run {
                     val errorCode = setLanguage(locale)
@@ -61,6 +76,7 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale) : Spe
                             override fun onDone(utteranceId: String) {
                                 Log.i(TAG, "TTS completed id=$utteranceId")
                                 timings.remove(utteranceId)
+                                if (utteranceId == preparationId) main.post { clearPreparation() }
                                 if ("dicio_$lastUtteranceId" == utteranceId) {
                                     // run only when the last enqueued utterance is finished
                                     for (runnable in runnablesWhenFinished) {
@@ -73,14 +89,33 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale) : Spe
                             @Suppress("OVERRIDE_DEPRECATION")
                             @Deprecated("")
                             override fun onError(utteranceId: String) {
+                                if (utteranceId == preparationId) main.post { clearPreparation() }
                                 timings.remove(utteranceId)
                                 Log.w(TAG, "TTS failed id=$utteranceId")
                             }
                             override fun onError(utteranceId: String, errorCode: Int) {
+                                if (utteranceId == preparationId) main.post { clearPreparation() }
                                 timings.remove(utteranceId)
                                 Log.w(TAG, "TTS failed id=$utteranceId code=$errorCode")
                             }
                         })
+                        if (prepareSilently && pendingSpeech == null) {
+                            // Fixed non-user text, file synthesis only: no AudioTrack or audible output.
+                            preparationFile = java.io.File.createTempFile("dicio-tts-prepare-", ".wav", context.cacheDir)
+                            preparationPending = true
+                            timings[preparationId] = Timing(android.os.SystemClock.elapsedRealtime())
+                            val result = synthesizeToFile("а", Bundle(), preparationFile!!, preparationId)
+                            Log.i(TAG, "TTS preparation submitted result=$result")
+                            if (result != TextToSpeech.SUCCESS) clearPreparation()
+                            else main.postDelayed({
+                                if (!closed && preparationPending) {
+                                    textToSpeech?.stop()
+                                    clearPreparation()
+                                    Log.w(TAG, "TTS preparation deadline reached; no retry")
+                                }
+                            }, 10_000)
+                        }
+                        pendingSpeech?.let { text -> pendingSpeech = null; speak(text) }
                     } else {
                         Log.e(TAG, "Unsupported language: $errorCode")
                         handleInitializationError(R.string.android_tts_unsupported_language)
@@ -94,7 +129,13 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale) : Spe
     }
 
     override fun speak(speechOutput: String) {
+        if (closed) return
         if (initializedCorrectly) {
+            // Never queue the real answer behind an unfinished preparation request.
+            if (preparationPending) {
+                textToSpeech?.stop()
+                clearPreparation()
+            }
             lastUtteranceId += 1
             val id = "dicio_$lastUtteranceId"
             timings[id] = Timing(android.os.SystemClock.elapsedRealtime())
@@ -106,12 +147,15 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale) : Spe
             Log.i(TAG, "TTS submitted id=$id result=$result voice=${textToSpeech?.voice?.name} network=${textToSpeech?.voice?.isNetworkConnectionRequired}")
             if (result != TextToSpeech.SUCCESS) timings.remove(id)
         } else {
-            Toast.makeText(context, speechOutput, Toast.LENGTH_LONG).show()
+            pendingSpeech = speechOutput
         }
     }
 
     override fun stopSpeaking() {
+        pendingSpeech = null
         textToSpeech?.stop()
+        clearPreparation()
+        runnablesWhenFinished.clear()
     }
 
     override val isSpeaking: Boolean
@@ -126,6 +170,12 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale) : Spe
     }
 
     override fun cleanup() {
+        closed = true
+        main.removeCallbacksAndMessages(null)
+        initializedCorrectly = false
+        pendingSpeech = null
+        clearPreparation()
+        runnablesWhenFinished.clear()
         timings.clear()
         textToSpeech?.apply {
             shutdown()

@@ -81,6 +81,7 @@ class SkillEvaluatorImpl(
             requests.cancel()
             _state.value = _state.value.copy(pendingQuestion = null)
             skillContext.speechOutputDevice.stopSpeaking()
+            skillContext.speechOutputDevice.cleanup()
         }
     }
 
@@ -90,6 +91,7 @@ class SkillEvaluatorImpl(
                 _voicePresentation.value = VoicePresentation()
                 _state.value = _state.value.copy(pendingQuestion = null)
                 skillContext.speechOutputDevice.stopSpeaking()
+                (skillContext.speechOutputDevice as? org.stypox.dicio.di.SpeechOutputDeviceWrapper)?.beginSession()
             }
             is InputEvent.Error -> {
                 addErrorInteractionFromPending(event.throwable)

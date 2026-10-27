@@ -37,6 +37,28 @@ class SpeechOutputDeviceWrapper @Inject constructor(
     // instantiate SpeechOutputDevices on the main thread
     private val scope = CoroutineScope(Dispatchers.Main)
     private var wrappedSpeechDevice: SpeechOutputDevice = NothingSpeechDevice()
+    private var currentSetting = SPEECH_OUTPUT_DEVICE_UNSET
+    private var currentLocale = localeManager.locale.value
+    private var sessionActive = false
+
+    /** Called only by an explicit input session, never by a boot/service bind. */
+    fun beginSession() {
+        if (sessionActive) return
+        sessionActive = true
+        createDevice()
+    }
+
+    private fun createDevice() {
+        val previous = wrappedSpeechDevice
+        wrappedSpeechDevice = when (currentSetting) {
+            UNRECOGNIZED, SPEECH_OUTPUT_DEVICE_UNSET, SPEECH_OUTPUT_DEVICE_ANDROID_TTS ->
+                AndroidTtsSpeechDevice(context, currentLocale, prepareSilently = true)
+            SPEECH_OUTPUT_DEVICE_NOTHING -> NothingSpeechDevice()
+            SPEECH_OUTPUT_DEVICE_TOAST -> ToastSpeechDevice(context)
+            SPEECH_OUTPUT_DEVICE_SNACKBAR -> snackbarSpeechDevice
+        }
+        previous.cleanup()
+    }
 
     init {
         scope.launch {
@@ -49,23 +71,16 @@ class SpeechOutputDeviceWrapper @Inject constructor(
                     // TODO avoid using locale here, but delegate listening to locale changes to
                     //  AndroidTtsSpeechDevice, or in alternative make it so that
                     //  SttInputDeviceWrapper works the same way
-                    val prevDevice = wrappedSpeechDevice
-                    wrappedSpeechDevice = when (setting) {
-                        null,
-                        UNRECOGNIZED,
-                        SPEECH_OUTPUT_DEVICE_UNSET,
-                        SPEECH_OUTPUT_DEVICE_ANDROID_TTS -> AndroidTtsSpeechDevice(context, locale)
-                        SPEECH_OUTPUT_DEVICE_NOTHING -> NothingSpeechDevice()
-                        SPEECH_OUTPUT_DEVICE_TOAST -> ToastSpeechDevice(context)
-                        SPEECH_OUTPUT_DEVICE_SNACKBAR -> snackbarSpeechDevice
-                    }
-                    prevDevice.cleanup()
+                    currentSetting = setting
+                    currentLocale = locale
+                    if (sessionActive) createDevice()
                 }
         }
     }
 
 
     override fun speak(speechOutput: String) {
+        beginSession()
         wrappedSpeechDevice.speak(speechOutput)
     }
 
@@ -81,8 +96,10 @@ class SpeechOutputDeviceWrapper @Inject constructor(
     }
 
     override fun cleanup() {
-        // never called, nothing to do
-        Log.w(TAG, "Unexpected call to SpeechOutputDeviceWrapper.cleanup()")
+        wrappedSpeechDevice.cleanup()
+        wrappedSpeechDevice = NothingSpeechDevice()
+        sessionActive = false
+        Log.i(TAG, "Speech session released")
     }
 
     companion object {
