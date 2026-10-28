@@ -81,6 +81,7 @@ jobs:
           cache: gradle
       - name: Build APK for TV package
         run: |
+          git checkout -B main "$GITHUB_SHA"
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
       - name: Sign and verify TV APK
