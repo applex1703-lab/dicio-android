@@ -53,8 +53,60 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug lintDebug testDebugUnitTest --stacktrace
 
-      - name: Upload APK
+      - name: Upload unsigned CI debug APK for pull requests
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v6
         with:
           name: app
           path: app/build/outputs/apk/debug/*.apk
+
+  sign-tv-apk:
+    # Never expose the signing key to pull request code or non-main refs.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build-and-test-jvm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out trusted main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Java JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: temurin
+          cache: gradle
+      - name: Build APK for TV package
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+      - name: Sign and verify TV APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.DICIO_TV_SIGN_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.DICIO_TV_SIGN_PASSWORD }}
+          EXPECTED_FINGERPRINT: ${{ secrets.DICIO_TV_SIGN_FINGERPRINT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" && test -n "$KEYSTORE_PASSWORD" && test -n "$EXPECTED_FINGERPRINT"
+          umask 077
+          KEYSTORE="$RUNNER_TEMP/dicio-tv-signing.p12"
+          trap 'rm -f "$KEYSTORE"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          unset KEYSTORE_BASE64
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          INPUT="app/build/outputs/apk/debug/app-debug.apk"
+          OUTPUT="$RUNNER_TEMP/dicio-tv.apk"
+          "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias dicio-tv --ks-pass env:KEYSTORE_PASSWORD --out "$OUTPUT" "$INPUT"
+          CERT=$("$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$OUTPUT" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr '[:lower:]' '[:upper:]')
+          test "$CERT" = "$EXPECTED_FINGERPRINT"
+          "$BUILD_TOOLS/aapt" dump badging "$OUTPUT" | grep -F "package: name='org.stypox.dicio.main' " >/dev/null
+          echo "Verified TV package and expected signing certificate"
+      - name: Upload verified signed TV APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: app
+          path: ${{ runner.temp }}/dicio-tv.apk
