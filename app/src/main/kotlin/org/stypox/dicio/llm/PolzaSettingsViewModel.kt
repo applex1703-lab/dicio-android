@@ -83,10 +83,10 @@ class PolzaSettingsViewModel @Inject constructor(private val settings: PolzaSett
         recoveryAvailable = false
     }
 
-    fun setEnabled(value: Boolean) { enabled = value; status = "" }
-    fun setModel(value: String) { model = value; status = "" }
-    fun setKey(value: String) { key = value; status = "" }
-    fun setRemoveKey(value: Boolean) { removeKey = value; status = "" }
+    fun updateEnabled(value: Boolean) { enabled = value; status = "" }
+    fun updateModel(value: String) { model = value; status = "" }
+    fun updateKey(value: String) { key = value; status = "" }
+    fun updateRemoveKey(value: Boolean) { removeKey = value; status = "" }
 
     override fun onCleared() {
         key = ""

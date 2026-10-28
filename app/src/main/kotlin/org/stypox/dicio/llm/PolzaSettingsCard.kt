@@ -60,10 +60,10 @@ fun PolzaSettingsCard() {
                 else "Изменений для сохранения нет.")
         }
         Text("Режим RouterAI (черновик)")
-        Switch(checked = vm.enabled, onCheckedChange = vm::setEnabled,
+        Switch(checked = vm.enabled, onCheckedChange = vm::updateEnabled,
             enabled = vm.ready && !vm.saving,
             modifier = Modifier.semantics { contentDescription = "Режим RouterAI, черновик" })
-        OutlinedTextField(value = vm.model, onValueChange = vm::setModel,
+        OutlinedTextField(value = vm.model, onValueChange = vm::updateModel,
             label = { Text("ID модели из каталога RouterAI") }, singleLine = true,
             enabled = vm.ready && !vm.saving)
         if (vm.ready) Text(when (vm.keyStatus) {
@@ -71,14 +71,14 @@ fun PolzaSettingsCard() {
             PolzaSettings.KeyStatus.AVAILABLE -> "Ключ сохранён; подключение не проверено."
             PolzaSettings.KeyStatus.UNREADABLE -> "Сохранённый ключ недоступен: замените или удалите его."
         })
-        OutlinedTextField(value = vm.key, onValueChange = vm::setKey,
+        OutlinedTextField(value = vm.key, onValueChange = vm::updateKey,
             label = { Text("Новый API-ключ (пусто — сохранить текущий)") }, singleLine = true,
             enabled = vm.ready && !vm.saving && !vm.removeKey,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             visualTransformation = PasswordVisualTransformation())
         Text("Удалить сохранённый ключ при сохранении")
         if (vm.removeKey && vm.enabled) Text("Чтобы удалить ключ, сначала выключите RouterAI в черновике.")
-        Switch(checked = vm.removeKey, onCheckedChange = vm::setRemoveKey,
+        Switch(checked = vm.removeKey, onCheckedChange = vm::updateRemoveKey,
             enabled = vm.ready && !vm.saving,
             modifier = Modifier.semantics { contentDescription = "Удалить сохранённый ключ при сохранении" })
         Button(enabled = vm.ready && !vm.saving, onClick = {
