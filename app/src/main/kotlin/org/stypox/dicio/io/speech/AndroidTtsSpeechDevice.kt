@@ -261,6 +261,7 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale,
                 Log.e(TAG, "TTS completion callback failed", error)
             }
         }
+        Unit
     }
 
     override fun cleanup() = onMain {
