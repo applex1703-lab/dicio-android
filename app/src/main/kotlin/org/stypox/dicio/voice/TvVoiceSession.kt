@@ -93,7 +93,11 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             return
         }
         evaluator.resetVoicePresentation()
-        input.tryLoad(evaluator::processInputEvent)
+        if (!input.tryLoad(evaluator::processInputEvent)) {
+            status.text = "Распознавание речи недоступно"
+            answer.text = "Откройте настройки Dicio и проверьте голосовой ввод."
+            return
+        }
         updates?.cancel()
         updates = scope.launch {
             evaluator.voicePresentation.combine(input.uiState) { presentation, stt -> presentation to stt }

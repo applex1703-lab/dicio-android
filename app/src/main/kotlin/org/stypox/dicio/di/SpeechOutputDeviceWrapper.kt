@@ -71,9 +71,10 @@ class SpeechOutputDeviceWrapper @Inject constructor(
                     // TODO avoid using locale here, but delegate listening to locale changes to
                     //  AndroidTtsSpeechDevice, or in alternative make it so that
                     //  SttInputDeviceWrapper works the same way
+                    val changed = currentSetting != setting || currentLocale != locale
                     currentSetting = setting
                     currentLocale = locale
-                    if (sessionActive) createDevice()
+                    if (sessionActive && changed) createDevice()
                 }
         }
     }

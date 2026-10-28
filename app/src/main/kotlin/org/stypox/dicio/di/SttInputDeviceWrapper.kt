@@ -143,9 +143,16 @@ class SttInputDeviceWrapperImpl(
                 }
             )
             .build()
-        val mediaPlayer = MediaPlayer.create(appContext, resid, attributes, 0)
-        mediaPlayer.setVolume(0.75f, 0.75f)
-        mediaPlayer.start()
+        val mediaPlayer = MediaPlayer.create(appContext, resid, attributes, 0) ?: return
+        try {
+            mediaPlayer.setOnCompletionListener { it.release() }
+            mediaPlayer.setOnErrorListener { player, _, _ -> player.release(); true }
+            mediaPlayer.setVolume(0.75f, 0.75f)
+            mediaPlayer.start()
+        } catch (error: RuntimeException) {
+            mediaPlayer.release()
+            android.util.Log.w("SttInputDeviceWrapper", "Could not play listening signal", error)
+        }
     }
 
     private fun wrapEventListener(eventListener: (InputEvent) -> Unit): (InputEvent) -> Unit = {

@@ -68,7 +68,12 @@ class GoogleSpeechInputDevice(
 
     private fun start(eventListener: (InputEvent) -> Unit) {
         main.post {
-            if (closed || listener != null) return@post
+            if (closed) return@post
+            if (listener != null) {
+                // Preserve the existing listener and its request; never emit a second terminal event.
+                Log.w(TAG, "Ignoring start while recognition is active")
+                return@post
+            }
             listener = eventListener
             eventListener(InputEvent.Started)
             val session = ++generation
@@ -101,11 +106,17 @@ class GoogleSpeechInputDevice(
                                 "Речь не поступила. Повторите запрос кнопкой Ассистента."
                             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
                                 "Android запретил Google доступ к записи. Проверьте разрешение микрофона и выбор Google как системного распознавателя речи."
+                            SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
+                                "Ошибка сети Google при распознавании речи. Проверьте подключение и повторите запрос."
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
+                                "Распознаватель Google занят. Повторите запрос немного позже."
                             else -> "Google recognition error $error"
                         }
                         // A rejected connection must not be retained for the next explicit press.
                         if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ||
-                            error == SpeechRecognizer.ERROR_CLIENT) releaseRecognizer()
+                            error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_NETWORK ||
+                            error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
+                            error == SpeechRecognizer.ERROR_SERVER) releaseRecognizer()
                         complete(InputEvent.Error(IOException(message)))
                     }
                     override fun onResults(results: Bundle?) {

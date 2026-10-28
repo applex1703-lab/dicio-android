@@ -56,8 +56,9 @@ class MediaActions @Inject constructor(@ApplicationContext private val context: 
                 PlaybackState.STATE_FAST_FORWARDING, PlaybackState.STATE_REWINDING)) return emptySet()
         fun supports(flag: Long) = state.actions and flag != 0L
         return buildSet {
-            if (supports(PlaybackState.ACTION_PAUSE) || supports(PlaybackState.ACTION_PLAY_PAUSE)) add(MediaOperation.PAUSE)
-            if (supports(PlaybackState.ACTION_PLAY) || supports(PlaybackState.ACTION_PLAY_PAUSE)) add(MediaOperation.RESUME)
+            // ACTION_PLAY_PAUSE does not promise that explicit pause()/play() are handled.
+            if (supports(PlaybackState.ACTION_PAUSE)) add(MediaOperation.PAUSE)
+            if (supports(PlaybackState.ACTION_PLAY)) add(MediaOperation.RESUME)
             if (supports(PlaybackState.ACTION_STOP)) add(MediaOperation.STOP)
             if (supports(PlaybackState.ACTION_SKIP_TO_NEXT)) add(MediaOperation.NEXT)
             if (supports(PlaybackState.ACTION_SKIP_TO_PREVIOUS)) add(MediaOperation.PREVIOUS)
@@ -79,10 +80,15 @@ class MediaActions @Inject constructor(@ApplicationContext private val context: 
         check(command.operation in operations(controller)) { "Проигрыватель больше не поддерживает эту команду." }
         val before = controller.playbackState ?: error("Состояние проигрывателя недоступно.")
         val beforeItem = item(controller)
-        val destination = if (command.operation in setOf(MediaOperation.SEEK_RELATIVE, MediaOperation.SEEK_ABSOLUTE)) {
-            MediaSeek.destination(command.operation, command.seconds, position(before),
-                controller.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L)
+        val duration = controller.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+        val beforePosition = if (command.operation in setOf(MediaOperation.SEEK_RELATIVE, MediaOperation.SEEK_ABSOLUTE))
+            position(before) else null
+        val destination = if (beforePosition != null) {
+            MediaSeek.destination(command.operation, command.seconds, beforePosition, duration)
         } else null
+        if (destination != null && beforePosition != null && destination == beforePosition.coerceIn(0L, duration)) {
+            return@withContext TvActions.Execution("Видео уже на нужной позиции.", false)
+        }
         coroutineContext.ensureActive()
         val sentAt = SystemClock.elapsedRealtime()
         val controls = controller.transportControls
@@ -99,9 +105,12 @@ class MediaActions @Inject constructor(@ApplicationContext private val context: 
             coroutineContext.ensureActive()
             val after = controller.playbackState
             val confirmed = when (command.operation) {
-                MediaOperation.PAUSE -> after?.state == PlaybackState.STATE_PAUSED
-                MediaOperation.RESUME -> after?.state == PlaybackState.STATE_PLAYING
-                MediaOperation.STOP -> after?.state == PlaybackState.STATE_STOPPED
+                MediaOperation.PAUSE -> after?.state == PlaybackState.STATE_PAUSED &&
+                    (before.state == PlaybackState.STATE_PAUSED || after.lastPositionUpdateTime >= sentAt)
+                MediaOperation.RESUME -> after?.state == PlaybackState.STATE_PLAYING &&
+                    (before.state == PlaybackState.STATE_PLAYING || after.lastPositionUpdateTime >= sentAt)
+                MediaOperation.STOP -> after?.state == PlaybackState.STATE_STOPPED &&
+                    (before.state == PlaybackState.STATE_STOPPED || after.lastPositionUpdateTime >= sentAt)
                 MediaOperation.NEXT, MediaOperation.PREVIOUS ->
                     beforeItem != null && item(controller)?.let { it != beforeItem } == true
                 MediaOperation.SEEK_RELATIVE, MediaOperation.SEEK_ABSOLUTE -> after != null &&
