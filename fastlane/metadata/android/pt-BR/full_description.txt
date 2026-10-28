@@ -1,4 +1,4 @@
-Dicio é um <b>assistente de voz</b><i>livre e de código aberto</i> . Ele suporta muitos métodos diferentes <b>funções</b>, entrada/saída, e fornece feedback através <b>fala</b> e <b>graficamente</b> para uma pergunta. Ele usa <a href="https://github.com/alphacep/vosk-api/">Vosk</a> para <i>fala para texto</i>. Tem suporte  <b>multilíngua</b>, e atualmente está disponível em checo, holandês, inglês, francês, alemão, grego, italiano, polonês, russo, esloveno, espanhol, sueco e ucraniano.
+Dicio is an open-source voice assistant with text and speech input and graphical and spoken responses. Speech recognition depends on the Android recognition service available on your device.
 
 
 
@@ -16,7 +16,6 @@ Dicio responde a perguntas sobre:
 
 <li><b>calculator</b>: avalia cálculos básicos - <i>O que é quatro mil e duas vezes três menos um milhão dividido por trezentos? </i></li>
 
-<li><b>telephone</b>: ver e chamar contatos - <i>Ligar para Tom</i></li>
 
 <li><b>timer</b>: definir, consultar e cancelar temporizadores - <i>Defina um temporizador para onze minutos</i></li>
 
@@ -34,7 +33,7 @@ Dicio responde a perguntas sobre:
 
 
 
-O Dicio pode receber comandos através de uma caixa de texto ou através de <a href="https://github.com/alphacep/vosk-api/">Vosk</a> <i>speech to text</i>, e pode falar usando brindes ou o mecanismo Android <i>síntese de voz</i>. <b>Saida gráfica interativa <b> é fornecido por habilidades
+Dicio can use Android speech synthesis for spoken responses.
 
 
 

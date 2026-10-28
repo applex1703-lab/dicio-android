@@ -3,6 +3,7 @@ package org.stypox.dicio.di
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.os.Looper
 import androidx.datastore.core.DataStore
 import dagger.Module
 import dagger.Provides
@@ -11,6 +12,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +35,7 @@ import org.stypox.dicio.settings.datastore.SttPlaySound
 import org.stypox.dicio.settings.datastore.UserSettings
 import org.stypox.dicio.util.distinctUntilChangedBlockingFirst
 import org.stypox.dicio.util.toStateFlowDistinctBlockingFirst
+import java.io.IOException
 
 
 interface SttInputDeviceWrapper {
@@ -55,11 +58,13 @@ class SttInputDeviceWrapperImpl(
     private val activityForResultManager: ActivityForResultManager,
 ) : SttInputDeviceWrapper {
     private val scope = CoroutineScope(Dispatchers.Default)
+    private val deviceLock = Any()
 
     private var inputDeviceSetting: InputDevice
     private var sttPlaySoundSetting: SttPlaySound
     private val silencesBeforeStop: StateFlow<Int>
     private var sttInputDevice: SttInputDevice?
+    private var activeListener: ((InputEvent) -> Unit)? = null
 
     // null means that the user has not enabled any STT input device
     private val _uiState: MutableStateFlow<SttState?> = MutableStateFlow(null)
@@ -79,27 +84,40 @@ class SttInputDeviceWrapperImpl(
         silencesBeforeStop = dataStore.data.map(SttInputDevice::getSttSilenceDurationOrDefault)
             .toStateFlowDistinctBlockingFirst(scope)
         sttInputDevice = buildInputDevice(inputDeviceSetting)
-        scope.launch {
-            restartUiStateJob()
-        }
+        synchronized(deviceLock) { restartUiStateJob() }
 
-        scope.launch {
+        scope.launch(Dispatchers.Main.immediate) {
             nextSettingsFlow.collect { (inputDevice, sttPlaySound) ->
-                sttPlaySoundSetting = sttPlaySound
-                if (inputDeviceSetting != inputDevice) {
-                    changeInputDeviceTo(inputDevice)
+                var interrupted: ((InputEvent) -> Unit)? = null
+                var previous: SttInputDevice? = null
+                synchronized(deviceLock) {
+                    sttPlaySoundSetting = sttPlaySound
+                    if (inputDeviceSetting != inputDevice) {
+                        interrupted = activeListener
+                        activeListener = null
+                        previous = changeInputDeviceTo(inputDevice)
+                    }
                 }
+                destroyDevice(previous)
+                interrupted?.invoke(InputEvent.Error(IOException("Настройка голосового ввода изменена. Начните новый запрос.")))
             }
         }
     }
 
-    private suspend fun changeInputDeviceTo(setting: InputDevice) {
+    // Called with deviceLock held. Invalidate the old device before another caller can use it.
+    private fun changeInputDeviceTo(setting: InputDevice): SttInputDevice? {
         val prevSttInputDevice = sttInputDevice
         inputDeviceSetting = setting
         sttInputDevice = buildInputDevice(setting)
-        prevSttInputDevice?.destroy()
         restartUiStateJob()
+        return prevSttInputDevice
     }
+
+    private fun destroyDevice(device: SttInputDevice?) {
+        if (device != null) scope.launch(start = CoroutineStart.UNDISPATCHED) { device.destroy() }
+    }
+
+    private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
 
     private fun buildInputDevice(setting: InputDevice): SttInputDevice? {
         return when (setting) {
@@ -112,18 +130,18 @@ class SttInputDeviceWrapperImpl(
         }
     }
 
-    private suspend fun restartUiStateJob() {
+    private fun restartUiStateJob() {
         uiStateJob?.cancel()
         val newSttInputDevice = sttInputDevice
         if (newSttInputDevice == null) {
             uiStateJob = null
-            _uiState.emit(null)
+            _uiState.value = null
         } else {
-            uiStateJob = scope.launch {
+            uiStateJob = scope.launch(Dispatchers.Main) {
                 newSttInputDevice.uiState.collect {
-                    _uiState.emit(it)
-                    if (it == SttState.Listening) {
-                        playSound(R.raw.listening_sound)
+                    if (synchronized(deviceLock) { sttInputDevice === newSttInputDevice }) {
+                        _uiState.value = it
+                        if (it == SttState.Listening) playSound(R.raw.listening_sound)
                     }
                 }
             }
@@ -165,21 +183,47 @@ class SttInputDeviceWrapperImpl(
     }
 
     override fun tryLoad(thenStartListeningEventListener: ((InputEvent) -> Unit)?): Boolean {
-        return sttInputDevice?.tryLoad(if (thenStartListeningEventListener != null) {
-            wrapEventListener(thenStartListeningEventListener)
-        } else { null }) ?: false
+        checkMain()
+        val device = synchronized(deviceLock) { sttInputDevice } ?: return false
+        if (thenStartListeningEventListener == null) return device.tryLoad(null)
+        val callback = wrapEventListener(thenStartListeningEventListener)
+        synchronized(deviceLock) { activeListener = callback }
+        val loaded = device.tryLoad { event ->
+            val deliver = synchronized(deviceLock) {
+                if (activeListener !== callback) false else {
+                    if (event is InputEvent.Final || event is InputEvent.Error || event is InputEvent.None) {
+                        activeListener = null
+                    }
+                    true
+                }
+            }
+            if (deliver) callback(event)
+        }
+        if (!loaded) synchronized(deviceLock) {
+            if (activeListener === callback) activeListener = null
+        }
+        return loaded
     }
 
     override fun stopListening() {
-        sttInputDevice?.stopListening()
+        checkMain()
+        val device = synchronized(deviceLock) { sttInputDevice }
+        device?.stopListening()
     }
 
     override fun onClick(eventListener: (InputEvent) -> Unit) {
-        sttInputDevice?.onClick(wrapEventListener(eventListener))
+        checkMain()
+        val device = synchronized(deviceLock) { sttInputDevice }
+        device?.onClick(wrapEventListener(eventListener))
     }
 
     override fun reinitializeToReleaseResources() {
-        scope.launch { changeInputDeviceTo(inputDeviceSetting) }
+        checkMain()
+        val previous = synchronized(deviceLock) {
+            activeListener = null
+            changeInputDeviceTo(inputDeviceSetting)
+        }
+        destroyDevice(previous)
     }
 }
 

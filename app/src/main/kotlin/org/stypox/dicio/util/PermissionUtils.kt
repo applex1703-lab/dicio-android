@@ -1,6 +1,5 @@
 package org.stypox.dicio.util
 
-import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -16,22 +15,6 @@ import androidx.core.app.ActivityCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import dev.shreyaspatil.permissionflow.compose.rememberMultiplePermissionState
 import org.dicio.skill.skill.Permission
-import org.stypox.dicio.R
-
-val PERMISSION_READ_CONTACTS = Permission.NormalPermission(
-    name = R.string.perm_read_contacts,
-    id = Manifest.permission.READ_CONTACTS,
-)
-val PERMISSION_CALL_PHONE = Permission.NormalPermission(
-    name = R.string.perm_call_phone,
-    id = Manifest.permission.CALL_PHONE,
-)
-
-val PERMISSION_NOTIFICATION_LISTENER = Permission.SecurePermission(
-    name = R.string.perm_notification_listener,
-    id = "enabled_notification_listeners",
-    settingsAction = "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"
-)
 
 /**
  * @param context the Android context
@@ -149,4 +132,3 @@ fun requestAnyPermission(
     val action = securePermissions.firstOrNull()?.settingsAction ?: return
     context.startActivity(Intent(action))
 }
-

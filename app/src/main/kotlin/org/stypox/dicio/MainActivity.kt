@@ -24,6 +24,7 @@ import org.stypox.dicio.di.SttInputDeviceWrapper
 import org.stypox.dicio.eval.SkillEvaluator
 import org.stypox.dicio.ui.nav.Navigation
 import org.stypox.dicio.util.BaseActivity
+import org.stypox.dicio.voice.VoiceInputCoordinator
 import java.time.Instant
 import javax.inject.Inject
 
@@ -34,6 +35,8 @@ class MainActivity : BaseActivity() {
     lateinit var skillEvaluator: SkillEvaluator
     @Inject
     lateinit var sttInputDevice: SttInputDeviceWrapper
+    @Inject
+    lateinit var voiceInputCoordinator: VoiceInputCoordinator
 
     private var sttPermissionJob: Job? = null
 
@@ -49,7 +52,7 @@ class MainActivity : BaseActivity() {
         if (nextAssistAllowed < now) {
             nextAssistAllowed = now.plusMillis(INTENT_BACKOFF_MILLIS)
             Log.d(TAG, "Received assist intent")
-            sttInputDevice.tryLoad(skillEvaluator::processInputEvent)
+            voiceInputCoordinator.start(this)
         } else {
             Log.w(TAG, "Ignoring duplicate assist intent")
         }
@@ -71,7 +74,7 @@ class MainActivity : BaseActivity() {
     override fun onStop() {
         super.onStop()
         isInForeground -= 1
-        skillEvaluator.cancelPendingInput()
+        voiceInputCoordinator.release(this)
 
         // once the activity is swiped away from the lock screen (or put in the background in any
         // other way), we don't want to show it on the lock screen anymore
@@ -117,10 +120,16 @@ class MainActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
-        sttInputDevice.reinitializeToReleaseResources()
+        voiceInputCoordinator.release(this)
         isCreated -= 1
         super.onDestroy()
     }
+
+    /** Called by HomeScreen's STT button; uses this Activity's lifecycle ownership. */
+    fun startHomeStt(): Boolean = voiceInputCoordinator.startHome(this)
+
+    /** Submit HomeScreen text with the same lifecycle ownership as voice input. */
+    fun submitHomeText(text: String) = voiceInputCoordinator.submitText(this, text)
 
     companion object {
         private const val INTENT_BACKOFF_MILLIS = 100L

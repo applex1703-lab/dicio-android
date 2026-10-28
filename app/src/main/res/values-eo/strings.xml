@@ -56,8 +56,6 @@
     <string name="skill_sentence_example_lyrics">Kio estas la kanto, kiu enhavas \"Ĉu vi volas danci\"\?</string>
     <string name="skill_name_open">Malfermilo de aplikaĵo</string>
     <string name="skill_sentence_example_open">Malfermu NewPipe</string>
-    <string name="skill_name_telephone">Telefono</string>
-    <string name="skill_sentence_example_telephone">Voku Tom</string>
     <string name="skill_name_timer">Tempumilo</string>
     <string name="skill_sentence_example_timer">Agordu tempumilon por kvin minutoj</string>
     <string name="skill_fallback_name_text">Teksta mesaĝo</string>
@@ -66,7 +64,6 @@
     <string name="skill_weather_description_temperature">%1$s · %2$.1f%3$s</string>
     <string name="skill_lyrics_song_not_found">Ne eblas trovi kanton %1$s</string>
     <string name="skill_lyrics_found_song_by_artist">Trovis %1$s de %2$s</string>
-    <string name="skill_telephone_calling">Vokante %1$s…</string>
     <string name="skill_timer_expired">La tempumilo finiĝis!</string>
     <string name="skill_timer_query_last">La lasta tempumilo finiĝos en %1$s</string>
     <string name="drawer_header_subtitle">Ĉu mi povas helpi\?</string>
@@ -100,13 +97,9 @@
     <string name="skill_weather_in_city_there_is_description">Nuntempe en %1$s estas %2$s</string>
     <string name="skill_search_here_is_what_i_found">Jen kion mi trovis</string>
     <string name="skill_open_unknown_app">Nekonata aplikaĵo %1$s</string>
-    <string name="skill_telephone_confirm_call">Ĉu mi voku %1$s\?</string>
     <string name="skill_weather_min_max_wind">Minimuma temperaturo: %1$.1f%4$s
 \nMaksimuma temperaturo: %2$.1f%4$s
 \nVenta rapideco: %3$.1f%5$s</string>
-    <string name="skill_telephone_found_contacts">Mi trovis %1$d kontaktojn</string>
-    <string name="skill_telephone_unknown_contact">Neniu kontakto trovita, provu denove</string>
-    <string name="skill_telephone_not_calling">Bone, mi vokas iun ajn</string>
     <string name="skill_open_opening">Malfermante %1$s…</string>
     <string name="skill_timer_set">Bone, la tempumilo eksvalidiĝos en %1$s</string>
     <string name="skill_timer_all_canceled">Ĉiuj tempumiloj estis nuligitaj</string>

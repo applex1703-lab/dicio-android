@@ -9,7 +9,6 @@
     <string name="skill_search_no_results">தேடல் எந்த முடிவுகளையும் திருப்பித் தரவில்லை, நீங்கள் தேட விரும்புவதை மீண்டும் என்னிடம் சொல்ல முயற்சிக்கவும்</string>
     <string name="skill_weather_description_temperature">%1$s · %2$.1f%3$s</string>
     <string name="skill_lyrics_song_not_found">%1$s பாடல் கண்டுபிடிக்க முடியவில்லை</string>
-    <string name="skill_telephone_confirm_call">நான் %1$s ஐ அழைக்க வேண்டுமா?</string>
     <string name="skill_timer_canceled">நேரங்குறிகருவி ரத்து செய்யப்பட்டது</string>
 
     <string name="grant_permissions">அனுமதிகள் வழங்கவும்</string>
@@ -134,8 +133,6 @@
     <string name="skill_sentence_example_navigation">வான்கூவர் பன்னாட்டு விமான நிலையத்திற்கு செல்லவும்</string>
     <string name="skill_navigation_specify_where">நீங்கள் எங்கு செல்ல விரும்புகிறீர்கள் என்பதைக் குறிப்பிடவும்</string>
     <string name="skill_navigation_navigating_to">%1$s க்கு செல்லவும்</string>
-    <string name="skill_name_telephone">தொலைபேசி</string>
-    <string name="skill_sentence_example_telephone">டாம் அழைக்கவும்</string>
     <string name="skill_name_timer">நேரங்குறிகருவி</string>
     <string name="skill_sentence_example_timer">ஐந்து நிமிடங்கள் ஒரு டைமரை அமைக்கவும்</string>
     <string name="skill_name_current_time">தற்போதைய நேரம்</string>
@@ -151,10 +148,6 @@
     <string name="skill_open_unknown_app">தெரியாத பயன்பாடு %1$s</string>
     <string name="skill_open_opening">%1$s ஐ திறக்கிறது…</string>
     <string name="skill_calculator_could_not_calculate">உங்கள் கோரிக்கையை என்னால் கணக்கிட முடியவில்லை</string>
-    <string name="skill_telephone_unknown_contact">தொடர்பு எதுவும் கிடைக்கவில்லை, மீண்டும் முயற்சிக்கவும்</string>
-    <string name="skill_telephone_found_contacts">நான் %1$d தொடர்புகளைக் கண்டேன், நான் எதை அழைக்க வேண்டும்?</string>
-    <string name="skill_telephone_calling">%1$s ஐ அழைக்கிறது…</string>
-    <string name="skill_telephone_not_calling">சரி, நான் யாரையும் அழைக்கவில்லை</string>
     <string name="skill_time_current_time">இப்போது, இது %1$s ஆகும்</string>
     <string name="skill_timer_how_much_time">நேரங்குறிகருவி எவ்வளவு நேரம் நீடிக்க வேண்டும்?</string>
     <string name="skill_timer_confirm_cancel">எல்லா டைமர்களையும் ரத்து செய்ய விரும்புகிறீர்களா?</string>
@@ -200,8 +193,6 @@
     <string name="pref_input_method_external_popup">வெளிப்புற ச்பீச் டோடெக்ச்ட் மேல்தோன்றல்</string>
     <string name="skill_sentence_example_media">அடுத்த பாடல்</string>
     <string name="skill_search_no_results_stop">தேடல் எந்த முடிவுகளையும் அளிக்கவில்லை</string>
-    <string name="perm_read_contacts">உங்கள் தொடர்புகளைப் படியுங்கள்</string>
-    <string name="perm_call_phone">தொலைபேசி எண்களை நேரடியாக அழைக்கவும்</string>
     <string name="skill_name_media">ஊடக கட்டுப்பாடு</string>
     <string name="skill_media_playing">மீடியா விளையாடுவது…</string>
     <string name="skill_media_next">அடுத்த மீடியா…</string>
@@ -232,20 +223,6 @@
     <string name="failed_to_copy">இடைநிலைப்பலகைக்கு நகலெடுக்க முடியவில்லை</string>
     <string name="skill_translation_auto">தானி</string>
     <string name="skill_search_duckduckgo_recaptcha">DuckDuckGo கேப்ட்சாவைத் தீர்க்கும்படி கேட்டு முடிவுகளை வழங்கவில்லை</string>
-    <string name="skill_notify_message_no_app">அறிவிப்பு %1$s எனக் கூறுகிறது.</string>
-    <string name="skill_notify_message_app">%1$s அறிவிப்பு %2$s எனக் கூறுகிறது.</string>
-    <string name="skill_notify_messages_separator">,</string>
-    <string name="skill_sentence_example_notify">எனது அறிவிப்பு என்ன?</string>
-    <string name="skill_name_notify">அறிவிக்கவும்</string>
-    <string name="skill_notify_failed">அறிவிப்பு கேட்பவர் சேவையை இணைக்க முடியவில்லை</string>
-    <string name="skill_notify_no_notifications">உங்களிடம் எந்த அறிவிப்பும் இல்லை</string>
-    <string name="perm_notification_listener">அனைத்து அறிவிப்புகளையும் படிக்கவும்</string>
-    <string name="skill_notify_handler_label">டிசியோ அசிச்டென்ட்டில் உள்ள திறமையை தெரிவிக்கவும்</string>
-    <string name="skill_name_flashlight">ஒளிரும் விளக்கு</string>
-    <string name="skill_sentence_example_flashlight">ஒளிரும் விளக்கை இயக்கவும்</string>
-    <string name="skill_flashlight_turned_on">ஒளிரும் விளக்கு இயக்கப்பட்டது</string>
-    <string name="skill_flashlight_turned_off">மின்விளக்கு அணைக்கப்பட்டது</string>
-    <string name="skill_flashlight_error">மின்விளக்கைக் கட்டுப்படுத்த முடியவில்லை</string>
     <string name="about">பற்றி</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">பதிப்பு தகவலை நகலெடுக்கவும்</string>

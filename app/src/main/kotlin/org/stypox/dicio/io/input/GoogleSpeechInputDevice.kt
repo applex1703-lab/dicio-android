@@ -25,7 +25,7 @@ class GoogleSpeechInputDevice(
     override val uiState: StateFlow<SttState> = state
     private var recognizer: SpeechRecognizer? = null
     private var listener: ((InputEvent) -> Unit)? = null
-    private var closed = false
+    @Volatile private var closed = false
     private var generation = 0
     private val timeout = Runnable {
         releaseRecognizer()
@@ -34,22 +34,13 @@ class GoogleSpeechInputDevice(
 
     override fun tryLoad(thenStartListeningEventListener: ((InputEvent) -> Unit)?): Boolean {
         if (closed) return false
-        main.post {
-            if (!closed) {
-                try {
-                    prepareRecognizer()
-                } catch (error: Exception) {
-                    state.value = SttState.ErrorLoading(error)
-                }
-            }
-        }
         thenStartListeningEventListener?.let { start(it) }
         return true
     }
 
     override fun onClick(eventListener: (InputEvent) -> Unit) { start(eventListener) }
 
-    // Creating a client does not start recording. Keep the connection between explicit requests.
+    // Create the recognizer only when a recording is explicitly requested.
     private fun prepareRecognizer(): SpeechRecognizer {
         return recognizer ?: SpeechRecognizer.createSpeechRecognizer(context, ComponentName(
             "com.google.android.katniss",
@@ -67,16 +58,18 @@ class GoogleSpeechInputDevice(
     }
 
     private fun start(eventListener: (InputEvent) -> Unit) {
-        main.post {
-            if (closed) return@post
+        val begin = begin@{
+            if (closed) return@begin
             if (listener != null) {
                 // Preserve the existing listener and its request; never emit a second terminal event.
-                Log.w(TAG, "Ignoring start while recognition is active")
-                return@post
+                Log.w(TAG, "Rejecting start while recognition is active")
+                eventListener(InputEvent.Error(IOException("Распознаватель Google занят. Повторите запрос позже.")))
+                return@begin
             }
             listener = eventListener
-            eventListener(InputEvent.Started)
             val session = ++generation
+            eventListener(InputEvent.Started)
+            if (closed || session != generation || listener == null) return@begin
             state.value = SttState.WaitingForResult
             try {
                 val service = prepareRecognizer()
@@ -157,6 +150,7 @@ class GoogleSpeechInputDevice(
                 complete(InputEvent.Error(error))
             }
         }
+        if (Looper.myLooper() == Looper.getMainLooper()) begin() else main.post { begin() }
     }
 
     private fun complete(event: InputEvent) {
@@ -169,16 +163,19 @@ class GoogleSpeechInputDevice(
     }
 
     override fun stopListening() {
-        main.post { if (!closed) recognizer?.stopListening() }
+        val stop = { if (!closed) recognizer?.stopListening(); Unit }
+        if (Looper.myLooper() == Looper.getMainLooper()) stop() else main.post { stop() }
     }
 
     override suspend fun destroy() {
-        main.post {
-            closed = true
+        // Invalidate queued starts immediately, even when called off the main thread.
+        closed = true
+        val cleanup = {
             complete(InputEvent.None)
             main.removeCallbacks(timeout)
             releaseRecognizer()
         }
+        if (Looper.myLooper() == Looper.getMainLooper()) cleanup() else main.post { cleanup() }
     }
 
     companion object { private const val TAG = "DicioGoogleSpeech" }

@@ -74,10 +74,6 @@
     <string name="skill_search_no_results">Die Suche hat nichts gefunden. Versuche mich noch einmal zu fragen wonach du suchst</string>
     <string name="skill_search_what_question">Wonach willst du suchen\?</string>
     <string name="vosk_model_download_error">Herunterladen vom Vosk-Modell fehlgeschlagen</string>
-    <string name="skill_name_telephone">Telefon</string>
-    <string name="skill_sentence_example_telephone">Tom anrufen</string>
-    <string name="skill_telephone_unknown_contact">Es wurde kein passender Kontakt gefunden, bitte versuche es noch einmal</string>
-    <string name="skill_telephone_found_contacts">Ich habe %1$d Kontakte gefunden, welchen davon soll ich anrufen\?</string>
     <string name="eval_missing_permissions">Die Fähigkeit \"%1$s\" benötigt zum Funktionieren diese Genehmigungen: %2$s</string>
     <string name="android_tts_error">Fehler beim Initialisieren der Android-Sprachausgabe</string>
     <string name="pref_skill_missing_permissions">Folgende Genehmigungen werden benötigt: %1$s</string>
@@ -103,12 +99,9 @@
 \nVersion:
 \nOS Version:</string>
     <string name="skill_name_timer">Timer</string>
-    <string name="skill_telephone_calling">Rufe %1$s an…</string>
     <string name="skill_timer_how_much_time">Wie lange soll der Timer laufen\?</string>
     <string name="skill_timer_no_active_name">Es gibt keinen aktiven Timer mit dem Namen %1$s</string>
     <string name="skill_timer_query_name">Timer %1$s läuft in %2$s ab</string>
-    <string name="skill_telephone_confirm_call">Soll ich %1$s anrufen?</string>
-    <string name="skill_telephone_not_calling">Okay, ich rufe niemanden an</string>
     <string name="skill_timer_confirm_cancel">Bist du sicher das alle Timer gelöscht werden sollen\?</string>
     <string name="skill_timer_all_canceled">Alle Timer wurden gestoppt</string>
     <string name="skill_timer_expired">Der Timer ist abgelaufen!</string>
@@ -189,8 +182,6 @@
     <string name="skill_media_playing">Spiele Medien ab…</string>
     <string name="skill_media_pausing">Pausiere Medien…</string>
     <string name="skill_media_previous">Vorheriges Medium…</string>
-    <string name="perm_call_phone">Telefonnummern direkt anrufen</string>
-    <string name="perm_read_contacts">Kontakte lesen</string>
     <string name="skill_media_next">Nächste Medien…</string>
     <string name="skill_media_no_media_session">Kein Mediaplayer ist aktiv</string>
     <string name="skill_search_no_results_stop">Die Suche ergab kein Ergebnis</string>
@@ -234,20 +225,6 @@
     <string name="skill_translation_auto">Automatisch</string>
     <string name="skill_search_duckduckgo_recaptcha">DuckDuckGo lieferte keine Ergebnisse, sondern fragt nach dem Lösen eines Captcha</string>
     <string name="pref_stt_silence_duration_description">Nach %1$d Intervallen Stille aufhören zuzuhören</string>
-    <string name="skill_notify_message_no_app">Die Benachrichtigung lautet %1$s.</string>
-    <string name="skill_notify_message_app">Die %1$s Benachrichtigung lautet %2$s.</string>
-    <string name="skill_notify_messages_separator">,</string>
-    <string name="skill_sentence_example_notify">Wie lautet meine Benachrichtigung?</string>
-    <string name="skill_name_notify">Benachrichtigen</string>
-    <string name="skill_notify_failed">Die Verbindung zum Benachrichtigungs-Überwachungsservice ist fehlgeschlagen</string>
-    <string name="skill_notify_no_notifications">Du hast keine Benachrichtigungen</string>
-    <string name="perm_notification_listener">Lies alle Benachrichtigungen</string>
-    <string name="skill_notify_handler_label">Benachrichtigungsfähigkeit im Dicio Assistenten</string>
-    <string name="skill_name_flashlight">Taschenlampe</string>
-    <string name="skill_sentence_example_flashlight">Taschenlampe einschalten</string>
-    <string name="skill_flashlight_turned_on">Taschenlampe eingeschaltet</string>
-    <string name="skill_flashlight_turned_off">Taschenlampe ausgeschaltet</string>
-    <string name="skill_flashlight_error">Die Taschenlampe kann nicht benutzt werden</string>
     <string name="about">Über</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">Versionsinfo kopieren</string>

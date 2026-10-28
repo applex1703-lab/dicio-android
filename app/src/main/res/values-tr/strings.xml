@@ -79,14 +79,7 @@
     <string name="eval_missing_permissions">\"%1$s\" yeteneğinin çalışması için şu izinlere ihtiyacı var: %2$s</string>
     <string name="pref_skill_grant_permissions">İzin ver</string>
     <string name="pref_skill_missing_permissions">Şu izinleri gerektirir: %1$s</string>
-    <string name="skill_telephone_found_contacts">%1$d kişi buldum, hangisini arayayım\?</string>
     <string name="android_tts_error">Android metin okuma motoru başlatılırken bir hata oluştu</string>
-    <string name="skill_name_telephone">Telefon</string>
-    <string name="skill_sentence_example_telephone">Tom\'u ara</string>
-    <string name="skill_telephone_unknown_contact">Kişi bulunamadı, tekrar deneyin</string>
-    <string name="skill_telephone_confirm_call">%1$s kişisini arayayım mı\?</string>
-    <string name="skill_telephone_calling">%1$s aranıyor…</string>
-    <string name="skill_telephone_not_calling">Tamam, kimseyi aramıyorum</string>
     <string name="pref_skill_number_library_not_available">Sayı ayrıştırma ve biçimlendirme kütüphanesi <i>dicio-numbers</i> henüz sizin dilinize çevrilmedi; bundan dolayı sayılar, süreler ve tarihlerle ilgili tüm beceriler kullanılabilir değildir. <b>Lütfen buraya dokunarak katkıda bulunun</b>!</string>
     <string name="skill_name_timer">Zamanlayıcı</string>
     <string name="skill_sentence_example_timer">Beş dakika için bir zamanlayıcı ayarla</string>
@@ -182,8 +175,6 @@
 
 
 
-    <string name="perm_read_contacts">kişilerinizi okuyun</string>
-    <string name="perm_call_phone">doğrudan telefon numaralarını arayın</string>
     <string name="skill_name_media">Medya kontrol</string>
     <string name="skill_sentence_example_media">Sıradaki şarkı</string>
     <string name="skill_media_pausing">Medya durduruluyor…</string>
@@ -238,20 +229,6 @@
     <string name="skill_search_duckduckgo_recaptcha">DuckDuckGo sonuç vermedi, Captcha çözülmesini istedi</string>
     <string name="pref_stt_silence_duration_title">Konuşma başlamadan önce en fazla sessizlik süresi</string>
     <string name="pref_stt_silence_duration_description">%1$d sessiz aralıktan sonra dinlemeyi bırak</string>
-    <string name="skill_notify_message_no_app">Bildirim %1$s diyor.</string>
-    <string name="skill_notify_message_app">%1$s bildirimi %2$s diyor.</string>
-    <string name="skill_notify_messages_separator">,</string>
-    <string name="skill_sentence_example_notify">Bildirimim ne?</string>
-    <string name="skill_name_notify">Bildir</string>
-    <string name="skill_notify_failed">Bildirim dinleme hizmetine bağlanılamadı</string>
-    <string name="skill_notify_no_notifications">Bildiriminiz yok</string>
-    <string name="perm_notification_listener">tüm bildirimleri oku</string>
-    <string name="skill_notify_handler_label">Dicio asistanında bildirim yeteneği</string>
-    <string name="skill_name_flashlight">El feneri</string>
-    <string name="skill_sentence_example_flashlight">El fenerini aç</string>
-    <string name="skill_flashlight_turned_on">El feneri açıldı</string>
-    <string name="skill_flashlight_turned_off">El feneri kapatıldı</string>
-    <string name="skill_flashlight_error">El feneri denetlenemiyor</string>
     <string name="about">Hakkında</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">Sürüm bilgisini kopyala</string>

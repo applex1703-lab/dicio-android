@@ -113,15 +113,11 @@
     <string name="skill_name_timer">Ajastin</string>
     <string name="skill_search_no_results">Haku ei tuottanut tuloksia. Yritä kertoa minulle uudelleen, mitä haluat etsiä</string>
     <string name="skill_navigation_navigating_to">Navigoidaan kohteeseen %1$s</string>
-    <string name="skill_name_telephone">Puhelin</string>
-    <string name="skill_sentence_example_telephone">Soita Tomille</string>
     <string name="skill_weather_could_not_find_city">Kaupunkia %1$s ei löytynyt</string>
     <string name="skill_weather_description_temperature">%1$s · %2$.1f%3$s</string>
     <string name="skill_lyrics_found_song_by_artist">Löytyi %1$s tekijältä %2$s</string>
     <string name="skill_open_could_not_understand">Ei voinut ymmärtää sovellusta</string>
     <string name="skill_calculator_could_not_calculate">En voinut laskea pyyntöäsi</string>
-    <string name="skill_telephone_unknown_contact">Yhteystietoa ei löytynyt; yritä uudelleen</string>
-    <string name="skill_telephone_not_calling">Selvä, en soita kenellekään</string>
     <string name="skill_time_current_time">Tällä hetkellä se on %1$s</string>
     <string name="skill_timer_expired">Ajastin on umpeutunut!</string>
     <string name="skill_timer_expired_name">Ajastin %1$s on umpeutunut!</string>
@@ -133,8 +129,6 @@
     <string name="skill_timer_query_name">Ajastin %1$s umpeutuu %2$s:n kuluttua</string>
     <string name="skill_timer_none_canceled">Selvä, mitään ajastinta ei peruutettu</string>
     <string name="settings_description_with_value">%1$s — %2$s</string>
-    <string name="perm_read_contacts">lue yhteystietosi</string>
-    <string name="perm_call_phone">soittaa suoraan puhelinnumeroihin</string>
     <string name="skill_name_search">Etsi</string>
     <string name="skill_sentence_example_search">Etsi kuinka ruokkia kissa</string>
     <string name="skill_name_weather">Sää</string>
@@ -158,7 +152,6 @@
     <string name="skill_open_opening">Avataan %1$s…</string>
     <string name="skill_media_pausing">Keskeytetään mediaa…</string>
     <string name="skill_media_no_media_session">Mikään mediaistunto ei ole aktiivinen</string>
-    <string name="skill_telephone_confirm_call">Pitäisikö minun soittaa %1$s:lle?</string>
     <string name="skill_timer_no_active_name">Ei ole aktiivista ajastinta nimeltä %1$s</string>
 
 
@@ -180,9 +173,7 @@
     <string name="pref_stt_play_sound_alarm">Hälytyskanava</string>
     <string name="skill_sentence_example_lyrics">Mikä on se kappale, joka kuuluu \"we will, we will rock you\"?</string>
     <string name="skill_media_previous">Edellinen media…</string>
-    <string name="skill_telephone_calling">Soitetaan %1$s:lle…</string>
     <string name="skill_timer_confirm_cancel">Oletko varma, että haluat peruuttaa kaikki ajastimet?</string>
-    <string name="skill_telephone_found_contacts">Löysin %1$d yhteystietoa, kenelle minun pitäisi soittaa?</string>
     <string name="skill_sentence_example_calculator">Mikä on viisi kertaa neljä, miinus miljoona?</string>
     <string name="skill_timer_query">Ajastin umpeutuu %1$s:n kuluttua</string>
     <string name="skill_timer_no_active">Ei ole aktiivista ajastinta</string>

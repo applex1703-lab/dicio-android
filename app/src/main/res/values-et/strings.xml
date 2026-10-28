@@ -62,7 +62,6 @@
     <string name="skill_name_weather">Ilmateade</string>
     <string name="skill_name_calculator">Kalkulaator</string>
     <string name="skill_name_navigation">Tee juhatamine</string>
-    <string name="skill_name_telephone">Telefon</string>
     <string name="skill_name_timer">Taimer</string>
     <string name="disable">Eemalda kasutuselt</string>
     <string name="retry">Proovi uuesti</string>
@@ -91,7 +90,6 @@
     <string name="skill_sentence_example_open">Ava NewPipe</string>
     <string name="skill_name_media">Meediumi juhtimine</string>
     <string name="skill_sentence_example_media">Järgmine pala</string>
-    <string name="skill_sentence_example_telephone">Helista Kadrile</string>
     <string name="skill_name_current_time">Praegune kellaaeg</string>
     <string name="skill_fallback_name_text">Tekstisõnum</string>
     <string name="skill_open_opening">Avan %1$s…</string>
@@ -99,7 +97,6 @@
     <string name="skill_media_pausing">Peatan meediumi…</string>
     <string name="skill_media_previous">Eelmine meedium…</string>
     <string name="skill_media_next">Järgmine meedium…</string>
-    <string name="skill_telephone_calling">Helistan: %1$s…</string>
     <string name="grant_permissions">Anna luba</string>
 
     <string name="pref_weather_temperature_unit">Temperatuuriühik</string>
@@ -166,10 +163,6 @@
     <string name="skill_open_unknown_app">Tundmatu rakendus: %1$s</string>
     <string name="skill_media_no_media_session">Pole ühtegi aktiivset meediasessiooni</string>
     <string name="skill_calculator_could_not_calculate">Sinu arvutusüleande täitmine polnud võimalik</string>
-    <string name="skill_telephone_unknown_contact">Kontakti ei leidu, palun proovi uuesti</string>
-    <string name="skill_telephone_found_contacts">Leidsin %1$d kontakti, kellele me neist nüüd helistame?</string>
-    <string name="skill_telephone_confirm_call">Kas peaksin helistama kontaktile „%1$s“?</string>
-    <string name="skill_telephone_not_calling">Selge, ei helista neist kellelegi</string>
     <string name="skill_time_current_time">Hetkel on kell %1$s</string>
     <string name="skill_timer_how_much_time">Kui kaua peaks taimer töötama?</string>
     <string name="skill_timer_confirm_cancel">Kas oled kindel, et soovid kõik taimerid tühistada?</string>
@@ -196,22 +189,14 @@
     <string name="skill_translation_failed_no_query">Ma ei saanud aru, palun korda, mida peaksin tõlkima?</string>
     <string name="skill_sentence_example_translation">Tõlgi „Hola“ hispaania keelest eesti keelde</string>
     <string name="pref_input_method_vosk_summary">Laadib alla VOSK-i kõne-teskstiks mudeli ja kasutab seda Dicio rakenduse sees ilma võrguühendust pruukimata</string>
-    <string name="skill_notify_messages_separator">,</string>
-    <string name="skill_name_notify">Teavita</string>
-    <string name="skill_name_flashlight">Taskulamp</string>
     <string name="about_contributing_title">Kaastöö võimalused</string>
     <string name="about_privacy_title">Andmekaitsepõhimõtted</string>
     <string name="pref_input_method_external_popup">Väline kõnetuvastuse hüpikaken</string>
     <string name="pref_speech_output_method">Kõne väljundmeetod</string>
     <string name="pref_speech_output_method_toast">Süsteemi teade (ekraani ülaosas)</string>
-    <string name="perm_read_contacts">sinu kontaktide lugemine</string>
     <string name="settings_description_with_value">%1$s - %2$s</string>
     <string name="skill_weather_description_temperature">%1$s · %2$.1f%3$s</string>
 
-    <string name="skill_sentence_example_notify">Mis on minu teavitus?</string>
-    <string name="perm_notification_listener">kõikide teavituste lugemine</string>
-    <string name="skill_flashlight_turned_on">Taskulamp on lülitatud sisse</string>
-    <string name="skill_flashlight_turned_off">Taskulamp on lülitatud välja</string>
 
     <string name="pref_input_method_external_popup_summary">Avab „ACTION​_​RECOGNIZE​_​SPEECH“ meetodi abil teise rakenduse kasutajaliidese. Selleks võib näiteks olla whisperIME, Kõnele, Futo Voice Input</string>
     <string name="pref_speech_output_method_summary">Vali teenus, mida Dicio peaks sinuga rääkimisel kasutama</string>
@@ -227,7 +212,6 @@
     <string name="pref_dynamic_colors_summary">Kasuta süsteemi Material You dünaamilise värve</string>
     <string name="pref_stt_play_sound_title">Enne kuulamise alustamist anna helisignaaliga märku</string>
     <string name="pref_stt_play_sound_summary">Vali, kas soovid, et kostuks helisignaal enne, kui su häält hakatakse tuvastama, ning vali helikanal, millest helisignaal kostub</string>
-    <string name="perm_call_phone">otse telefoninumbritele helistamine</string>
     <string name="pref_stt_play_sound_none">Ära esita heli</string>
     <string name="eval_missing_permissions">„%1$s“ oskus vajab toimimiseks järgmisi õigusi: %2$s</string>
     <string name="eval_fatal_error">Sinu päringu töötlemine ei õnnestunud</string>
@@ -239,14 +223,7 @@
     <string name="wake_custom_service_foreground_notification">Kuulan sinu seadistatud äratussõna</string>
 
 
-    <string name="skill_notify_message_no_app">Teavitus ütleb: %1$s.</string>
-    <string name="skill_notify_message_app">„%1$s“ teenuse teavitus ütleb: %2$s.</string>
-    <string name="skill_notify_no_notifications">Sulle pole teavitusi</string>
-    <string name="skill_notify_failed">Teavituste teenusega ühendamine ei õnnestu</string>
-    <string name="skill_sentence_example_flashlight">Lülita taskulamp sisse</string>
-    <string name="skill_flashlight_error">Taskulambi juhtimine ei õnnestu</string>
 
-    <string name="skill_notify_handler_label">Teavituse oskus Dicios</string>
     <string name="about_issues_description">Võid julgelt soovitada uut funktsionaalsust või teatada vigadest (ära unusta lisada logifaile)</string>
     <string name="about_contributing_description">Dicot arendavad vabatahtlikud üle kogu maailma. Ka sina saad kaasa aidata, pakkudes välja koodi täiustusi, tõlkeid ja isegi uusi oskusi!</string>
     <string name="about_privacy_description">Dicio ühendub väliste teenustega ainult siis, kui oskus seda nõuab või masinõppemudelite allalaadimiseks seadistamise ajal. Kogu kõnetöötlus toimub kohapeal seadmes ning enamikku oskusi saad kasutada ka võrguühenduseta.</string>

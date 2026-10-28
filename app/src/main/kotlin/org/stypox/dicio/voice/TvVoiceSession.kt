@@ -33,6 +33,7 @@ import org.stypox.dicio.io.input.SttState
 interface VoiceDependencies {
     fun evaluator(): SkillEvaluator
     fun input(): SttInputDeviceWrapper
+    fun voiceInputCoordinator(): VoiceInputCoordinator
 }
 
 /** A system voice window, not an Activity and not a SYSTEM_ALERT_WINDOW overlay. */
@@ -41,6 +42,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private val dependencies = EntryPointAccessors.fromApplication(app.applicationContext, VoiceDependencies::class.java)
     private val evaluator = dependencies.evaluator()
     private val input = dependencies.input()
+    private val coordinator = dependencies.voiceInputCoordinator()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var updates: Job? = null
     private lateinit var status: TextView
@@ -93,7 +95,11 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             return
         }
         evaluator.resetVoicePresentation()
-        if (!input.tryLoad(evaluator::processInputEvent)) {
+        if (!coordinator.start(this) {
+                updates?.cancel()
+                updates = null
+                if (visible) status.text = "Голосовой запрос прерван"
+            }) {
             status.text = "Распознавание речи недоступно"
             answer.text = "Откройте настройки Dicio и проверьте голосовой ввод."
             return
@@ -112,22 +118,24 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         }
     }
 
-    override fun onHide() {
+    // The coordinator ignores release from a session that no longer owns the input.
+    private fun releaseVoiceResources() {
         visible = false
         updates?.cancel()
         updates = null
-        input.reinitializeToReleaseResources()
-        evaluator.cancelPendingInput()
+        coordinator.release(this)
+    }
+
+    override fun onHide() {
+        releaseVoiceResources()
         super.onHide()
     }
 
     override fun onDestroy() {
         updates?.cancel()
         scope.cancel()
-        if (visible) {
-            input.reinitializeToReleaseResources()
-            evaluator.cancelPendingInput()
-        }
+        releaseVoiceResources()
         super.onDestroy()
     }
+
 }

@@ -71,6 +71,7 @@ fun SttPopupBottomSheet(
 ) {
     val viewModel: SttPopupViewModel = hiltViewModel()
     val textFieldValue = viewModel.textFieldValue.collectAsState()
+    val error = viewModel.error.collectAsState().value
     val sttState = viewModel.sttInputDevice.uiState.collectAsState().value ?: SttState.NotAvailable
 
     // Calculate insets here instead of inside ModalBottomSheet, because on old APIs (tested on API
@@ -114,6 +115,7 @@ fun SttPopupBottomSheet(
             sttState = sttState,
             onSttClick = viewModel::onSttClick,
             textFieldValue = textFieldValue.value,
+            error = error,
             onTextFieldChange = viewModel::setTextFieldValue,
             modifier = Modifier.padding(insets),
         )
@@ -130,6 +132,7 @@ private fun SttPopupBottomSheet(
     textFieldValue: String,
     onTextFieldChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    error: String? = null,
 ) {
     val context = LocalContext.current
 
@@ -137,6 +140,7 @@ private fun SttPopupBottomSheet(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier.fillMaxWidth(),
     ) {
+        if (error != null) Text(text = error, color = MaterialTheme.colorScheme.error)
         SttPopupTextField(
             value = textFieldValue,
             onValueChange = onTextFieldChange,

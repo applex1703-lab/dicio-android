@@ -23,7 +23,6 @@
     <string name="skill_name_weather">Tignewt</string>
     <string name="skill_name_lyrics">Awalen n tezlatin</string>
     <string name="skill_sentence_example_open">Ldi-d NewPipe</string>
-    <string name="skill_sentence_example_telephone">Siwels-as i Tom</string>
     <string name="skill_name_current_time">Ssaɛa tura</string>
     <string name="share">Bḍu</string>
     <string name="done">Immed</string>
@@ -32,10 +31,8 @@
     <string name="error_report">Aneqqis</string>
     <string name="pref_speech_output_method_nothing">Ulac</string>
     <string name="skill_name_calculator">Tamsiḍent</string>
-    <string name="skill_name_telephone">Tiliɣri</string>
     <string name="pref_weather_default_city">Tamnaḍt tamezwrut</string>
     <string name="eval_network_error">Tuccḍa deg uẓeṭṭa</string>
-    <string name="skill_telephone_calling">Yessawal-as I %1$s…</string>
     <string name="copied_to_clipboard">Yettwanɣel ɣef afus</string>
     <string name="skill_name_navigation">Tunigin</string>
     <string name="skill_name_timer">Amakud</string>
@@ -49,7 +46,6 @@
     <string name="skill_weather_kelvin">K</string>
     <string name="skill_name_translation">Suqel</string>
     <string name="skill_translation_auto">Awurman</string>
-    <string name="skill_notify_messages_separator">,</string>
     <string name="about">Ɣef</string>
     <string name="about_contributing_title">Attekki</string>
     <string name="skill_fallback_name_text">Izen s uḍris</string>

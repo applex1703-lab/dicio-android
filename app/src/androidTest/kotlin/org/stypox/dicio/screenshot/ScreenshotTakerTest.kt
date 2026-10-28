@@ -51,9 +51,6 @@ import org.stypox.dicio.skills.media.MediaInfo
 import org.stypox.dicio.skills.media.MediaOutput
 import org.stypox.dicio.skills.search.SearchInfo
 import org.stypox.dicio.skills.search.SearchOutput
-import org.stypox.dicio.skills.telephone.ConfirmCallOutput
-import org.stypox.dicio.skills.telephone.ConfirmedCallOutput
-import org.stypox.dicio.skills.telephone.TelephoneInfo
 import org.stypox.dicio.skills.timer.TimerInfo
 import org.stypox.dicio.skills.timer.TimerOutput
 import org.stypox.dicio.skills.translation.TranslationInfo
@@ -168,7 +165,7 @@ class ScreenshotTakerTest {
         runCatching { composeRule.waitUntil { coilEventListener.isIdle(startedAtLeast = 1) } }
         composeRule.takeScreenshot("en-US", "1")
 
-        // screenshot 2: home screen with interactions with calculator, telephone and search skills
+        // screenshot 2: home screen with interactions with calculator and search skills
         dataStore.updateData { it.copy { theme = Theme.THEME_BLACK } }
         fakeSttInputDeviceWrapper.uiState.emit(SttState.Loaded)
         coilEventListener.resetStartedImages()
@@ -270,22 +267,6 @@ class ScreenshotTakerTest {
                         inputInterpretation = "12 + 0.6 - 2 ^ 3"
                     )
                 )
-            )),
-            Interaction(TelephoneInfo, listOf(
-                QuestionAnswer(
-                    question = "call michael",
-                    answer = ConfirmCallOutput(
-                        "Michael Smith",
-                        "0123 456789",
-                        Sentences.UtilYesNo["en"]!!
-                    )
-                ),
-                QuestionAnswer(
-                    question = "go for it",
-                    answer = ConfirmedCallOutput(
-                        "0123 456789"
-                    )
-                ),
             )),
             Interaction(SearchInfo, listOf(
                 QuestionAnswer(

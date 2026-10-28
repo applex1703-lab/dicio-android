@@ -44,7 +44,6 @@
     <string name="skill_sentence_example_open">Deschide NewPipe</string>
     <string name="skill_name_calculator">Calculator</string>
     <string name="skill_sentence_example_calculator">Cât face cinci ori patru minus un milion?</string>
-    <string name="skill_sentence_example_telephone">Sună-l pe Tom</string>
     <string name="skill_name_timer">Temporizator</string>
     <string name="skill_sentence_example_timer">Setează un cronometru pentru cinci minute</string>
     <string name="skill_search_here_is_what_i_found">Iată ce am găsit</string>
@@ -57,8 +56,6 @@
     <string name="skill_lyrics_found_song_by_artist">Găsit %1$s de %2$s</string>
     <string name="skill_open_unknown_app">Aplicație necunoscută %1$s</string>
     <string name="skill_open_opening">Pornind %1$s…</string>
-    <string name="skill_telephone_unknown_contact">Contactul nu a fost găsit, încearcă din nou</string>
-    <string name="skill_telephone_calling">Apelez pe %1$s…</string>
     <string name="skill_timer_how_much_time">Cât timp ar trebui să dureze cronometrul?</string>
     <string name="skill_timer_confirm_cancel">Ești sigur că vrei să anulezi toate cronometrele?</string>
     <string name="skill_timer_expired_name">Cronometrul %1$s s-a oprit!</string>
@@ -73,7 +70,6 @@
     <string name="listening">Ascultand…</string>
     <string name="action_voice_input">Introducere cu voce</string>
     <string name="pref_theme_summary">Alege paleta de culori a aplicației</string>
-    <string name="skill_name_telephone">Telefon</string>
     <string name="android_tts_unsupported_language">Limba pe care o folosesti nu este suportata de Android text to speech engine</string>
     <string name="pref_search_engine">Motor de cautare</string>
     <string name="vosk_model_extraction_error">Extractarea modelului Vosk dintr-un Zip a esuat</string>
@@ -94,10 +90,7 @@
     <string name="skill_fallback_name_text">Mesaj text</string>
     <string name="skill_calculator_could_not_calculate">Nu am putut calcula operațiunea aritmetică specificată</string>
     <string name="skill_weather_min_max_wind">Temperatura minimă: %1$.1f%4$s\nTemperatura maximă: %2$.1f%4$s\nViteza vântului: %3$.1f%5$s</string>
-    <string name="skill_telephone_found_contacts">Am gasit %1$d contacte, pe care să îl sun?</string>
-    <string name="skill_telephone_confirm_call">Ar trebui să apelez pe %1$s?</string>
     <string name="skill_timer_expired">Cronometrul s-a oprit!</string>
-    <string name="skill_telephone_not_calling">OK, nu voi apela pe nimeni</string>
     <string name="skill_timer_set_name">OK, cronometrul %1$s o să se oprească în %2$s</string>
     <string name="skill_timer_query">Cronometrul expiră în %1$s</string>
     <string name="skill_timer_no_active">Nu există niciun cronometru activ</string>
@@ -191,8 +184,6 @@
     <string name="pref_input_method_external_popup_summary">Deschide IU-ul altei aplicații prin ACTION_RECOGNIZE_SPEECH, ca exemplu whisperIME, Konele, Futo Voice Input</string>
 
 
-    <string name="perm_read_contacts">citește contactele</string>
-    <string name="perm_call_phone">sună numere de telefon direct</string>
     <string name="eval_no_match_repeat">Poți repeta?</string>
     <string name="skill_name_media">Control Media</string>
     <string name="skill_sentence_example_media">Următoarea piesă</string>

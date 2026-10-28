@@ -58,31 +58,12 @@ skills:
           - id: what
             type: string
 
-  - id: notify
-    specificity: high
-    sentences:
-      - id: notifications
-
-  - id: flashlight
-    specificity: high
-    sentences:
-      - id: turn_on
-      - id: turn_off
-
   - id: search
     specificity: low
     sentences:
       - id: query
         captures:
           - id: what
-            type: string
-
-  - id: telephone
-    specificity: low
-    sentences:
-      - id: dial
-        captures:
-          - id: who
             type: string
 
   - id: timer

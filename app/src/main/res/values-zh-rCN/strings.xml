@@ -84,8 +84,6 @@
     <string name="skill_sentence_example_navigation">导航去温哥华国际机场</string>
     <string name="skill_navigation_specify_where">请指定导航去哪里</string>
     <string name="skill_navigation_navigating_to">导航去%1$s</string>
-    <string name="skill_name_telephone">电话</string>
-    <string name="skill_sentence_example_telephone">打给Tom</string>
     <string name="skill_name_timer">计时器</string>
     <string name="skill_sentence_example_timer">设置一个五分钟计时器</string>
     <string name="skill_name_current_time">当前时间</string>
@@ -105,9 +103,6 @@
     <string name="skill_open_unknown_app">未知应用%1$s</string>
     <string name="skill_open_opening">正在打开%1$s…</string>
     <string name="skill_calculator_could_not_calculate">无法计算</string>
-    <string name="skill_telephone_unknown_contact">为找到该联系人，请重试</string>
-    <string name="skill_telephone_found_contacts">找到%1$d个联系人，该打给谁？</string>
-    <string name="skill_telephone_confirm_call">该打给%1$s吗？</string>
     <string name="skill_timer_confirm_cancel">确定取消所有计时器吗？</string>
     <string name="skill_timer_expired">计时时间已到！</string>
     <string name="skill_timer_expired_name">计时器%1$s已到时间！</string>
@@ -133,8 +128,6 @@
     <string name="pref_skill_number_library_not_available">数字解析和格式库<i>dicio-numbers</i>还未翻译为您的语言，意味着所有和数字，持续时间，日期相关的技能均不可用。如果可以请点击这里<b>作贡献</b>！</string>
     <string name="pref_weather_default_city_using_ip_info">设置默认城市天气。当前行为会根据IP获取位置信息。</string>
     <string name="skill_name_calculator">计算器</string>
-    <string name="skill_telephone_not_calling">好的，不打个任何人</string>
-    <string name="skill_telephone_calling">正在拨号给%1$s…</string>
     <string name="skill_time_current_time">现在是%1$s</string>
     <string name="skill_timer_how_much_time">计时器应该持续多久？</string>
     <string name="back">返回</string>
@@ -186,8 +179,6 @@
 
 
     <string name="disable">停用</string>
-    <string name="perm_read_contacts">读取联系人</string>
-    <string name="perm_call_phone">直接呼叫号码</string>
     <string name="skill_name_media">媒体控制</string>
     <string name="skill_sentence_example_media">下一首歌</string>
     <string name="skill_media_playing">播放媒体中…</string>
@@ -235,22 +226,8 @@
     <string name="skill_sentence_example_translation">把西班牙语单词 Hola 翻译成英语</string>
     <string name="skill_translation_auto">自动</string>
     <string name="skill_search_duckduckgo_recaptcha">DuckDuckGo 未提供结果，要求解决人机验证码</string>
-    <string name="skill_notify_message_no_app">通知内容 %1$s。</string>
-    <string name="skill_notify_message_app">%1$s 通知的内容为 %2$s。</string>
-    <string name="skill_notify_messages_separator">,</string>
-    <string name="skill_sentence_example_notify">我的通知是什么？</string>
-    <string name="skill_name_notify">通知</string>
-    <string name="skill_notify_failed">无法连接通知监听服务</string>
-    <string name="skill_notify_no_notifications">没有通知</string>
-    <string name="perm_notification_listener">读取全部通知</string>
-    <string name="skill_notify_handler_label">Dicio 助手中的通知技能</string>
     <string name="pref_stt_silence_duration_title">说话前最长静默时间</string>
     <string name="pref_stt_silence_duration_description">%1$d 个静默间隔后放弃聆听</string>
-    <string name="skill_name_flashlight">手电筒</string>
-    <string name="skill_sentence_example_flashlight">打开手电筒</string>
-    <string name="skill_flashlight_turned_on">打开了手电筒</string>
-    <string name="skill_flashlight_turned_off">手电筒已关闭</string>
-    <string name="skill_flashlight_error">无法控制手电筒</string>
     <string name="about">关于</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">复制版本信息</string>

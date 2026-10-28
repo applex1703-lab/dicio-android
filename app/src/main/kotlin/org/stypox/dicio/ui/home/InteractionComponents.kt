@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Card
@@ -63,6 +64,7 @@ fun InteractionList(
     interactionLog: InteractionLog,
     onConfirmedQuestionClick: (String) -> Unit,
     modifier: Modifier = Modifier,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     var totalItemCount = 0
     var lastAnchorIndex = 0
@@ -79,7 +81,6 @@ fun InteractionList(
 
     val interactions = interactionLog.interactions
     val pendingQuestion = interactionLog.pendingQuestion
-    val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
     LazyColumn(

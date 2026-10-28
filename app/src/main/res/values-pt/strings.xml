@@ -58,8 +58,6 @@
     <string name="skill_name_lyrics">Letras de música</string>
     <string name="skill_name_open">Iniciador de App</string>
     <string name="skill_sentence_example_open">Abrir NewPipe</string>
-    <string name="skill_name_telephone">Telefone</string>
-    <string name="skill_sentence_example_telephone">Ligar para João</string>
     <string name="skill_name_timer">Alarme</string>
     <string name="skill_search_here_is_what_i_found">Foi isso o que eu encontrei</string>
     <string name="skill_search_what_question">O que você quer pesquisar\?</string>
@@ -71,10 +69,6 @@
     <string name="skill_open_unknown_app">App desconhecido %1$s</string>
     <string name="skill_open_opening">Abrindo %1$s…</string>
     <string name="skill_calculator_could_not_calculate">Não consegui calcular seu pedido</string>
-    <string name="skill_telephone_unknown_contact">Contato não encontrado, tente novamente</string>
-    <string name="skill_telephone_found_contacts">Eu encontrei %1$d contatos, qual deles você deseja\?</string>
-    <string name="skill_telephone_confirm_call">Devo ligar para %1$s\?</string>
-    <string name="skill_telephone_calling">Ligando para %1$s…</string>
     <string name="skill_timer_confirm_cancel">Você quer mesmo cancelar todos os alarmes\?</string>
     <string name="skill_timer_expired">O alarme expirou!</string>
     <string name="skill_timer_canceled">O alarme foi cancelado</string>
@@ -115,7 +109,6 @@
 \nTemperatura máxima: %2$.1f%4$s
 \nVelocidade do vento: %3$.1f%5$s</string>
     <string name="skill_timer_query_last">O último alarme expira em %1$s</string>
-    <string name="skill_telephone_not_calling">OK, não estou ligando pra ninguém</string>
     <string name="skill_timer_expired_name">O alarme %1$s expirou!</string>
     <string name="skill_timer_canceled_name">O alarme %1$s foi cancelado</string>
     <string name="skill_timer_set_name">OK, o alarme %1$s vai expirar em %2$s</string>
@@ -199,8 +192,6 @@
     <string name="skill_sentence_example_joke">Conte-me uma piada</string>
 
 
-    <string name="perm_read_contacts">ler os seus contactos</string>
-    <string name="perm_call_phone">ligar diretamente para números de telefone</string>
     <string name="eval_no_match_repeat">Pode repetir?</string>
     <string name="skill_name_media">Controlo de média</string>
     <string name="skill_sentence_example_media">Próxima música</string>
@@ -235,9 +226,6 @@
     <string name="failed_to_copy">Não foi possível copiar para a área de transferência</string>
     <string name="skill_translation_auto">Automático</string>
     <string name="skill_search_duckduckgo_recaptcha">DuckDuckGo não forneceu resultados, está a pedir que um Captcha seja resolvido</string>
-    <string name="skill_notify_messages_separator">,</string>
-    <string name="skill_name_notify">Notificar</string>
-    <string name="perm_notification_listener">ler todas as notificações</string>
     <string name="about">Sobre</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">Copiar informações da versão</string>

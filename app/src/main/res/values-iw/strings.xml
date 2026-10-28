@@ -86,7 +86,6 @@
     <string name="eval_missing_permissions">המיומנות „%1$s” צריכה את ההרשאות האלו כדי לפעול: %2$s</string>
     <string name="eval_fatal_error">לא ניתן לשערך את הבקשה שלך</string>
     <string name="skill_navigation_navigating_to">מתבצע ניווט אל %1$s</string>
-    <string name="skill_name_telephone">טלפון</string>
     <string name="eval_network_error">שגיאת רשת</string>
     <string name="eval_no_match">לא הבנתי</string>
     <string name="stt_say_something">נא לומר משהו…</string>
@@ -100,7 +99,6 @@
     <string name="skill_sentence_example_open">נא לפתוח את NewPipe</string>
     <string name="skill_name_calculator">מחשבון</string>
     <string name="skill_sentence_example_calculator">כמה זה חמש כפול ארבע פחות מיליון?</string>
-    <string name="skill_sentence_example_telephone">להתקשר לאושר</string>
     <string name="skill_name_timer">מתזמן</string>
     <string name="skill_sentence_example_timer">הגדרת מתזמן לחמש דקות</string>
     <string name="skill_name_current_time">השעה כרגע</string>
@@ -118,11 +116,6 @@
     <string name="skill_open_unknown_app">היישומון %1$s לא ידוע</string>
     <string name="skill_open_opening">%1$s נפתח…</string>
     <string name="skill_calculator_could_not_calculate">לא ניתן לחשב את הבקשה שלך</string>
-    <string name="skill_telephone_unknown_contact">לא נמצא איש קשר, נא לנסות שוב</string>
-    <string name="skill_telephone_found_contacts">נמצאו %1$d אנשי קשר, למי מהם להתקשר?</string>
-    <string name="skill_telephone_confirm_call">להתקשר אל %1$s?</string>
-    <string name="skill_telephone_calling">מתקשר אל %1$s…</string>
-    <string name="skill_telephone_not_calling">בסדר, לא מתקשרים</string>
     <string name="skill_time_current_time">כרגע, זה %1$s</string>
     <string name="skill_timer_how_much_time">כמה זמן יחזיק המתזמן?</string>
     <string name="skill_timer_confirm_cancel">לבטל את כל המתזמנים?</string>
@@ -203,8 +196,6 @@
     <string name="skill_sentence_example_media">השיר הבא</string>
     <string name="skill_name_media">בקרת מדיה</string>
     <string name="skill_media_pausing">המדיה מושהית…</string>
-    <string name="perm_call_phone">חיוג ישיר למספרי טלפון</string>
-    <string name="perm_read_contacts">קריאת אנשי הקשר שלך</string>
     <string name="skill_media_next">המדיה הבאה…</string>
     <string name="pref_weather_temperature_unit">יחידת טמפרטורה</string>
     <string name="pref_weather_unit_system_instructions">שימוש ביחידות המוגדרות ב„הגדרות מערכת &gt; מערכת &gt; שפות וקלט &gt; העדפות מחוזיות”</string>
@@ -239,20 +230,6 @@
     <string name="skill_search_duckduckgo_recaptcha">DuckDuckGo לא סיפק תוצאות, צריך לפתור מבחן טיורינג/Captcha</string>
     <string name="pref_stt_silence_duration_title">משך השקט המרבי לפני התחלת דיבור</string>
     <string name="pref_stt_silence_duration_description">לוותר על האזנה לאחר %1$d פרקי זמן של שקט</string>
-    <string name="skill_notify_message_no_app">ההתראה אומרת %1$s.</string>
-    <string name="skill_notify_message_app">ההתראה %1$s אומרת %2$s.</string>
-    <string name="skill_notify_messages_separator">,</string>
-    <string name="skill_sentence_example_notify">מה ההתראה שלי?</string>
-    <string name="skill_name_notify">התראה</string>
-    <string name="skill_notify_failed">לא ניתן להתחבר לשירות האזנת ההתראות</string>
-    <string name="skill_notify_no_notifications">אין לך התראות</string>
-    <string name="perm_notification_listener">לקרוא את כל ההתראות</string>
-    <string name="skill_notify_handler_label">מיומנות התראה במסייע של Dicio</string>
-    <string name="skill_name_flashlight">פנס</string>
-    <string name="skill_sentence_example_flashlight">להפעיל את הפנס</string>
-    <string name="skill_flashlight_turned_on">הפנס דולק</string>
-    <string name="skill_flashlight_turned_off">הפנס כבוי</string>
-    <string name="skill_flashlight_error">לא ניתן לשלוט בפנס</string>
     <string name="about">על אודות</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">העתקת פרטי הגרסה</string>

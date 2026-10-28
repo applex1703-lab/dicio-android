@@ -1,6 +1,8 @@
 import me.champeau.gradle.igp.gitRepositories
 import org.eclipse.jgit.api.Git
 import java.io.FileInputStream
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.util.Properties
 
 rootProject.name = "Dicio"
@@ -104,6 +106,7 @@ val localProperties: Properties = Properties().apply {
     }
 }
 val libsToUseLocally = parseKeyValuePairs(localProperties.getOrDefault("useLocalDicioLibraries", "").toString())
+val existingCheckouts = mutableSetOf<String>()
 
 // finally actually include the libraries
 for (repo in includeGitRepos) {
@@ -116,31 +119,53 @@ for (repo in includeGitRepos) {
             }
         }
     } else {
-        // if the repo has already been cloned, the gitRepositories plugin is buggy and doesn't
-        // fetch the remote repo before trying to checkout the commit (in case the commit changed),
-        // and doesn't clone the repo again if the remote changed, so we need to do it manually
+        // Never let the plugin fetch or checkout an existing working tree. Require an
+        // already clean checkout at the pinned commit and include it directly instead.
         val file = File("$rootDir/checkouts/${repo.name}")
-        if (file.isDirectory) {
-            val git = Git.open(file)
-            val sameRemote = git.remoteList().call()
-                .any { rem -> rem.urIs.any { uri -> uri.toString() == repo.uri } }
-            if (sameRemote) {
-                // the commit may have changed, fetch again
-                git.fetch().call()
-            } else {
-                // the remote changed, delete the repository and start from scratch
-                println("Git: remote for ${repo.name} changed, deleting the current folder")
-                file.deleteRecursively()
+        if (Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            if (!file.isDirectory || !File(file, ".git").exists()) {
+                throw GradleException("Git checkout ${file.absolutePath} is not a Git working tree. " +
+                    "Preserve or move it manually before retrying; expected remote: ${repo.uri}")
+            }
+            val git = try {
+                Git.open(file)
+            } catch (e: Exception) {
+                throw GradleException("Cannot open Git checkout ${file.absolutePath}. " +
+                    "Preserve or move it manually before retrying; expected remote: ${repo.uri}", e)
+            }
+            git.use {
+                if (it.repository.isBare || it.repository.workTree.canonicalFile != file.canonicalFile) {
+                    throw GradleException("Git checkout ${file.absolutePath} is not its own Git working tree. " +
+                        "Preserve or move it manually before retrying; expected remote: ${repo.uri}")
+                }
+                val origin = it.remoteList().call().find { remote -> remote.name == "origin" }
+                if (origin == null || origin.urIs.size != 1 || origin.urIs.single().toString() != repo.uri) {
+                    throw GradleException("Git checkout ${file.absolutePath} has an unexpected origin; expected ${repo.uri}. " +
+                        "Existing data was left untouched; preserve or move it manually before retrying.")
+                }
+                val head = it.repository.resolve("HEAD")?.name
+                if (head != repo.commit || !it.status().call().isClean) {
+                    throw GradleException("Git checkout ${file.absolutePath} must be clean and at pinned commit ${repo.commit} " +
+                        "(current HEAD: ${head ?: "unborn"}). Existing data was left untouched; " +
+                        "preserve or move it manually, or update it yourself before retrying.")
+                }
+            }
+            existingCheckouts.add(repo.name)
+            includeBuild(file) {
+                dependencySubstitution {
+                    substitute(module("git.included.build:${repo.name}"))
+                        .using(project(repo.projectPath))
+                }
             }
         }
     }
 }
 
 // tell gitRepositories to clone/update any repository that has not been already included locally
-if (libsToUseLocally.size < includeGitRepos.size) {
+if (libsToUseLocally.size + existingCheckouts.size < includeGitRepos.size) {
     gitRepositories {
         for (repo in includeGitRepos) {
-            if (repo.name !in libsToUseLocally) {
+            if (repo.name !in libsToUseLocally && repo.name !in existingCheckouts) {
                 include(repo.name) {
                     uri.set(repo.uri)
                     commit.set(repo.commit)

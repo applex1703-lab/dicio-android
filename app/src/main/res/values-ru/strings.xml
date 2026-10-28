@@ -78,15 +78,8 @@
     <string name="pref_skill_not_available">Это умение недоступно для вашего языка. Помогите разработчику усовершенствовать программу!</string>
     <string name="skill_search_no_results">Поиск не дал результата, скажите ещё раз что вы хотите найти</string>
     <string name="skill_search_what_question">Что вы хотите найти\?</string>
-    <string name="skill_name_telephone">Телефон</string>
-    <string name="skill_sentence_example_telephone">Позвони маме</string>
     <string name="skill_sentence_example_timer">Поставь секундомер на пять минут</string>
     <string name="skill_name_timer">Секундомер</string>
-    <string name="skill_telephone_unknown_contact">Контакт не найдем, попробуйте ещё раз</string>
-    <string name="skill_telephone_found_contacts">Я нашёл %1$d контактов, какой из них использовать?</string>
-    <string name="skill_telephone_confirm_call">Позвонить %1$s\?</string>
-    <string name="skill_telephone_calling">Звоню %1$s…</string>
-    <string name="skill_telephone_not_calling">ОК, я никому не звоню</string>
     <string name="skill_timer_how_much_time">На сколько поставить секундомер\?</string>
     <string name="skill_timer_expired">Все секундомеры завершили настроенное время!</string>
     <string name="skill_timer_canceled">Секундомер сброшен</string>
@@ -187,8 +180,6 @@
     <string name="pref_dynamic_colors_title">Динамические цвета</string>
     <string name="pref_dynamic_colors_summary">Использовать динамические цвета Material You предоставляемые системой</string>
     <string name="skill_open_could_not_understand">Не удалось найти приложение</string>
-    <string name="perm_read_contacts">чтение контактов</string>
-    <string name="perm_call_phone">совершать звонки</string>
     <string name="skill_name_media">Управление мультимедиа</string>
     <string name="skill_media_playing">Воспроизведение мультимедиа…</string>
     <string name="skill_sentence_example_media">Следующая песня</string>

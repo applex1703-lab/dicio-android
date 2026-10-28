@@ -1,6 +1,9 @@
 package org.stypox.dicio.ui.home
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.QuestionAnswer
@@ -11,6 +14,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -20,7 +24,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalContext
+import android.content.ContextWrapper
+import org.stypox.dicio.MainActivity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
@@ -48,6 +55,7 @@ import kotlin.math.abs
 @Composable
 fun HomeScreen(
     navigationIcon: @Composable () -> Unit,
+    onSettingsClick: () -> Unit = {},
 ) {
     val channel = remember { Channel<Boolean>() }
     val coroutineScope = rememberCoroutineScope()
@@ -96,12 +104,21 @@ fun HomeScreen(
         interactionLog = interactionsState.value,
         sttState = sttState.value,
         onSttClick = {
-            viewModel.sttInputDevice.onClick(viewModel.skillEvaluator::processInputEvent)
+            var current = context
+            while (current is ContextWrapper && current !is MainActivity && current.baseContext !== current) {
+                current = current.baseContext
+            }
+            (current as? MainActivity)?.startHomeStt()
         },
         onManualUserInput = {
-            viewModel.skillEvaluator.processInputEvent(InputEvent.Final(listOf(Pair(it, 1.0f))))
+            var current = context
+            while (current is ContextWrapper && current !is MainActivity && current.baseContext !== current) {
+                current = current.baseContext
+            }
+            (current as? MainActivity)?.submitHomeText(it)
         },
         navigationIcon = navigationIcon,
+        onSettingsClick = onSettingsClick,
         snackbarHost = {
             SnackbarHost(hostState = viewModel.snackbarHostState)
         },
@@ -120,8 +137,18 @@ fun HomeScreen(
     onManualUserInput: (String) -> Unit,
     navigationIcon: @Composable () -> Unit,
     snackbarHost: @Composable () -> Unit,
+    onSettingsClick: () -> Unit = {},
 ) {
     var searchString by rememberSaveable { mutableStateOf<String?>(null) }
+    val isTv = isTelevision()
+    val textFocus = remember { FocusRequester() }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(isTv, searchString) {
+        if (isTv && searchString == null) {
+            textFocus.requestFocus()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -143,17 +170,31 @@ fun HomeScreen(
             )
         },
         content = { paddingValues ->
-            InteractionList(
-                skillContext = skillContext,
-                skills = skills,
-                interactionLog = interactionLog,
-                onConfirmedQuestionClick = { searchString = it },
-                modifier = Modifier.padding(paddingValues),
-            )
+            Column(modifier = Modifier.padding(paddingValues)) {
+                if (isTv) {
+                    TvHomeActions(
+                        sttState = sttState,
+                        onSttClick = onSttClick,
+                        onTextClick = { searchString = "" },
+                        onSettingsClick = onSettingsClick,
+                        initialFocus = textFocus,
+                        onHistoryUp = { scope.launch { listState.animateScrollBy(-listState.layoutInfo.viewportSize.height.toFloat() * 0.8f) } },
+                        onHistoryDown = { scope.launch { listState.animateScrollBy(listState.layoutInfo.viewportSize.height.toFloat() * 0.8f) } },
+                    )
+                }
+                InteractionList(
+                    skillContext = skillContext,
+                    skills = skills,
+                    interactionLog = interactionLog,
+                    onConfirmedQuestionClick = { searchString = it },
+                    modifier = Modifier.weight(1f),
+                    listState = listState,
+                )
+            }
         },
         floatingActionButton = {
             // if the STT state is null, it means the user disabled the STT
-            if (sttState != null) {
+            if (!isTv && sttState != null) {
                 SttFab(
                     state = sttState,
                     onClick = onSttClick,

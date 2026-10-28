@@ -108,8 +108,8 @@ fun inputDevice() = ListSetting(
     possibleValues = listOf(
         ListSetting.Value(
             value = InputDevice.INPUT_DEVICE_EXTERNAL_POPUP,
-            name = stringResource(R.string.pref_input_method_external_popup),
-            description = stringResource(R.string.pref_input_method_external_popup_summary),
+            name = "Google Katniss",
+            description = "Распознавание речи сервисом Google; может потребоваться сеть.",
             icon = Icons.Default.PictureInPictureAlt,
         ),
         ListSetting.Value(

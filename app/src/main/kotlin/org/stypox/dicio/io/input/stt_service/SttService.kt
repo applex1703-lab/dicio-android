@@ -10,7 +10,7 @@ import android.speech.SpeechRecognizer
 import android.util.Log
 import dagger.hilt.android.AndroidEntryPoint
 import org.stypox.dicio.di.LocaleManager
-import org.stypox.dicio.di.SttInputDeviceWrapper
+import org.stypox.dicio.voice.VoiceInputCoordinator
 import org.stypox.dicio.io.input.InputEvent
 import java.util.Locale
 import javax.inject.Inject
@@ -26,13 +26,12 @@ import javax.inject.Inject
 //  EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, EXTRA_AUDIO_SOURCE, EXTRA_AUDIO_SOURCE_CHANNEL_COUNT,
 //  EXTRA_AUDIO_SOURCE_ENCODING, EXTRA_AUDIO_SOURCE_SAMPLING_RATE, EXTRA_BIASING_STRINGS,
 //  EXTRA_ENABLE_BIASING_DEVICE_CONTEXT
-//  - if the SttInputDevice is already busy (e.g. another service is using it, or another part of
-//  Dicio is using it), that needs to be reported with ERROR_BUSY
 @AndroidEntryPoint
 class SttService : RecognitionService() {
+    private var activeCallback: Callback? = null
 
     @Inject
-    lateinit var sttInputDevice: SttInputDeviceWrapper
+    lateinit var coordinator: VoiceInputCoordinator
 
     @Inject
     lateinit var localeManager: LocaleManager
@@ -53,7 +52,13 @@ class SttService : RecognitionService() {
         }
 
         var beginningOfSpeech = true
-        val willStartListening = sttInputDevice.tryLoad { inputEvent ->
+        var terminal = false
+        val willStartListening = coordinator.startService(listener, { inputEvent ->
+            if (terminal) return@startService
+            if (inputEvent is InputEvent.Error || inputEvent is InputEvent.Final || inputEvent is InputEvent.None) {
+                terminal = true
+                if (activeCallback === listener) activeCallback = null
+            }
             when (inputEvent) {
                 InputEvent.Started -> Unit
                 is InputEvent.Error -> {
@@ -76,13 +81,13 @@ class SttService : RecognitionService() {
                         inputEvent.utterances.map { it.second }.toFloatArray()
                     )
 
-                    logRemoteExceptions { listener.results(results) }
                     logRemoteExceptions { listener.endOfSpeech() }
+                    logRemoteExceptions { listener.results(results) }
                 }
 
                 InputEvent.None -> {
-                    logRemoteExceptions { listener.error(SpeechRecognizer.ERROR_SPEECH_TIMEOUT) }
                     logRemoteExceptions { listener.endOfSpeech() }
+                    logRemoteExceptions { listener.error(SpeechRecognizer.ERROR_SPEECH_TIMEOUT) }
                 }
 
                 is InputEvent.Partial -> {
@@ -100,20 +105,37 @@ class SttService : RecognitionService() {
                     logRemoteExceptions { listener.partialResults(partResult) }
                 }
             }
-        }
+        }, {
+            if (activeCallback === listener) activeCallback = null
+            if (!terminal) {
+                terminal = true
+                logRemoteExceptions { listener.error(SpeechRecognizer.ERROR_CLIENT) }
+            }
+        })
 
-        if (!willStartListening) {
+        if (willStartListening == null) {
+            logRemoteExceptions { listener.error(SpeechRecognizer.ERROR_RECOGNIZER_BUSY) }
+        } else if (!willStartListening) {
             Log.w(TAG, "Could not start STT recognizer")
             logRemoteExceptions { listener.error(ERROR_LANGUAGE_UNAVAILABLE) }
+        } else if (!terminal) {
+            activeCallback = listener
         }
     }
 
     override fun onCancel(listener: Callback) {
-        sttInputDevice.stopListening()
+        if (activeCallback === listener) activeCallback = null
+        coordinator.cancel(listener)
     }
 
     override fun onStopListening(listener: Callback) {
-        sttInputDevice.stopListening()
+        coordinator.stop(listener)
+    }
+
+    override fun onDestroy() {
+        activeCallback?.let { coordinator.cancel(it) }
+        activeCallback = null
+        super.onDestroy()
     }
 
     companion object {

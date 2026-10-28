@@ -85,11 +85,6 @@
     <string name="error_details_headline">Szczegóły:</string>
     <string name="skill_name_current_time">Aktualny czas</string>
     <string name="skill_sentence_example_current_time">Która jest godzina\?</string>
-    <string name="skill_telephone_unknown_contact">Nie znaleziono kontaktu, spróbuj ponownie</string>
-    <string name="skill_telephone_found_contacts">Znalazłem %1$d kontakty/ów, do którego mam zadzwonić?</string>
-    <string name="skill_telephone_confirm_call">Czy mam zadzwonić do %1$s?</string>
-    <string name="skill_telephone_calling">Dzwonienie do %1$s…</string>
-    <string name="skill_telephone_not_calling">W porządku, nie dzwonię do nikogo</string>
     <string name="skill_time_current_time">Godzina to %1$s</string>
     <string name="error_copy_formatted">Skopiuj sformatowany raport</string>
     <string name="pref_skill_grant_permissions">Zezwól</string>
@@ -99,10 +94,8 @@
 \nPakiet:
 \nWersja:
 \nWersja OS:</string>
-    <string name="skill_name_telephone">Telefon</string>
     <string name="eval_missing_permissions">Umiejętność „%1$s” wymaga następujących uprawnień: %2$s</string>
     <string name="pref_skill_missing_permissions">Wymaga te uprawnienia: %1$s</string>
-    <string name="skill_sentence_example_telephone">Zadzwoń do Tomasza</string>
     <string name="android_tts_error">Wystąpił błąd przy inicjalizacii silnika zamiany tekstu na mowę Androida</string>
     <string name="skill_timer_confirm_cancel">Czy na pewno chcesz anulować wszystkie minutniki?</string>
     <string name="error_crash_log_headline">Dziennik awarii:</string>
@@ -206,8 +199,6 @@
     <string name="pref_input_method_external_popup_summary">Otwiera interfejs inniej aplikacji przez ACTION​_​RECOGNIZE​_​SPEECH, na przykład whisperIME, Kõnele, Futo Voice Input</string>
 
 
-    <string name="perm_read_contacts">czytać kontakty</string>
-    <string name="perm_call_phone">dzwonić numery telefoniczne</string>
     <string name="eval_no_match_repeat">Możesz powtórzyć?</string>
     <string name="skill_search_no_results_stop">Wyszukiwarka znalazła nic</string>
     <string name="skill_media_playing">Otwarzanie…</string>

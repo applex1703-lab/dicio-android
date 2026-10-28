@@ -78,8 +78,6 @@
     <string name="skill_sentence_example_calculator">Kaj je pet krat štiri minus milijon\?</string>
     <string name="skill_navigation_specify_where">Določi, kam hočeš iti</string>
     <string name="skill_navigation_navigating_to">Pelji me v %1$s</string>
-    <string name="skill_name_telephone">Telefon</string>
-    <string name="skill_sentence_example_telephone">Pokliči Julija</string>
     <string name="skill_name_timer">Časovnik</string>
     <string name="skill_sentence_example_timer">Nastavi časovnik na pet minut</string>
     <string name="skill_name_current_time">Trenuten čas</string>
@@ -99,10 +97,6 @@
     <string name="skill_open_unknown_app">Ne najdem aplikacije po imenu %1$s</string>
     <string name="skill_open_opening">Odpiram %1$s…</string>
     <string name="skill_calculator_could_not_calculate">Ne morem preračunati tvoje želje</string>
-    <string name="skill_telephone_found_contacts">Našel sem %1$d stikov, katerega naj pokličem\?</string>
-    <string name="skill_telephone_confirm_call">Naj pokličem %1$s\?</string>
-    <string name="skill_telephone_calling">Kličem %1$s…</string>
-    <string name="skill_telephone_not_calling">V redu, nobenega ne kličem</string>
     <string name="skill_time_current_time">Trenutno je %1$s</string>
     <string name="skill_timer_how_much_time">Koliko časa naj traja časovnik\?</string>
     <string name="skill_timer_expired">Časovnik je potekel!</string>
@@ -127,7 +121,6 @@
     <string name="skill_sentence_example_lyrics">Zapoj kuža pazi z repkom miga</string>
     <string name="skill_sentence_example_navigation">Pelji me na letališče Brnik</string>
     <string name="skill_name_navigation">Navigacija</string>
-    <string name="skill_telephone_unknown_contact">Ne najdem nobenega stika s tem imenom, poskusi znova</string>
     <string name="skill_timer_confirm_cancel">Ali ste prepričani, da prekinem vse časovnike\?</string>
     <string name="skill_timer_canceled">Časovnik je bil prekinjen</string>
     <string name="skill_timer_query_last">Zadnji časovnik poteče v %1$s</string>

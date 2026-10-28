@@ -17,8 +17,6 @@
     <string name="vosk_model_extracting">Extraherar Vosk-modellen…</string>
     <string name="vosk_model_extraction_error">Extraheringen av Vosk-modellen från Zip misslyckades</string>
     <string name="vosk_model_unsupported_language">Det finns ingen Vosk-modell tillgänglig för det nuvarande språket</string>
-    <string name="skill_telephone_calling">Ringer %1$s…</string>
-    <string name="skill_telephone_not_calling">OK, då ringer jag ingen</string>
     <string name="skill_time_current_time">Just nu är klockan %1$s</string>
     <string name="eval_no_match">Jag förstod inte</string>
     <string name="skill_name_search">Sök</string>
@@ -45,7 +43,6 @@
     <string name="pref_stt_play_sound_media">Ljudkanal för media och annat</string>
     <string name="pref_stt_play_sound_none">Spela inte ljud</string>
     <string name="skill_sentence_example_calculator">Vad är fem gånger fyra minus en miljon?</string>
-    <string name="skill_sentence_example_telephone">Ring Tom</string>
     <string name="skill_search_no_results">Jag hittade inga resultat, försök berätta igen vad du söker efter</string>
     <string name="skill_weather_description_temperature">%1$s · %2$.1f%3$s</string>
     <string name="skill_lyrics_song_not_found">Kan inte hitta låten %1$s</string>
@@ -75,9 +72,7 @@
     <string name="skill_sentence_example_search">Sök efter hur man matar en katt</string>
     <string name="skill_sentence_example_weather">Hur är vädret i Rom?</string>
     <string name="skill_sentence_example_lyrics">Vilken sång har texten \"We will we will rock you\"?</string>
-    <string name="skill_name_telephone">Telefon</string>
     <string name="skill_weather_min_max_wind">Lägsta temperatur: %1$.1f%4$s\nHögsta temperatur: %2$.1f%4$s\nVindhastighet: %3$.1f%5$s</string>
-    <string name="skill_telephone_found_contacts">Jag hittade %1$d kontakter, vem vill du ringa?</string>
     <string name="stt_service_label">Dicio lokal taligenkänning</string>
 
 
@@ -108,7 +103,6 @@
     <string name="skill_name_calculator">Kalkylator</string>
     <string name="skill_sentence_example_open">Öppna NewPipe</string>
     <string name="skill_calculator_could_not_calculate">Jag kunde inte beräkna din förfrågan</string>
-    <string name="skill_telephone_unknown_contact">Ingen kontakt hittad, försök igen</string>
     <string name="skill_open_opening">Öppnar %1$s…</string>
     <string name="back">Tillbaka</string>
     <string name="clear">Rensa</string>
@@ -165,7 +159,6 @@
     <string name="skill_search_what_question">Vad vill du söka efter?</string>
     <string name="skill_open_could_not_understand">Förstod inte vilken app du vill öppna</string>
     <string name="skill_open_unknown_app">Okänd app %1$s</string>
-    <string name="skill_telephone_confirm_call">Ska jag ringa %1$s?</string>
     <string name="settings_description_with_value">%1$s — %2$s</string>
     <string name="stt_popup">Popup för Taligenkänning</string>
     <string name="skill_name_weather">Väder</string>
@@ -207,8 +200,6 @@
 
     <string name="eval_no_match_repeat">Kan du upprepa?</string>
     <string name="skill_media_next">Nästa media…</string>
-    <string name="perm_read_contacts">läsa dina kontakter</string>
-    <string name="perm_call_phone">direkt ringa telefonsamtal</string>
     <string name="skill_name_media">Mediakontroll</string>
     <string name="skill_sentence_example_media">Nästa låt</string>
     <string name="skill_media_playing">Spelar media…</string>

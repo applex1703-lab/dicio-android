@@ -76,17 +76,10 @@
     <string name="no_app_to_open_intent">Ninguna aplicación de su dispositivo puede abrir esto</string>
     <string name="permission_denied">Permiso denegado</string>
     <string name="skill_search_no_results">La búsqueda no arrojó resultados, intente decirme de nuevo lo que quiere buscar</string>
-    <string name="skill_telephone_found_contacts">He encontrado %1$d contactos, ¿a cuál llamo\?</string>
-    <string name="skill_name_telephone">Teléfono</string>
-    <string name="skill_sentence_example_telephone">Llamar a Tom</string>
     <string name="android_tts_error">Se ha producido un error al inicializar el motor de conversión de texto a voz de Android</string>
     <string name="pref_skill_missing_permissions">Requiere estos permisos: %1$s</string>
     <string name="pref_skill_grant_permissions">Conceder</string>
     <string name="eval_missing_permissions">La habilidad \"%1$s\" necesita estos permisos para funcionar: %2$s</string>
-    <string name="skill_telephone_unknown_contact">No se ha encontrado ningún contacto, inténtelo de nuevo</string>
-    <string name="skill_telephone_confirm_call">¿Debería llamar a %1$s\?</string>
-    <string name="skill_telephone_calling">Llamando a %1$s…</string>
-    <string name="skill_telephone_not_calling">Vale, no voy a llamar a nadie</string>
     <string name="skill_timer_canceled">El temporizador ha sido cancelado</string>
     <string name="skill_timer_expired">¡El temporizador ha finalizado!</string>
     <string name="skill_timer_expired_name">¡El temporizador %1$s ha finalizado!</string>
@@ -201,7 +194,6 @@
     <string name="skill_media_previous">Medio anterior…</string>
     <string name="skill_media_next">Medio siguiente…</string>
 
-    <string name="perm_call_phone">llamar directamente a los números de teléfono</string>
     <string name="skill_name_media">Control de medios</string>
     <string name="skill_media_no_media_session">No está activada la sesión de medios</string>
     <string name="pref_input_method_external_popup_summary">Abre la interfaz de usuario de otra aplicación por medio de ACTION​_​RECOGNIZE​_​SPEECH; por ejemplo, whisperIME, Kõnele y Futo Voice Input</string>
@@ -209,7 +201,6 @@
     <string name="pref_weather_temperature_unit_kelvin">Kelvin (K)</string>
 
     <string name="pref_weather_length_unit_metric">Métrica</string>
-    <string name="perm_read_contacts">leer sus contactos</string>
     <string name="pref_weather_length_unit">Unidad de medida</string>
     <string name="pref_weather_length_unit_imperial">Imperial</string>
     <string name="skill_weather_celsius">°C</string>
@@ -231,20 +222,6 @@
     <string name="failed_to_copy">No fue posible copiar al portapapeles</string>
     <string name="skill_translation_auto">Auto</string>
     <string name="skill_search_duckduckgo_recaptcha">DuckDuckGo no proporcionó resultados, solicitando un Captcha para ser resuelto</string>
-    <string name="skill_notify_message_no_app">La notificación dice %1$s.</string>
-    <string name="skill_notify_message_app">La notificación %1$s dice %2$s.</string>
-    <string name="skill_notify_messages_separator">,</string>
-    <string name="skill_sentence_example_notify">¿Qué es mi notación?</string>
-    <string name="skill_name_notify">Notificar</string>
-    <string name="skill_notify_failed">No pudo conectar la notificación del servicio de escucha</string>
-    <string name="skill_notify_no_notifications">No tienes notificaciones</string>
-    <string name="perm_notification_listener">lee todas las notificaciones</string>
-    <string name="skill_notify_handler_label">Notifica habilidad en asistente Dicio</string>
-    <string name="skill_name_flashlight">Linterna</string>
-    <string name="skill_sentence_example_flashlight">Encender la linterna</string>
-    <string name="skill_flashlight_turned_on">Linterna encendida</string>
-    <string name="skill_flashlight_turned_off">Linterna apagada</string>
-    <string name="skill_flashlight_error">No es posible controlar la linterna</string>
     <string name="about">Acerca de…</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">Copiar la información de la versión</string>

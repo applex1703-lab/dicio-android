@@ -123,8 +123,6 @@
     <string name="skill_name_navigation">Навігація</string>
     <string name="skill_sentence_example_navigation">Проведи маршрут до міжнародного аеропорту Ванкувер</string>
     <string name="skill_navigation_navigating_to">Маршрут до %1$s</string>
-    <string name="skill_name_telephone">Телефон</string>
-    <string name="skill_sentence_example_telephone">Подзвони Тарасу</string>
     <string name="skill_fallback_name_text">Текстове повідомлення</string>
     <string name="skill_search_here_is_what_i_found">Ось, що я знайшов</string>
     <string name="skill_name_timer">Таймер</string>
@@ -140,10 +138,6 @@
 \nШвидкість вітру: %3$.1f%5$s</string>
     <string name="skill_open_could_not_understand">Не вдалося знайти застосунок</string>
     <string name="skill_open_opening">Відкриваю %1$s…</string>
-    <string name="skill_telephone_found_contacts">Я знайшов %1$d контактів, якому з них ви хочете подзвонити?</string>
-    <string name="skill_telephone_confirm_call">Подзвонити %1$s?</string>
-    <string name="skill_telephone_calling">Дзвоню %1$s…</string>
-    <string name="skill_telephone_not_calling">Добре, я нікому не дзвонитиму</string>
     <string name="skill_time_current_time">Зараз %1$s</string>
     <string name="skill_timer_confirm_cancel">Ви впевнені, що хочете вимкнути всі таймери?</string>
     <string name="skill_timer_expired">Таймер завершився!</string>
@@ -151,7 +145,6 @@
     <string name="skill_timer_set">Гаразд, таймер завершиться через %1$s</string>
     <string name="skill_open_unknown_app">Невідомий застосунок %1$s</string>
     <string name="skill_calculator_could_not_calculate">Я не зміг обчислити ваш запит</string>
-    <string name="skill_telephone_unknown_contact">Жодних контакту не знайдено, спробуйте ще раз</string>
     <string name="skill_timer_how_much_time">Як довго має тривати таймер?</string>
     <string name="skill_timer_set_name">Гаразд, таймер \"%1$s\" завершиться через %2$s</string>
     <string name="skill_weather_description_temperature">%1$s · %2$.1f%3$s</string>
@@ -187,8 +180,6 @@
 
 
     <string name="skill_search_no_results_stop">Пошук не дав результатів</string>
-    <string name="perm_read_contacts">читати ваші контакти</string>
-    <string name="perm_call_phone">прямий телефонний номер телефону</string>
     <string name="skill_name_media">Контроль ЗМІ</string>
     <string name="skill_sentence_example_media">Наступна пісня</string>
     <string name="skill_media_playing">Відтворення медіафайлів…</string>

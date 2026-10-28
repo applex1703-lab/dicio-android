@@ -40,6 +40,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
@@ -123,7 +125,7 @@ fun AppBarTextField(
 
     // request focus when this composable is first initialized
     val focusRequester = remember { FocusRequester() }
-    SideEffect {
+    androidx.compose.runtime.LaunchedEffect(focusRequester) {
         focusRequester.requestFocus()
     }
 
@@ -298,7 +300,7 @@ private fun SearchTopAppBarExpanded(
                     exitSearch()
                 }),
                 modifier = Modifier.onKeyEvent {
-                    if (it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ENTER) {
+                    if (it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ENTER && it.type == KeyEventType.KeyUp && !exiting) {
                         onSearch(searchString)
                         exitSearch()
                         return@onKeyEvent true

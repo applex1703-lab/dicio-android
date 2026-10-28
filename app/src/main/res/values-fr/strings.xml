@@ -77,11 +77,7 @@
     <string name="skill_search_what_question">Que recherchez-vous ?</string>
     <string name="permission_denied">Permission refusée</string>
     <string name="pref_skill_not_available">Cette fonctionnalité n’est pas encore disponible dans votre langue. Les contributions sont les bienvenues !</string>
-    <string name="skill_sentence_example_telephone">Appelle Tom</string>
     <string name="skill_name_timer">Minuteur</string>
-    <string name="skill_telephone_unknown_contact">Aucun contact trouvé, réessayez</string>
-    <string name="skill_telephone_found_contacts">J’ai trouvé %1$d contacts, lequel dois-je appeler ?</string>
-    <string name="skill_telephone_not_calling">OK, je n’appelle personne</string>
     <string name="skill_timer_how_much_time">Combien de temps doit durer le minuteur ?</string>
     <string name="skill_timer_confirm_cancel">Êtes-vous sûr de vouloir annuler tous les minuteurs ?</string>
     <string name="skill_timer_expired">Le minuteur a expiré !</string>
@@ -89,12 +85,9 @@
     <string name="skill_timer_set_name">OK, le minuteur %1$s expirera dans %2$s</string>
     <string name="skill_timer_all_canceled">Tous les minuteurs ont été annulés</string>
     <string name="skill_timer_none_canceled">OK, aucun minuteur n’a été annulé</string>
-    <string name="skill_telephone_confirm_call">Dois-je appeler %1$s ?</string>
     <string name="pref_skill_grant_permissions">Accorder</string>
-    <string name="skill_name_telephone">Téléphone</string>
     <string name="skill_sentence_example_timer">Règle un minuteur pour cinq minutes</string>
     <string name="android_tts_error">Une erreur s’est produite lors de l’initialisation du moteur de synthèse vocale Android</string>
-    <string name="skill_telephone_calling">Appel de %1$s…</string>
     <string name="pref_skill_missing_permissions">Nécessite les autorisations suivantes : %1$s</string>
     <string name="pref_skill_number_library_not_available">La bibliothèque d’analyse et de formatage des nombres <i>dicio-numbers</i> n\'est pas encore traduit dans votre langue, ce qui signifie que toutes les compétences liées aux nombres, aux durées et aux dates ne sont pas disponibles. <b>Veuillez contribuer</b> si vous le pouvez en appuyant ici !</string>
     <string name="skill_timer_no_active">Il n’y a pas de minuteur en cours</string>
@@ -182,8 +175,6 @@
     <string name="pref_stt_play_sound_summary">Choisissez si vous souhaitez jouer un son lorsque votre voix commence à être reconnue, et sélectionnez le canal audio sur lequel jouer le son</string>
     <string name="stt_service_label">Reconnaissance vocale hors ligne Dicio</string>
 
-    <string name="perm_read_contacts">lire vos contacts</string>
-    <string name="perm_call_phone">passer directement des appels téléphoniques</string>
     <string name="skill_name_media">Contrôle des médias</string>
     <string name="skill_sentence_example_media">Musique suivante</string>
     <string name="skill_media_playing">Média en cours de lecture…</string>
@@ -231,12 +222,6 @@
     <string name="failed_to_copy">Échec de la copie au presse-papier</string>
     <string name="skill_translation_auto">Auto</string>
     <string name="skill_search_duckduckgo_recaptcha">DuckDuckGo n’a pas fourni de résultats et demande de résoudre un Captcha</string>
-    <string name="skill_notify_no_notifications">Vous n\'avez aucune notification</string>
-    <string name="skill_name_flashlight">Lampe</string>
-    <string name="skill_sentence_example_flashlight">Allumer la lampe</string>
-    <string name="skill_flashlight_turned_on">La lampe est allumée</string>
-    <string name="skill_flashlight_turned_off">La lampe est éteinte</string>
-    <string name="skill_flashlight_error">Impossible de contrôler la lampe</string>
     <string name="about">À propos</string>
     <string name="about_version_copy">Copier les informations de version</string>
     <string name="about_repository_description">Dicio est gratuit et open source, sous licence GPLv3</string>
@@ -245,14 +230,6 @@
     <string name="about_privacy_title">Politique de confidentialité</string>
     <string name="pref_stt_silence_duration_title">Silence maximum avant le début de la parole</string>
     <string name="pref_stt_silence_duration_description">Abandonner l\'écoute après %1$d intervalles silencieux</string>
-    <string name="skill_notify_message_no_app">La notification indique %1$s.</string>
-    <string name="skill_notify_message_app">La notification %1$s indique %2$s.</string>
-    <string name="skill_notify_messages_separator">,</string>
-    <string name="skill_sentence_example_notify">Quelle est ma notification ?</string>
-    <string name="skill_name_notify">Notifier</string>
-    <string name="skill_notify_failed">Impossible de connecter le service d\'écoute de notification</string>
-    <string name="perm_notification_listener">lire toutes les notifications</string>
-    <string name="skill_notify_handler_label">Indiquer les compétences dans Dicio assistant</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_repository_title">Dépôt du code source</string>
     <string name="about_issues_title">Vous avez trouvé un bug ?</string>

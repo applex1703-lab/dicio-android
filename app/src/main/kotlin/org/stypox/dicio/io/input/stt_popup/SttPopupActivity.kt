@@ -7,11 +7,18 @@ import android.content.Intent
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.util.Log
+import androidx.activity.viewModels
 import dagger.hilt.android.AndroidEntryPoint
 import org.stypox.dicio.util.BaseActivity
 
 @AndroidEntryPoint
 class SttPopupActivity : BaseActivity() {
+    private val inputViewModel: SttPopupViewModel by viewModels()
+
+    override fun onStop() {
+        inputViewModel.releaseInput()
+        super.onStop()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

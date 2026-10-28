@@ -17,10 +17,6 @@ import org.stypox.dicio.skills.lyrics.LyricsInfo
 import org.stypox.dicio.skills.media.MediaInfo
 import org.stypox.dicio.skills.navigation.NavigationInfo
 import org.stypox.dicio.skills.navigation.NavigationOutput
-import org.stypox.dicio.skills.telephone.ConfirmCallOutput
-import org.stypox.dicio.skills.telephone.ConfirmedCallOutput
-import org.stypox.dicio.skills.telephone.TelephoneInfo
-import org.stypox.dicio.sentences.Sentences
 import org.stypox.dicio.skills.timer.TimerInfo
 import org.stypox.dicio.skills.timer.TimerOutput
 import org.stypox.dicio.skills.weather.WeatherInfo
@@ -41,7 +37,6 @@ class UserInputPreviews : CollectionPreviewParameterProvider<String>(listOf(
 class SkillInfoPreviews : CollectionPreviewParameterProvider<SkillInfo>(listOf(
     WeatherInfo,
     CalculatorInfo,
-    TelephoneInfo,
     MediaInfo,
     object : SkillInfo("test") {
         override fun name(context: Context) = "Long name lorem ipsum dolor sit amet, consectetur"
@@ -102,13 +97,6 @@ class InteractionLogPreviews : CollectionPreviewParameterProvider<InteractionLog
     ),
     InteractionLog(
         listOf(
-            Interaction(
-                skill = TelephoneInfo,
-                questionsAnswers = listOf(
-                    QuestionAnswer("call mom", ConfirmCallOutput("Mom", "1234567890", Sentences.UtilYesNo["en"]!!)),
-                    QuestionAnswer("yes", ConfirmedCallOutput("1234567890")),
-                )
-            )
         ),
         PendingQuestion(
             userInput = "lyrics i'm working on a dream",
