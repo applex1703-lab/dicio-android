@@ -5,6 +5,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -45,6 +46,7 @@ class TvHomeActionsTest {
         assertEquals("down", action)
     }
 
+    @OptIn(ExperimentalTestApi::class)
     @Test fun dpadMovesFocusToSettings() {
         compose.setContent {
             val requester = remember { FocusRequester() }
