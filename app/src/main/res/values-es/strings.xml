@@ -166,28 +166,20 @@
     <string name="pref_stt_play_sound_alarm">Canal de alarma</string>
     <string name="pref_stt_play_sound_media">Por defecto/canal multimedia</string>
     <string name="pref_stt_play_sound_none">No reproducir sonido</string>
-    <string name="wake_service_foreground_notification">Escuchando la palabra de activación \"Hey Dicio\"</string>
-    <string name="wake_service_start_notification">Toque para iniciar el servicio de palabras de activación de Dicio</string>
-    <string name="wake_word_error_downloading_network">Dicio no pudo conectarse a Internet. Verifique su conexión y vuelva a intentarlo.</string>
-    <string name="wake_word_error_loading">Se produjo un error inesperado durante la carga</string>
+
+
     <string name="disable">Desactivar</string>
     <string name="retry">Reintentar</string>
     <string name="stop">Detener</string>
     <string name="grant_permissions">Conceder permisos</string>
-    <string name="pref_wake_method">Método de reconocimiento de palabra de activación</string>
-    <string name="pref_wake_method_summary">Elige qué servicio usar para escuchar la palabra de activación \"Hey Dicio\" en segundo plano</string>
-    <string name="pref_wake_method_disabled">Desactivado</string>
-    <string name="pref_wake_method_openwakeword">Procesamiento de audio sin conexión OpenWakeWord</string>
-    <string name="wake_service_foreground_notification_summary">Esta notificación permite que las palabras para activar Dicio escuche el micrófono en segundo plano</string>
-    <string name="wake_service_label">Servicio de activación para Dicio</string>
-    <string name="wake_word_error_downloading">Se produjo un error inesperado durante la descarga</string>
-    <string name="wake_service_triggered_notification_summary">En Android 10+ Dicio no puede iniciarse cuando se detecta una palabra de despertador sin mostrar una notificación.</string>
-    <string name="wake_word_setup_title">Configurar palabra de activación</string>
-    <string name="wake_word_setup_description">Dicio se activará automáticamente cada vez que diga \"Hey Dicio\". Esto funciona iniciando un servicio que siempre escucha en segundo plano. Todo el procesamiento de voz se realiza de forma local, por eso es necesario descargar el modelo de IA con antelación.</string>
+
+
+
+
+
     <string name="pref_stt_play_sound_summary">Elija si desea reproducir un sonido cuando su voz empiece a ser reconocida y seleccione el canal de audio en el que se reproducirá el sonido</string>
     <string name="pref_stt_play_sound_title">Reproducir sonido al empezar a escuchar</string>
-    <string name="wake_service_triggered_notification">Palabra de activación de Dicio activada, toque para abrir</string>
-    <string name="wake_service_start_notification_summary">En Android 11+ Dicio no puede iniciar el servicio sin una interacción manual del usuario.</string>
+
     <string name="waiting">Esperando…</string>
     <string name="skill_sentence_example_media">Sig. canción</string>
     <string name="eval_no_match_repeat">¿Podría repetirlo?</string>
@@ -208,15 +200,14 @@
     <string name="skill_media_pausing">Pausando medio…</string>
     <string name="skill_media_previous">Medio anterior…</string>
     <string name="skill_media_next">Medio siguiente…</string>
-    <string name="pref_wake_custom_delete">Borrar palabra de activación personalizada</string>
-    <string name="pref_wake_custom_import">Importar palabra de activación personalizada</string>
+
     <string name="perm_call_phone">llamar directamente a los números de teléfono</string>
     <string name="skill_name_media">Control de medios</string>
     <string name="skill_media_no_media_session">No está activada la sesión de medios</string>
     <string name="pref_input_method_external_popup_summary">Abre la interfaz de usuario de otra aplicación por medio de ACTION​_​RECOGNIZE​_​SPEECH; por ejemplo, whisperIME, Kõnele y Futo Voice Input</string>
-    <string name="pref_wake_custom_delete_summary">Regresa a la palabra de activación predeterminada \"Hey Dicio\"</string>
+
     <string name="pref_weather_temperature_unit_kelvin">Kelvin (K)</string>
-    <string name="pref_wake_custom_import_summary_oww">Sustituye la palabra de activación predeterminada «Hey Dicio» por un modelo TFLite personalizado; puedes descargar algunos modelos personalizados desde github.com/dscripka/openWakeWord/releases</string>
+
     <string name="pref_weather_length_unit_metric">Métrica</string>
     <string name="perm_read_contacts">leer sus contactos</string>
     <string name="pref_weather_length_unit">Unidad de medida</string>
@@ -226,12 +217,9 @@
     <string name="pref_stt_silence_duration_description">Renuncia a la escucha tras %1$d intervalos de silencio</string>
     <string name="skill_name_joke">Chiste</string>
     <string name="skill_sentence_example_joke">Cuéntame un chiste</string>
-    <string name="skill_listening_already_listening">Ya estoy atento a la palabra clave</string>
-    <string name="skill_listening_started_listening">Vale, estaré atento a la palabra clave</string>
-    <string name="skill_listening_not_listening">No estaba escuchando</string>
-    <string name="skill_listening_stop_listening">Aceptar</string>
-    <string name="skill_listening_disabled">El servicio de palabra de activación está desactivado en los ajustes</string>
-    <string name="skill_sentence_example_listening">Detener escucha</string>
+
+
+
     <string name="skill_translation_success">Traducido al %1$s</string>
     <string name="skill_translation_unknown_language">No reconozco el idioma %1$s</string>
     <string name="skill_translation_unsupported_language">El idioma %1$s (%2$s) no está mantenido</string>

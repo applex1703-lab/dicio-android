@@ -51,7 +51,7 @@ jobs:
         # Repository archives may not preserve the executable bit on gradlew.
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug lintDebug testDebugUnitTest --stacktrace
+          ./gradlew assembleDebug assembleDebugAndroidTest lintDebug testDebugUnitTest --stacktrace
 
       - name: Upload unsigned CI debug APK for pull requests
         if: github.event_name == 'pull_request'

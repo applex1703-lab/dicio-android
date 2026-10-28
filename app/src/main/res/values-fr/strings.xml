@@ -166,28 +166,22 @@
     <string name="pref_stt_play_sound_alarm">Canal d’alarme</string>
     <string name="pref_stt_play_sound_notification">Canal de notification</string>
     <string name="pref_stt_play_sound_media">Canal par défaut / média</string>
-    <string name="wake_service_foreground_notification_summary">Cette notification permet au service de mot d’activation Dicio d’écouter le microphone en arrière-plan</string>
-    <string name="wake_service_foreground_notification">En attente du mot d’activation « Hey Dicio »</string>
-    <string name="wake_service_label">Service de mot d’activation Dicio</string>
+
+
     <string name="retry">Réessayer</string>
     <string name="stop">Arrêter</string>
-    <string name="wake_service_triggered_notification_summary">Sur Android 10+, Dicio a besoin d’une notification pour s’exécuter à la détection du mot d’activation.</string>
-    <string name="wake_service_triggered_notification">Mot d’activation Dicio détecté, appuyez pour ouvrir</string>
-    <string name="wake_service_start_notification">Appuyez pour démarrer le service de mot d’activation Dicio</string>
+
+
     <string name="grant_permissions">Accorder les autorisations</string>
-    <string name="wake_word_setup_title">Configurer le mot d’activation</string>
-    <string name="pref_wake_method">Méthode de reconnaissance du mot d’activation</string>
-    <string name="pref_wake_method_summary">Choisissez le service à utiliser pour écouter le mot d’activation « Hey Dicio » en arrière-plan</string>
-    <string name="pref_wake_method_disabled">Désactivé</string>
-    <string name="pref_wake_method_openwakeword">Traitement audio hors ligne OpenWakeWord</string>
-    <string name="wake_word_error_downloading_network">Dicio ne peut pas accéder à internet. Merci de vérifier votre connexion et réessayer.</string>
-    <string name="wake_word_error_downloading">Une erreur inattendue est survenue pendant le téléchargement</string>
+
+
+
+
     <string name="disable">Désactiver</string>
-    <string name="wake_word_error_loading">Une erreur inattendue est survenue pendant le chargement</string>
+
     <string name="pref_stt_play_sound_summary">Choisissez si vous souhaitez jouer un son lorsque votre voix commence à être reconnue, et sélectionnez le canal audio sur lequel jouer le son</string>
     <string name="stt_service_label">Reconnaissance vocale hors ligne Dicio</string>
-    <string name="wake_service_start_notification_summary">Sur Android 11+, Dicio a besoin d’une interaction manuelle de l’utilisateur pour démarrer le service.</string>
-    <string name="wake_word_setup_description">Dicio se réveillera automatiquement chaque fois que vous dites « Hey Dicio ». Cela fonctionne en démarrant un service qui écoute en permanence en arrière-plan. Tout le traitement vocal se fait sur votre appareil, c’est pourquoi vous devez télécharger le modèle d’IA à au préalable.</string>
+
     <string name="perm_read_contacts">lire vos contacts</string>
     <string name="perm_call_phone">passer directement des appels téléphoniques</string>
     <string name="skill_name_media">Contrôle des médias</string>
@@ -201,12 +195,10 @@
     <string name="wake_custom_service_foreground_notification">A l\'écoute du mot de réveil personnalisé</string>
     <string name="pref_input_method_external_popup_summary">Ouvre l\'interface d\'une autre appli via ACTION​_​RECOGNIZE​_​SPEECH, comme par exemple whisperIME, Kõnele, Futo Voice Input</string>
     <string name="pref_input_method_vosk_summary">Télécharge et utilise dans Dicio le modèle de reconnaissance vocale hors-ligne de Vosk</string>
-    <string name="pref_wake_custom_delete">Supprimer le mot de réveil personnalisé</string>
-    <string name="pref_wake_custom_import_summary_oww">Remplace le mot de réveil par défaut \"Hey Dicio\" par un modèle TFLite personnalisé, vous pouvez télécharger des modèles depuis github.com/dscripka/openWakeWord/releases</string>
+
     <string name="waiting">En attente…</string>
     <string name="pref_input_method_external_popup">Fenêtre pop-up externe de reconnaissance vocale</string>
-    <string name="pref_wake_custom_delete_summary">Rétablir le mot de réveil par défaut \"Hey Dicio\"</string>
-    <string name="pref_wake_custom_import">Importer un mot de réveil personnalisé</string>
+
     <string name="eval_no_match_repeat">Pouvez-vous répéter ?</string>
     <string name="pref_weather_temperature_unit">Unité de température</string>
     <string name="skill_weather_kelvin">K</string>
@@ -222,13 +214,10 @@
     <string name="use_system_default">Utiliser valeurs du système</string>
     <string name="pref_weather_temperature_unit_celsius">Celsius (°C)</string>
     <string name="pref_weather_length_unit_imperial">Impérial</string>
-    <string name="skill_listening_already_listening">Je suis déjà à l\'écoute du mot d\'activation</string>
-    <string name="skill_listening_started_listening">Ok, je me mets à l\'écoute du mot d\'activation</string>
-    <string name="skill_listening_not_listening">Je n\'écoutais pas</string>
-    <string name="skill_listening_stop_listening">OK</string>
-    <string name="skill_listening_disabled">Le service d\'écoute du mot d\'activation est désactivé dans les paramètres</string>
-    <string name="skill_name_listening">Contrôler l\'écoute du mot d\'activation</string>
-    <string name="skill_sentence_example_listening">Arrêter l\'écoute</string>
+
+
+
+
     <string name="skill_name_joke">Blague</string>
     <string name="skill_sentence_example_joke">Fais moi une blague</string>
     <string name="skill_translation_success">Traduit en %1$s</string>

@@ -32,8 +32,6 @@ import org.stypox.dicio.MainActivity
 import org.stypox.dicio.cldr.CldrLanguages.LocaleAndTranslation
 import org.stypox.dicio.di.SttInputDeviceWrapper
 import org.stypox.dicio.di.SttInputDeviceWrapperModule
-import org.stypox.dicio.di.WakeDeviceWrapper
-import org.stypox.dicio.di.WakeDeviceWrapperModule
 import org.stypox.dicio.eval.SkillEvaluator
 import org.stypox.dicio.eval.SkillEvaluatorModule
 import org.stypox.dicio.io.input.SttState
@@ -72,7 +70,6 @@ import javax.inject.Singleton
 
 @UninstallModules(
     SttInputDeviceWrapperModule::class,
-    WakeDeviceWrapperModule::class,
     SkillEvaluatorModule::class,
 )
 @HiltAndroidTest
@@ -86,16 +83,6 @@ class ScreenshotTakerTest {
             return FakeSttInputDeviceWrapper()
         }
     }
-    @Module
-    @InstallIn(SingletonComponent::class)
-    class FakeWakeDeviceWrapperModule {
-        @Provides
-        @Singleton
-        fun provideWakeDeviceWrapper(): WakeDeviceWrapper {
-            return FakeWakeDeviceWrapper()
-        }
-    }
-
     @Module
     @InstallIn(SingletonComponent::class)
     class FakeSkillEvaluatorModule {

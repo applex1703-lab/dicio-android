@@ -2,8 +2,6 @@ package org.stypox.dicio.settings
 
 import android.app.Application
 import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -11,9 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,7 +35,6 @@ import org.stypox.dicio.settings.datastore.SpeechOutputDevice
 import org.stypox.dicio.settings.datastore.SttPlaySound
 import org.stypox.dicio.settings.datastore.Theme
 import org.stypox.dicio.settings.datastore.UserSettingsModule.Companion.newDataStoreForPreviews
-import org.stypox.dicio.settings.datastore.WakeDevice
 import org.stypox.dicio.settings.ui.SettingsCategoryTitle
 import org.stypox.dicio.settings.ui.SettingsItem
 import org.stypox.dicio.ui.theme.AppTheme
@@ -75,11 +70,6 @@ private fun MainSettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val settings by viewModel.settingsState.collectAsState()
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
-        if (it != null) {
-            viewModel.addOwwUserWakeFile(it)
-        }
-    }
 
     LazyColumn(modifier) {
         item { org.stypox.dicio.llm.PolzaSettingsCard() }
@@ -134,40 +124,6 @@ private fun MainSettingsScreen(
                 viewModel::setInputDevice,
             )
         }
-        val wakeDevice = when (val device = settings.wakeDevice) {
-            WakeDevice.UNRECOGNIZED,
-            WakeDevice.WAKE_DEVICE_UNSET -> WakeDevice.WAKE_DEVICE_OWW
-            else -> device
-        }
-        item {
-            wakeDevice().Render(
-                wakeDevice,
-                viewModel::setWakeDevice,
-            )
-        }
-        if (wakeDevice == WakeDevice.WAKE_DEVICE_OWW) {
-            /* OpenWakeWord-specific settings */
-            item {
-                val isHeyDicio by viewModel.isHeyDicio.collectAsState(true)
-                if (isHeyDicio) {
-                    // the wake word is "Hey Dicio", so there is no custom model at the moment
-                    SettingsItem(
-                        modifier = Modifier.clickable { importLauncher.launch(arrayOf("*/*")) },
-                        title = stringResource(R.string.pref_wake_custom_import),
-                        icon = Icons.Default.UploadFile,
-                        description = stringResource(R.string.pref_wake_custom_import_summary_oww),
-                    )
-                } else {
-                    // a custom model is currently set, give the option to remove it
-                    SettingsItem(
-                        modifier = Modifier.clickable { viewModel.removeOwwUserWakeFile() },
-                        title = stringResource(R.string.pref_wake_custom_delete),
-                        icon = Icons.Default.DeleteSweep,
-                        description = stringResource(R.string.pref_wake_custom_delete_summary),
-                    )
-                }
-            }
-        }
         item {
             speechOutputDevice().Render(
                 when (val speechOutputDevice = settings.speechOutputDevice) {
@@ -219,7 +175,6 @@ private fun MainSettingsScreenPreview() {
                 navigateToSkillSettings = {},
                 viewModel = MainSettingsViewModel(
                     application = Application(),
-                    wakeDeviceWrapper = null,
                     dataStore = newDataStoreForPreviews(),
                 ),
             )
@@ -246,7 +201,6 @@ private fun MainSettingsScreenWithTopBarPreview() {
                 navigateToSkillSettings = {},
                 viewModel = MainSettingsViewModel(
                     application = Application(),
-                    wakeDeviceWrapper = null,
                     dataStore = newDataStoreForPreviews()
                 )
             )

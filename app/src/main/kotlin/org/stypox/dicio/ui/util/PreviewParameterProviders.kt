@@ -11,7 +11,6 @@ import org.dicio.skill.context.SkillContext
 import org.dicio.skill.skill.SkillInfo
 import org.dicio.skill.skill.SkillOutput
 import org.stypox.dicio.io.input.SttState
-import org.stypox.dicio.io.wake.WakeState
 import org.stypox.dicio.skills.calculator.CalculatorInfo
 import org.stypox.dicio.skills.fallback.text.TextFallbackOutput
 import org.stypox.dicio.skills.lyrics.LyricsInfo
@@ -139,14 +138,4 @@ class SttStatesPreviews : CollectionPreviewParameterProvider<SttState>(listOf(
     SttState.Loaded,
     SttState.Listening,
     SttState.WaitingForResult,
-))
-
-class WakeStatesPreviews : CollectionPreviewParameterProvider<WakeState>(listOf(
-    WakeState.NotDownloaded,
-    WakeState.Downloading(Progress(0, 0, 987654, 0)),
-    WakeState.Downloading(Progress(1, 2, 987654, 1234567)),
-    WakeState.ErrorDownloading(Exception("ErrorDownloading exception")),
-    WakeState.Loading,
-    WakeState.ErrorLoading(Exception("ErrorLoading exception")),
-    WakeState.Loaded,
 ))

@@ -39,7 +39,7 @@
     <string name="copied_to_clipboard">Yettwanɣel ɣef afus</string>
     <string name="skill_name_navigation">Tunigin</string>
     <string name="skill_name_timer">Amakud</string>
-    <string name="pref_wake_method_disabled">D arurmid</string>
+
     <string name="disable">Kkes armad</string>
     <string name="retry">Ɛreḍ tikkelt nniḍen</string>
     <string name="stop">Seḥbes</string>
@@ -69,6 +69,5 @@
     <string name="skill_translation_success">Yettwasuqel ɣer %1$s</string>
     <string name="pref_language_system">Seqdec tutlayt n unagraw</string>
     <string name="skill_navigation_navigating_to">Tunigin ɣer %1$s</string>
-    <string name="wake_word_setup_title">Swel awal n usermed</string>
-    <string name="wake_service_label">Tanfa n wawal n usermed n Dicio</string>
+
 </resources>

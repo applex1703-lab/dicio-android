@@ -173,8 +173,6 @@ dependencies {
     implementation(libs.kotlin.serialization)
     implementation(libs.navigation)
 
-    // LiteRT / Tensorflow Lite
-    implementation(libs.litert)
 
     // OkHttp
     implementation(platform(libs.okhttp.bom))

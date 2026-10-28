@@ -158,14 +158,10 @@
     <string name="pref_input_method_vosk_summary">Mengunduh dan menjalankan model Vosk SpeechToText secara luring di dalam Dicio</string>
     <string name="pref_input_method_external_popup">Popup SpeechToText eksternal</string>
     <string name="pref_input_method_external_popup_summary">Membuka UI aplikasi lain melalui ACTION​_​RECOGNIZE​_​SPEECH, misalnya whisperIME, Kõnele, Futo Voice Input</string>
-    <string name="pref_wake_method">Metode pengenalan kata pemicu</string>
-    <string name="pref_wake_method_summary">Pilih layanan yang digunakan untuk mendengarkan kata pemicu \"Hey Dicio\" di latar belakang</string>
-    <string name="pref_wake_method_disabled">Dinonaktifkan</string>
-    <string name="pref_wake_method_openwakeword">Pemrosesan audio luring OpenWakeWord</string>
-    <string name="pref_wake_custom_delete">Hapus kata pemicu kustom</string>
-    <string name="pref_wake_custom_delete_summary">Kembalikan ke kata pemicu default \"Hey Dicio\"</string>
-    <string name="pref_wake_custom_import">Impor kata pemicu kustom</string>
-    <string name="pref_wake_custom_import_summary_oww">Ganti kata pemicu default \"Hey Dicio\" dengan model TFLite kustom; Anda dapat mengunduh beberapa model kustom dari github.com/dscripka/openWakeWord/releases</string>
+
+
+
+
     <string name="pref_stt_auto_finish_summary_off">Tunggu konfirmasi manual sebelum mengirim hasil ucapan ke aplikasi yang meminta</string>
     <string name="pref_dynamic_colors_title">Warna dinamis</string>
     <string name="pref_dynamic_colors_summary">Gunakan warna dinamis Material You yang disediakan oleh sistem</string>
@@ -198,30 +194,22 @@
     <string name="skill_media_next">Media berikutnya…</string>
     <string name="skill_media_no_media_session">Tidak ada sesi media yang aktif</string>
     <string name="stt_service_label">Pengenalan ucapan luring Dicio</string>
-    <string name="wake_service_label">Layanan kata pemicu Dicio</string>
-    <string name="wake_service_foreground_notification_summary">Notifikasi ini memungkinkan layanan kata pemicu Dicio untuk mendengarkan mikrofon di latar belakang</string>
-    <string name="wake_service_foreground_notification">Mendengarkan kata pemicu \"Hey Dicio\"</string>
+
+
     <string name="wake_custom_service_foreground_notification">Mendengarkan kata pemicu kustom</string>
-    <string name="wake_service_start_notification">Ketuk untuk memulai layanan kata pemicu Dicio</string>
-    <string name="wake_service_triggered_notification">Kata pemicu Dicio terdeteksi, ketuk untuk membuka</string>
-    <string name="wake_service_start_notification_summary">Di Android 11+ Dicio tidak dapat memulai layanan tanpa interaksi manual dari pengguna.</string>
-    <string name="wake_service_triggered_notification_summary">Di Android 10+ Dicio tidak dapat memulai saat kata pemicu terdeteksi tanpa menampilkan notifikasi.</string>
-    <string name="wake_word_setup_title">Siapkan kata pemicu</string>
-    <string name="wake_word_setup_description">Dicio akan aktif secara otomatis setiap kali Anda mengucapkan \"Hey Dicio\". Ini bekerja dengan menjalankan layanan yang selalu mendengarkan di latar belakang. Semua pemrosesan ucapan terjadi secara lokal, itulah sebabnya Anda perlu mengunduh model AI terlebih dahulu.</string>
-    <string name="wake_word_error_downloading">Terjadi kesalahan tak terduga saat mengunduh</string>
-    <string name="wake_word_error_downloading_network">Dicio tidak dapat menjangkau internet. Silakan periksa koneksi Anda dan coba lagi.</string>
-    <string name="wake_word_error_loading">Terjadi kesalahan tak terduga saat memuat</string>
+
+
+
+
+
     <string name="disable">Nonaktifkan</string>
     <string name="retry">Coba lagi</string>
     <string name="stop">Berhenti</string>
     <string name="grant_permissions">Berikan izin</string>
-    <string name="skill_listening_already_listening">Saya sudah mendengarkan kata pemicu</string>
-    <string name="skill_listening_started_listening">Oke, saya akan mendengarkan kata pemicu</string>
-    <string name="skill_listening_not_listening">Saya tidak sedang mendengarkan</string>
-    <string name="skill_listening_stop_listening">Oke</string>
-    <string name="skill_listening_disabled">Layanan kata pemicu dinonaktifkan di pengaturan</string>
-    <string name="skill_name_listening">Kendalikan pendengaran kata pemicu</string>
-    <string name="skill_sentence_example_listening">Berhenti mendengarkan</string>
+
+
+
+
     <string name="skill_translation_success">Diterjemahkan ke %1$s</string>
     <string name="skill_translation_unknown_language">Saya tidak mengenali bahasa %1$s</string>
     <string name="skill_translation_unsupported_language">Bahasa %1$s (%2$s) tidak didukung</string>

@@ -167,28 +167,21 @@
     <string name="settings_description_with_value">%1$s — %2$s</string>
     <string name="stt_service_label">Reconhecimento de voz offline Dicio</string>
     <string name="pref_theme_system_dark_black">Usar o tema do sistema (usar Preto no tema escuro)</string>
-    <string name="pref_wake_method_disabled">Desativado</string>
+
     <string name="pref_stt_play_sound_title">Reproduzir som ao começar a ouvir</string>
     <string name="pref_stt_play_sound_summary">Escolha se deseja reproduzir um som quando sua voz começar a ser reconhecida e selecione o canal de áudio para reproduzir o som</string>
     <string name="pref_stt_play_sound_notification">Canal de notificação</string>
     <string name="pref_stt_play_sound_alarm">Canal de alarme</string>
     <string name="pref_stt_play_sound_media">Padrão/canal de mídia</string>
     <string name="pref_stt_play_sound_none">Não reproduza som</string>
-    <string name="wake_service_label">Serviço de alerta Dicio</string>
-    <string name="wake_service_foreground_notification_summary">Esta notificação permite que o serviço wake word Dicio ouça o microfone em segundo plano</string>
-    <string name="pref_wake_method">Método de reconhecimento de palavra de ativação</string>
-    <string name="pref_wake_method_summary">Escolha o serviço a ser usado para ouvir a palavra de ativação \"Hey Dicio\" em segundo plano</string>
-    <string name="pref_wake_method_openwakeword">Processamento de áudio offline OpenWakeWord</string>
-    <string name="wake_service_foreground_notification">Ouvindo a palavra de despertar \"Hey Dicio\"</string>
-    <string name="wake_service_start_notification">Toque para iniciar o serviço Dicio wake word</string>
-    <string name="wake_service_triggered_notification">Dicio wake word acionado, toque para abrir</string>
-    <string name="wake_service_start_notification_summary">No Android 11+ Dicio não consegue iniciar o serviço sem uma interação manual do usuário.</string>
-    <string name="wake_service_triggered_notification_summary">No Android 10+, o Dicio não pode ser iniciado quando uma palavra de ativação é detectada sem mostrar uma notificação.</string>
-    <string name="wake_word_setup_title">Configurar palavra de ativação</string>
-    <string name="wake_word_setup_description">Dicio irá acordar automaticamente sempre que você disser \"Ei, Dicio\". Isso funciona iniciando um serviço que sempre escuta em segundo plano. Todo o processamento de fala acontece localmente, por isso você precisa baixar o modelo de IA com antecedência.</string>
-    <string name="wake_word_error_downloading">Ocorreu um erro inesperado durante o download</string>
-    <string name="wake_word_error_downloading_network">Dicio não conseguiu acessar a internet. Verifique sua conexão e tente novamente.</string>
-    <string name="wake_word_error_loading">Ocorreu um erro inesperado ao carregar</string>
+
+
+
+
+
+
+
+
     <string name="retry">Tentar novamente</string>
     <string name="stop">Parar</string>
     <string name="grant_permissions">Conceder permissões</string>
@@ -202,12 +195,10 @@
     <string name="skill_media_next">Próxima mídia…</string>
     <string name="skill_media_no_media_session">Nenhuma sessão de mídia está ativa</string>
     <string name="wake_custom_service_foreground_notification">Ouvindo uma palavra de ativação personalizada</string>
-    <string name="skill_listening_already_listening">Já estou ouvindo a palavra de despertar</string>
+
     <string name="skill_sentence_example_joke">Conte-me uma piada</string>
-    <string name="pref_wake_custom_delete">Apagar palavra ativadora customizada</string>
-    <string name="pref_wake_custom_delete_summary">Retorna à palavra ativadora \"Hey Dicio\" padrão</string>
-    <string name="pref_wake_custom_import">Importar palavra ativadora customizada</string>
-    <string name="pref_wake_custom_import_summary_oww">Substitua a palavra de ativação padrão \"Hey Dicio\" por um modelo TFLite personalizado; pode descarregar alguns modelos personalizados em github.com/dscripka/openWakeWord/releases</string>
+
+
     <string name="perm_read_contacts">ler os seus contactos</string>
     <string name="perm_call_phone">ligar diretamente para números de telefone</string>
     <string name="eval_no_match_repeat">Pode repetir?</string>
@@ -216,12 +207,9 @@
     <string name="skill_name_joke">Piada</string>
     <string name="skill_search_no_results_stop">A pesquisa não retornou resultados</string>
     <string name="skill_media_playing">A reproduzir média…</string>
-    <string name="skill_listening_started_listening">OK, vou escutar a palavra de despertar</string>
-    <string name="skill_listening_not_listening">Não estava a escutar</string>
-    <string name="skill_listening_stop_listening">OK</string>
-    <string name="skill_listening_disabled">A palavra de despertar está desativada nas configurações</string>
-    <string name="skill_name_listening">Controlar quando escuta palavra de despertar</string>
-    <string name="skill_sentence_example_listening">Parar de escutar</string>
+
+
+
     <string name="skill_translation_success">Traduzido para %1$s</string>
     <string name="skill_translation_unknown_language">Não reconheço a língua %1$s</string>
     <string name="skill_translation_unsupported_language">Língua %1$s (%2$s) não é suportado</string>

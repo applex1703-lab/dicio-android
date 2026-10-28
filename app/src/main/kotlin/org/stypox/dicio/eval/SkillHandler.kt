@@ -19,7 +19,6 @@ import org.stypox.dicio.settings.datastore.UserSettingsModule
 import org.stypox.dicio.skills.calculator.CalculatorInfo
 import org.stypox.dicio.skills.current_time.CurrentTimeInfo
 import org.stypox.dicio.skills.fallback.text.TextFallbackInfo
-import org.stypox.dicio.skills.listening.ListeningInfo
 import org.stypox.dicio.skills.lyrics.LyricsInfo
 import org.stypox.dicio.skills.media.MediaInfo
 import org.stypox.dicio.skills.navigation.NavigationInfo
@@ -54,7 +53,6 @@ class SkillHandler @Inject constructor(
         CurrentTimeInfo,
         MediaInfo,
         JokeInfo,
-        ListeningInfo(dataStore),
         TranslationInfo,
         NotifyInfo,
         FlashlightInfo,

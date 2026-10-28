@@ -36,7 +36,6 @@ import org.stypox.dicio.di.SkillContextImpl
 import org.stypox.dicio.eval.SkillEvaluator
 import org.stypox.dicio.io.input.InputEvent
 import org.stypox.dicio.io.input.SttState
-import org.stypox.dicio.io.wake.WakeState
 import org.stypox.dicio.ui.nav.SearchTopAppBar
 import org.stypox.dicio.ui.theme.AppTheme
 import org.stypox.dicio.ui.util.InteractionLogPreviews
@@ -90,7 +89,6 @@ fun HomeScreen(
     val enabledSkillsInfo = viewModel.skillHandler.enabledSkillsInfo.collectAsState()
     val interactionsState = viewModel.skillEvaluator.state.collectAsState()
     val sttState = viewModel.sttInputDevice.uiState.collectAsState()
-    val wakeState = viewModel.wakeDevice.state.collectAsState()
 
     HomeScreen(
         skillContext = viewModel.skillContext,
@@ -100,11 +98,6 @@ fun HomeScreen(
         onSttClick = {
             viewModel.sttInputDevice.onClick(viewModel.skillEvaluator::processInputEvent)
         },
-        wakeState = wakeState.value,
-        onWakeDownload = {
-            viewModel.wakeDevice.download()
-        },
-        onWakeDisable = viewModel::disableWakeWord,
         onManualUserInput = {
             viewModel.skillEvaluator.processInputEvent(InputEvent.Final(listOf(Pair(it, 1.0f))))
         },
@@ -124,9 +117,6 @@ fun HomeScreen(
     // if the STT state is null, it means the user disabled the STT
     sttState: SttState?,
     onSttClick: () -> Unit,
-    wakeState: WakeState?,
-    onWakeDownload: () -> Unit,
-    onWakeDisable: () -> Unit,
     onManualUserInput: (String) -> Unit,
     navigationIcon: @Composable () -> Unit,
     snackbarHost: @Composable () -> Unit,
@@ -158,9 +148,6 @@ fun HomeScreen(
                 skills = skills,
                 interactionLog = interactionLog,
                 onConfirmedQuestionClick = { searchString = it },
-                wakeState = wakeState,
-                onWakeDownload = onWakeDownload,
-                onWakeDisable = onWakeDisable,
                 modifier = Modifier.padding(paddingValues),
             )
         },
@@ -191,9 +178,6 @@ private fun HomeScreenPreview(@PreviewParameter(InteractionLogPreviews::class) i
             interactionLog = interactionLog,
             sttState = sttStatesPreviews[i % sttStatesPreviews.size],
             onSttClick = { i += 1 },
-            wakeState = null,
-            onWakeDownload = {},
-            onWakeDisable = {},
             onManualUserInput = {},
             navigationIcon = {
                 IconButton(onClick = {}) {

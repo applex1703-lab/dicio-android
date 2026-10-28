@@ -13,14 +13,11 @@ import org.dicio.skill.context.SkillContext
 import org.stypox.dicio.di.SkillContextInternal
 import org.stypox.dicio.di.SpeechOutputDeviceWrapper
 import org.stypox.dicio.di.SttInputDeviceWrapper
-import org.stypox.dicio.di.WakeDeviceWrapper
 import org.stypox.dicio.eval.SkillEvaluator
 import org.stypox.dicio.eval.SkillHandler
 import org.stypox.dicio.io.input.SttState
 import org.stypox.dicio.io.speech.SnackbarSpeechDevice
 import org.stypox.dicio.settings.datastore.UserSettings
-import org.stypox.dicio.settings.datastore.WakeDevice
-import org.stypox.dicio.settings.datastore.copy
 import javax.inject.Inject
 
 @HiltViewModel
@@ -31,7 +28,6 @@ class HomeScreenViewModel @Inject constructor(
     val dataStore: DataStore<UserSettings>,
     val sttInputDevice: SttInputDeviceWrapper,
     val speechOutputDevice: SpeechOutputDeviceWrapper,
-    val wakeDevice: WakeDeviceWrapper,
     val skillEvaluator: SkillEvaluator,
     // this is always instantiated, but will do nothing if
     // it is not the speech device chosen by the user
@@ -66,11 +62,4 @@ class HomeScreenViewModel @Inject constructor(
         }
     }
 
-    fun disableWakeWord() {
-        viewModelScope.launch {
-            dataStore.updateData {
-                it.copy { wakeDevice = WakeDevice.WAKE_DEVICE_NOTHING }
-            }
-        }
-    }
 }

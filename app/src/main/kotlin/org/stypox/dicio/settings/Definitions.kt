@@ -8,7 +8,6 @@ import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.InvertColors
 import androidx.compose.material.icons.filled.KeyboardAlt
@@ -29,7 +28,6 @@ import org.stypox.dicio.settings.datastore.Language
 import org.stypox.dicio.settings.datastore.SpeechOutputDevice
 import org.stypox.dicio.settings.datastore.SttPlaySound
 import org.stypox.dicio.settings.datastore.Theme
-import org.stypox.dicio.settings.datastore.WakeDevice
 import org.stypox.dicio.settings.ui.BooleanSetting
 import org.stypox.dicio.settings.ui.IntSetting
 import org.stypox.dicio.settings.ui.ListSetting
@@ -120,23 +118,6 @@ fun inputDevice() = ListSetting(
             icon = Icons.Default.KeyboardAlt,
         ),
     ),
-)
-
-@Composable
-fun wakeDevice() = ListSetting(
-    title = stringResource(R.string.pref_wake_method),
-    icon = Icons.Default.Hearing,
-    description = stringResource(R.string.pref_wake_method_summary),
-    possibleValues = listOf(
-        ListSetting.Value(
-            value = WakeDevice.WAKE_DEVICE_OWW,
-            name = stringResource(R.string.pref_wake_method_openwakeword),
-        ),
-        ListSetting.Value(
-            value = WakeDevice.WAKE_DEVICE_NOTHING,
-            name = stringResource(R.string.pref_wake_method_disabled),
-        )
-    )
 )
 
 @Composable

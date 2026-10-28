@@ -18,7 +18,7 @@ message UserSettings {
     SpeechOutputDevice speech_output_device = 5;
     bool auto_finish_stt_popup = 6;
     map<string, bool> enabled_skills = 7;
-    WakeDevice wake_device = 8;
+    WakeDevice wake_device = 8; // Legacy: retained for wire compatibility; no longer used.
     SttPlaySound stt_play_sound = 9;
     int32 stt_silence_duration = 10;
 }

@@ -13,6 +13,7 @@ enum class UserAction(val message: String) : Parcelable {
     STT_POPUP_SPEECH_TO_TEXT("Stt popup speech to text"),
     GENERIC_EVALUATION("Evaluation"),
     SKILL_EVALUATION("Skill evaluation"),
+    // Retained to preserve enum ordering in existing parcelled error reports.
     WAKE_DOWNLOADING("Downloading wake word model"),
     WAKE_LOADING("Loading wake word model"),
     FLASHLIGHT("Turning flashlight on or off");
