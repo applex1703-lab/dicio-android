@@ -102,9 +102,11 @@ jobs:
           INPUT="app/build/outputs/apk/debug/app-debug.apk"
           OUTPUT="$RUNNER_TEMP/dicio-tv.apk"
           "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias dicio-tv --ks-pass env:KEYSTORE_PASSWORD --out "$OUTPUT" "$INPUT"
-          CERT=$("$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$OUTPUT" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr '[:lower:]' '[:upper:]')
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$OUTPUT" > "$RUNNER_TEMP/dicio-cert.txt"
+          CERT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/dicio-cert.txt" | tr '[:lower:]' '[:upper:]')
           if [[ "$CERT" != "$EXPECTED_FINGERPRINT" ]]; then
-            echo "Certificate verification failed"
+            echo "Certificate verification failed: actual length ${#CERT}, expected length ${#EXPECTED_FINGERPRINT}"
+            grep -E '^Signer #[0-9]+ certificate (DN|SHA-256 digest):' "$RUNNER_TEMP/dicio-cert.txt" || true
             exit 1
           fi
           echo "Signing certificate verified"
