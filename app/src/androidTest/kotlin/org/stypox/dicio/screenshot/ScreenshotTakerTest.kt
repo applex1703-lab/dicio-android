@@ -276,7 +276,8 @@ class ScreenshotTakerTest {
                     question = "call michael",
                     answer = ConfirmCallOutput(
                         "Michael Smith",
-                        "0123 456789"
+                        "0123 456789",
+                        Sentences.UtilYesNo["en"]!!
                     )
                 ),
                 QuestionAnswer(
