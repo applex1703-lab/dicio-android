@@ -226,7 +226,7 @@
     <string name="about">பற்றி</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">பதிப்பு தகவலை நகலெடுக்கவும்</string>
-    <string name="about_description">பல மொழி, உள்ளக மற்றும் சுதந்திர குரல் உதவியாளர்</string>
+    <string name="about_description">Voice assistant for Android TV</string>
     <string name="about_repository_title">மூல குறியீடு களஞ்சியம்</string>
     <string name="about_repository_description">டிசியோ இலவசம் மற்றும் திறந்த மூலமானது, GPLv3 இன் கீழ் உரிமம் பெற்றது</string>
     <string name="about_issues_title">பிழை கண்டுபிடிக்கப்பட்டதா?</string>
@@ -234,5 +234,5 @@
     <string name="about_contributing_title">பங்களிக்கிறது</string>
     <string name="about_contributing_description">டிசியோ உலகெங்கிலும் உள்ள தன்னார்வலர்களால் உருவாக்கப்பட்டது. குறியீடு மேம்பாடுகள், மொழிபெயர்ப்புகள் மற்றும் புதிய திறன்களை வழங்குவதன் மூலம் நீங்கள் உதவலாம்!</string>
     <string name="about_privacy_title">தனியுரிமைக் கொள்கை</string>
-    <string name="about_privacy_description">ஒரு திறன் எதிர்பார்க்கப்படும் போது அல்லது அமைப்பின் போது இயந்திர கற்றல் மாதிரிகளை பதிவிறக்கம் செய்யும் போது மட்டுமே டிசியோ வெளிப்புற சேவைகளுடன் இணைகிறது. அனைத்து பேச்சு செயலாக்கங்களும் சாதனத்தில் உள்நாட்டில் செய்யப்படுகின்றன, மேலும் பெரும்பாலான திறன்களை ஆஃப்லைனில் பயன்படுத்தலாம்.</string>
+    <string name="about_privacy_description">Speech recognition uses Google; optional RouterAI requests are sent online. See the privacy notes for details.</string>
 </resources>

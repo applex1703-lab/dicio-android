@@ -101,6 +101,7 @@ class PolzaSettingsViewModel @Inject constructor(private val settings: PolzaSett
         }
         if (!operationsMutex.tryLock()) { status = "Другая операция выполняется. Повторите сохранение."; return }
         saving = true
+        status = "Сохранение…"
         val newEnabled = enabled
         val newModel = model
         val newKey = if (removeKey) "" else key
@@ -140,6 +141,7 @@ class PolzaSettingsViewModel @Inject constructor(private val settings: PolzaSett
         if ((!ready && !recoveryAvailable) || saving) return
         if (!operationsMutex.tryLock()) { status = "Другая операция выполняется. Повторите сброс."; return }
         saving = true
+        status = "Сброс…"
         settingsOperations.launch {
             try {
                 withContext(Dispatchers.IO) { settings.reset(revision) }

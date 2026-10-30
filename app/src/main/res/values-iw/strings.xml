@@ -233,7 +233,7 @@
     <string name="about">על אודות</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">העתקת פרטי הגרסה</string>
-    <string name="about_description">מסייע קולי רב לשוני, מקומי וחופשי</string>
+    <string name="about_description">Voice assistant for Android TV</string>
     <string name="about_repository_title">מאגר קוד המקור</string>
     <string name="about_repository_description">Dicio הוא חופשי ובקוד פתוח, כפוף לרישיון GPLv3</string>
     <string name="about_issues_title">מצאת תקלה?</string>
@@ -241,5 +241,5 @@
     <string name="about_contributing_title">תרומה</string>
     <string name="about_contributing_description">הפיתוח של Dicio נערך על ידי מתנדבים מכל רחבי העולם. אפשר לסייע גם על ידי תרומת שיפורי קוד, תרגומים ואפילו מיומנויות חדשות!</string>
     <string name="about_privacy_title">מדיניות פרטיות</string>
-    <string name="about_privacy_description">Dicio מתחבר לשירותים חיצוניים רק כאשר מיומנות אמורה לעשות זאת או כדי להוריד מודלים ללמידת מכונה במהלך ההגדרות. כל עיבוד הדיבור מתבצעת מקומית במכשיר, וברוב המיומנויות ניתן להשתמש ללא חיבור לאינטרנט.</string>
+    <string name="about_privacy_description">Speech recognition uses Google; optional RouterAI requests are sent online. See the privacy notes for details.</string>
 </resources>

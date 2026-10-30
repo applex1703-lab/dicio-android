@@ -22,6 +22,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 
+internal fun showRemoveKey(ready: Boolean, keyStatus: PolzaSettings.KeyStatus, removeKey: Boolean) =
+    ready && (keyStatus != PolzaSettings.KeyStatus.ABSENT || removeKey)
+
 @Composable
 fun PolzaSettingsCard() {
     val vm: PolzaSettingsViewModel = hiltViewModel()
@@ -50,15 +53,9 @@ fun PolzaSettingsCard() {
         dismissButton = { TextButton(onClick = { confirmReload = false }) { Text("Отмена") } },
     )
     Column(Modifier.padding(16.dp)) {
-        Text("RouterAI — ответы и действия LLM (экспериментально)")
-        Text("Включённый режим отправляет запросы провайдеру вместо обычных навыков. " +
-            "Провайдер получает текст запроса, названия приложений и медиаданные: имя медиаприложения, " +
-            "состояние воспроизведения и доступные операции управления. " +
-            "Модель выбирает разрешённые действия. Запросы могут быть платными.")
-        if (vm.ready) {
-            Text(if (vm.dirty) "Есть несохранённые изменения. Переключатель показывает черновик, а не действующий режим."
-                else "Изменений для сохранения нет.")
-        }
+        Text("RouterAI")
+        Text("При включении запросы, приложения и данные медиасессий отправляются RouterAI; запросы могут быть платными.")
+        if (vm.ready && vm.dirty) Text("Не сохранено")
         Text("Режим RouterAI (черновик)")
         Switch(checked = vm.enabled, onCheckedChange = vm::updateEnabled,
             enabled = vm.ready && !vm.saving,
@@ -66,29 +63,32 @@ fun PolzaSettingsCard() {
         OutlinedTextField(value = vm.model, onValueChange = vm::updateModel,
             label = { Text("ID модели из каталога RouterAI") }, singleLine = true,
             enabled = vm.ready && !vm.saving)
-        if (vm.ready) Text(when (vm.keyStatus) {
-            PolzaSettings.KeyStatus.ABSENT -> "Сохранённого ключа нет."
-            PolzaSettings.KeyStatus.AVAILABLE -> "Ключ сохранён; подключение не проверено."
-            PolzaSettings.KeyStatus.UNREADABLE -> "Сохранённый ключ недоступен: замените или удалите его."
+        if (vm.ready && vm.keyStatus != PolzaSettings.KeyStatus.ABSENT) Text(when (vm.keyStatus) {
+            PolzaSettings.KeyStatus.AVAILABLE -> "Ключ сохранён."
+            PolzaSettings.KeyStatus.UNREADABLE -> "Ключ недоступен: замените или удалите его."
+            PolzaSettings.KeyStatus.ABSENT -> ""
         })
         OutlinedTextField(value = vm.key, onValueChange = vm::updateKey,
             label = { Text("Новый API-ключ (пусто — сохранить текущий)") }, singleLine = true,
             enabled = vm.ready && !vm.saving && !vm.removeKey,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             visualTransformation = PasswordVisualTransformation())
-        Text("Удалить сохранённый ключ при сохранении")
-        if (vm.removeKey && vm.enabled) Text("Чтобы удалить ключ, сначала выключите RouterAI в черновике.")
-        Switch(checked = vm.removeKey, onCheckedChange = vm::updateRemoveKey,
-            enabled = vm.ready && !vm.saving,
-            modifier = Modifier.semantics { contentDescription = "Удалить сохранённый ключ при сохранении" })
+        if (showRemoveKey(vm.ready, vm.keyStatus, vm.removeKey)) {
+            Text("Удалить ключ при сохранении")
+            Switch(checked = vm.removeKey, onCheckedChange = vm::updateRemoveKey,
+                enabled = !vm.saving,
+                modifier = Modifier.semantics { contentDescription = "Удалить ключ при сохранении" })
+            if (vm.removeKey && vm.enabled) Text("Для удаления выключите RouterAI в черновике.")
+        }
         Button(enabled = vm.ready && !vm.saving, onClick = {
             if (vm.removeKey && !vm.enabled) confirmRemoveKey = true else vm.save()
         }) { Text("Сохранить") }
-        Button(enabled = (vm.ready || vm.recoveryAvailable) && !vm.saving, onClick = { confirmReset = true }) { Text("Сбросить настройки RouterAI") }
+        if (vm.recoveryAvailable) {
+            Button(enabled = !vm.saving, onClick = { confirmReset = true }) { Text("Сбросить настройки…") }
+        }
         if (!vm.ready && !vm.saving) {
             Button(onClick = { if (vm.dirty) confirmReload = true else vm.reload() }) { Text("Загрузить настройки заново") }
         }
-        if (vm.saving) Text("Сохранение или сброс выполняется…")
-        Text(vm.status)
+        if (vm.status.isNotEmpty()) Text(vm.status)
     }
 }

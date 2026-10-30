@@ -2,6 +2,9 @@ package org.stypox.dicio.voice
 
 import android.os.Handler
 import android.os.Looper
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import javax.inject.Inject
 import javax.inject.Singleton
 import org.stypox.dicio.di.SttInputDeviceWrapper
@@ -17,12 +20,18 @@ class VoiceInputCoordinator @Inject constructor(
     private val main = Handler(Looper.getMainLooper())
     private class InputLease(val owner: Any, val revoked: () -> Unit)
     private class EvaluationLease(val owner: Any, val revoked: () -> Unit)
-    private var inputLease: InputLease? = null
-    private var evaluationLease: EvaluationLease? = null
+    private var inputLease: InputLease? by mutableStateOf(null)
+    private var evaluationLease: EvaluationLease? by mutableStateOf(null)
     private var tearingDown = false
     private val deferredReleases = mutableListOf<Pair<Any, Boolean>>()
 
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
+
+    /** Observed by Home so another owner's work cannot consume its Back press. */
+    fun ownsWork(owner: Any): Boolean {
+        checkMain()
+        return inputLease?.owner === owner || evaluationLease?.owner === owner
+    }
 
     /** Explicit voice request; preempts prior input and evaluation, but never retries. */
     fun start(owner: Any, onRevoked: () -> Unit = {}): Boolean {

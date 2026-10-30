@@ -3,6 +3,8 @@ package org.stypox.dicio.eval
 import android.content.Context
 import androidx.datastore.core.DataStore
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,41 +54,109 @@ class SkillHandler @Inject constructor(
         TranslationInfo,
     )
 
-    private val fallbackSkillInfoList = listOf(
-        TextFallbackInfo,
-    )
+    // Merely listing skills in settings must not build the matcher or subscribe to settings.
+    // The same state is retained after first use so legacy dialogue batches keep working.
+    private val matcherDelegate = lazy(LazyThreadSafetyMode.SYNCHRONIZED) { createMatcher() }
+    private val matcher by matcherDelegate
+    internal val isMatcherInitialized: Boolean get() = matcherDelegate.isInitialized()
 
-    private val scope = CoroutineScope(Dispatchers.Default)
+    val enabledSkillsInfo: StateFlow<List<SkillInfo>?> get() = matcher.enabledSkillsInfo
+    val skillRanker: StateFlow<SkillRanker> get() = matcher.skillRanker
 
-    // will be null when it has not been initialized yet
-    private val _enabledSkillsInfo: MutableStateFlow<List<SkillInfo>?> = MutableStateFlow(null)
-    val enabledSkillsInfo: StateFlow<List<SkillInfo>?> = _enabledSkillsInfo
-
-    private val _skillRanker = MutableStateFlow(
-        // an initial dummy value, will be overwritten directly by the launched job
-        SkillRanker(listOf(), fallbackSkillInfoList[0].build(skillContext)!!)
-    )
-    val skillRanker: StateFlow<SkillRanker> = _skillRanker
-
-    init {
-        scope.launch {
-            localeManager.locale
-                .combine(dataStore.data) { locale, data -> Pair(locale, data.enabledSkillsMap) }
-                .distinctUntilChanged()
-                .collectLatest { (_, enabledSkills) ->
-                    // locale is not used here, because the skills directly use the sections locale
-
-                    val newEnabledSkillsInfo = allSkillInfoList
-                        .filter { enabledSkills.getOrDefault(it.id, true) }
-                        .mapNotNull { info -> info.build(skillContext)?.let { skill -> Pair(info, skill) } }
-
-                    _enabledSkillsInfo.value = newEnabledSkillsInfo.map { (info, _skill) -> info }
-                    _skillRanker.value = SkillRanker(
-                        newEnabledSkillsInfo.map { (_info, skill) -> skill },
-                        fallbackSkillInfoList[0].build(skillContext)!!,
-                    )
-                }
+    /** Wait for the first real matcher rather than evaluating against the placeholder fallback. */
+    suspend fun awaitSkillRanker(): SkillRanker {
+        val state = matcher
+        val pending = state.currentResult()
+        try {
+            return pending.await()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            state.failureObserved(pending)
+            throw error
         }
+    }
+
+    private inner class MatcherState(
+        val enabledSkillsInfo: MutableStateFlow<List<SkillInfo>?>,
+        val skillRanker: MutableStateFlow<SkillRanker>,
+    ) {
+        private var result = CompletableDeferred<SkillRanker>()
+        private val scope = CoroutineScope(Dispatchers.Default)
+        private var stopped = false
+        private var observedStoppedFailure = false
+
+        init { startCollector() }
+
+        @Synchronized
+        fun currentResult(): CompletableDeferred<SkillRanker> {
+            if (stopped && observedStoppedFailure) {
+                stopped = false
+                observedStoppedFailure = false
+                result = CompletableDeferred()
+                startCollector()
+            }
+            return result
+        }
+
+        @Synchronized
+        fun failureObserved(pending: CompletableDeferred<SkillRanker>) {
+            if (stopped && result === pending) observedStoppedFailure = true
+        }
+
+        @Synchronized
+        private fun publishSuccess(ranker: SkillRanker) {
+            if (result.isCompleted) result = CompletableDeferred()
+            result.complete(ranker)
+        }
+
+        @Synchronized
+        private fun publishFailure(error: Exception) {
+            if (result.isCompleted) result = CompletableDeferred()
+            result.completeExceptionally(error)
+        }
+
+        private fun startCollector() {
+            scope.launch {
+                try {
+                    localeManager.locale
+                        .combine(dataStore.data) { locale, data -> Pair(locale, data.enabledSkillsMap) }
+                        .distinctUntilChanged()
+                        .collectLatest { (_, enabledSkills) ->
+                            try {
+                                val skills = allSkillInfoList
+                                    .filter { enabledSkills.getOrDefault(it.id, true) }
+                                    .mapNotNull { info -> info.build(skillContext)?.let { skill -> Pair(info, skill) } }
+                                val ranker = SkillRanker(skills.map { it.second }, TextFallbackInfo.build(skillContext)!!)
+                                skillRanker.value = ranker
+                                enabledSkillsInfo.value = skills.map { it.first }
+                                publishSuccess(ranker)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                // Keep collecting: a later settings or locale change can recover.
+                                publishFailure(error)
+                            }
+                        }
+                    throw IllegalStateException("Skill settings stream completed")
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    synchronized(this@MatcherState) {
+                        stopped = true
+                        publishFailure(error)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun createMatcher(): MatcherState {
+        val enabledSkillsInfo = MutableStateFlow<List<SkillInfo>?>(null)
+        val skillRanker = MutableStateFlow(
+            SkillRanker(listOf(), TextFallbackInfo.build(skillContext)!!)
+        )
+        return MatcherState(enabledSkillsInfo, skillRanker)
     }
 
     companion object {

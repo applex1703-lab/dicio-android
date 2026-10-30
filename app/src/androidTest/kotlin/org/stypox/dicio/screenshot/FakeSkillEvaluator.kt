@@ -7,6 +7,7 @@ import org.stypox.dicio.io.input.InputEvent
 import org.stypox.dicio.ui.home.InteractionLog
 
 class FakeSkillEvaluator : SkillEvaluator {
+    override val currentOutput = MutableStateFlow<org.dicio.skill.skill.SkillOutput?>(null)
     override val voicePresentation = MutableStateFlow(org.stypox.dicio.eval.VoicePresentation())
     override fun resetVoicePresentation() { voicePresentation.value = org.stypox.dicio.eval.VoicePresentation() }
     override fun cancelPendingInput() {}

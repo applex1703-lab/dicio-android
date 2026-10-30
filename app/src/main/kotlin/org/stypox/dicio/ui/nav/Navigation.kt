@@ -48,7 +48,7 @@ fun Navigation() {
                     context.startActivity(intent)
                 },
             ) {
-                HomeScreen(it, onSettingsClick = { navController.navigate(MainSettings) })
+                HomeScreen(it)
             }
         }
 

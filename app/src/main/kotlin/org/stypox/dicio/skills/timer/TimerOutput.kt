@@ -97,7 +97,7 @@ sealed interface TimerOutput : SkillOutput {
 
     class ConfirmCancel(
         private val yesNoData: StandardRecognizerData<Sentences.UtilYesNo>,
-        private val onConfirm: () -> SkillOutput,
+        private val onConfirm: suspend () -> SkillOutput,
     ) : TimerOutput, HeadlineSpeechSkillOutput {
         override fun getSpeechOutput(ctx: SkillContext): String =
             ctx.getString(R.string.skill_timer_confirm_cancel)

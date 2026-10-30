@@ -233,7 +233,7 @@
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_repository_title">Dépôt du code source</string>
     <string name="about_issues_title">Vous avez trouvé un bug ?</string>
-    <string name="about_privacy_description">Dicio se connecte à des services externes uniquement lorsqu\'une compétence est censée le faire, ou pour télécharger des modèles d\'apprentissage automatique pendant la configuration. Tous les traitements de la parole sont effectués localement sur l\'appareil, et la plupart des compétences peuvent être utilisées hors ligne.</string>
-    <string name="about_description">Un assistant vocal multilingue, exécuté en local et libre</string>
+    <string name="about_privacy_description">Speech recognition uses Google; optional RouterAI requests are sent online. See the privacy notes for details.</string>
+    <string name="about_description">Voice assistant for Android TV</string>
     <string name="about_contributing_description">Dicio est développé par des volontaires du monde entier. Vous pouvez aider aussi en contribuant à améliorer le code, en traduisant et même en ajoutant de nouvelles compétences !</string>
 </resources>

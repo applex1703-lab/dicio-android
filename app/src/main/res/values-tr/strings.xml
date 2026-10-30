@@ -232,7 +232,7 @@
     <string name="about">Hakkında</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">Sürüm bilgisini kopyala</string>
-    <string name="about_description">Çok dilli, yerel ve özgür sesli asistan</string>
+    <string name="about_description">Voice assistant for Android TV</string>
     <string name="about_repository_title">Kaynak kodu deposu</string>
     <string name="about_repository_description">Dicio, GPLv3 lisansına sahip özgür ve açık kaynaklı bir yazılımdır</string>
     <string name="about_issues_title">Bir hata mı buldunuz?</string>
@@ -240,7 +240,7 @@
     <string name="about_contributing_title">Katkıda bulunma</string>
     <string name="about_contributing_description">Dicio, dünyanın dört bir yanındaki gönüllüler tarafından geliştirilmektedir. Siz de kod iyileştirmeleri, çeviriler ve hatta yeni becerilerle katkıda bulunarak yardım edebilirsiniz!</string>
     <string name="about_privacy_title">Gizlilik politikası</string>
-    <string name="about_privacy_description">Dicio, yalnızca bir yeteneğin bunu yapması gerektiği durumlarda veya kurulum sırasında makine öğrenimi modellerini indirmek için harici hizmetlere bağlanır. Tüm konuşma işleme işlemleri aygıt üzerinde yerel olarak gerçekleştirilir ve yeteneklerin çoğu çevrim dışı olarak kullanılabilir.</string>
+    <string name="about_privacy_description">Speech recognition uses Google; optional RouterAI requests are sent online. See the privacy notes for details.</string>
     <string name="about_wiki_title">Belgeler</string>
     <string name="about_wiki_description">Genel bilgiler, yapılandırma kılavuzları, sorun giderme ipuçları ve daha fazlasını mı arıyorsunuz? Viki sayfamıza göz atın!</string>
     <string name="about_wiki_link">https://dicio.stypox.org/</string>

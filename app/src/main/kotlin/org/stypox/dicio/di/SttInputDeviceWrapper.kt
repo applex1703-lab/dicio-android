@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
 import org.stypox.dicio.R
 import org.stypox.dicio.io.input.InputEvent
 import org.stypox.dicio.io.input.SttInputDevice
@@ -34,7 +33,6 @@ import org.stypox.dicio.settings.datastore.InputDevice.UNRECOGNIZED
 import org.stypox.dicio.settings.datastore.SttPlaySound
 import org.stypox.dicio.settings.datastore.UserSettings
 import org.stypox.dicio.util.distinctUntilChangedBlockingFirst
-import org.stypox.dicio.util.toStateFlowDistinctBlockingFirst
 import java.io.IOException
 
 
@@ -54,15 +52,12 @@ class SttInputDeviceWrapperImpl(
     @param:ApplicationContext private val appContext: Context,
     dataStore: DataStore<UserSettings>,
     private val localeManager: LocaleManager,
-    private val okHttpClient: OkHttpClient,
-    private val activityForResultManager: ActivityForResultManager,
 ) : SttInputDeviceWrapper {
     private val scope = CoroutineScope(Dispatchers.Default)
     private val deviceLock = Any()
 
     private var inputDeviceSetting: InputDevice
     private var sttPlaySoundSetting: SttPlaySound
-    private val silencesBeforeStop: StateFlow<Int>
     private var sttInputDevice: SttInputDevice?
     private var activeListener: ((InputEvent) -> Unit)? = null
 
@@ -81,8 +76,6 @@ class SttInputDeviceWrapperImpl(
 
         inputDeviceSetting = firstSettings.first
         sttPlaySoundSetting = firstSettings.second
-        silencesBeforeStop = dataStore.data.map(SttInputDevice::getSttSilenceDurationOrDefault)
-            .toStateFlowDistinctBlockingFirst(scope)
         sttInputDevice = buildInputDevice(inputDeviceSetting)
         synchronized(deviceLock) { restartUiStateJob() }
 
@@ -236,11 +229,9 @@ class SttInputDeviceWrapperModule {
         @ApplicationContext appContext: Context,
         dataStore: DataStore<UserSettings>,
         localeManager: LocaleManager,
-        okHttpClient: OkHttpClient,
-        activityForResultManager: ActivityForResultManager,
     ): SttInputDeviceWrapper {
         return SttInputDeviceWrapperImpl(
-            appContext, dataStore, localeManager, okHttpClient, activityForResultManager
+            appContext, dataStore, localeManager
         )
     }
 }

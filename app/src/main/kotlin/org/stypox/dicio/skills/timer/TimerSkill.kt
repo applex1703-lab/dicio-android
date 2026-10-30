@@ -26,36 +26,39 @@ class TimerSkill(
     private val yesNoData: StandardRecognizerData<Sentences.UtilYesNo>,
 ) : StandardRecognizerSkill<Timer>(correspondingSkillInfo, data) {
 
-    override suspend fun generateOutput(ctx: SkillContext, inputData: Timer): SkillOutput {
-        return when (inputData) {
-            is Timer.Set -> {
-                if (inputData.duration == null) {
-                    TimerOutput.SetAskDuration { setTimer(ctx, it, inputData.name) }
-                } else {
-                    setTimer(ctx, inputData.duration.toJavaDuration(), inputData.name)
+    override suspend fun generateOutput(ctx: SkillContext, inputData: Timer): SkillOutput =
+        withContext(Dispatchers.Main) {
+            when (inputData) {
+                is Timer.Set -> {
+                    if (inputData.duration == null) {
+                        TimerOutput.SetAskDuration { setTimer(ctx, it, inputData.name) }
+                    } else {
+                        setTimer(ctx, inputData.duration.toJavaDuration(), inputData.name)
+                    }
                 }
-            }
-            is Timer.Query -> {
-                queryTimer(ctx, inputData.name)
-            }
-            is Timer.Cancel -> {
-                if (inputData.name == null && SET_TIMERS.size > 1) {
-                    TimerOutput.ConfirmCancel(yesNoData) { cancelTimer(ctx, null) }
-                } else {
-                    cancelTimer(ctx, inputData.name)
+                is Timer.Query -> {
+                    queryTimer(ctx, inputData.name)
+                }
+                is Timer.Cancel -> {
+                    if (inputData.name == null && SET_TIMERS.size > 1) {
+                        TimerOutput.ConfirmCancel(yesNoData) {
+                            withContext(Dispatchers.Main) { cancelTimer(ctx, null) }
+                        }
+                    } else {
+                        cancelTimer(ctx, inputData.name)
+                    }
                 }
             }
         }
-    }
 
     private suspend fun setTimer(
         ctx: SkillContext,
         duration: Duration,
         name: String?,
-    ): SkillOutput {
+    ): SkillOutput = withContext(Dispatchers.Main) {
         var ringtone: Ringtone? = null
 
-        val setTimer = withContext(Dispatchers.Main) { SetTimer(
+        val setTimer = SetTimer(
             duration = duration,
             name = name,
             onMillisTickCallback = { milliseconds ->
@@ -106,11 +109,11 @@ class TimerSkill(
                 // removed from setTimers list
                 SET_TIMERS.removeIf { setTimer -> setTimer === timerToCancel }
             }
-        ) }
+        )
 
         SET_TIMERS.add(setTimer)
 
-        return TimerOutput.Set(
+        TimerOutput.Set(
             duration.toMillis(),
             setTimer.lastTickMillisState,
             name,
@@ -211,7 +214,8 @@ class TimerSkill(
     }
 
     companion object {
-        val SET_TIMERS: MutableList<SetTimer> = ArrayList()
+        // Access, including CountDownTimer callbacks, is confined to Dispatchers.Main.
+        private val SET_TIMERS: MutableList<SetTimer> = ArrayList()
         val TAG: String = TimerSkill::class.simpleName!!
     }
 }

@@ -2,7 +2,9 @@
 <resources>
     <string name="polza_thinking">Думаю… Ожидаю ответ RouterAI</string>
     <string name="share">Поделиться</string>
-    <string name="text_input_hint">Спроси меня что-нибудь…</string>
+    <string name="text_input_hint">Текстовый запрос</string>
+    <string name="about_description">Голосовой помощник для Android TV</string>
+    <string name="about_privacy_description">Распознавание речи использует Google; при включении RouterAI запросы отправляются онлайн. Подробнее — в политике конфиденциальности.</string>
     <string name="here_is_what_i_can_do">Вот что я могу!</string>
     <string name="action_voice_input">Голосовой ввод</string>
     <string name="listening">Слушаю…</string>

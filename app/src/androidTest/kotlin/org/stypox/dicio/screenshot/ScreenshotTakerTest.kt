@@ -12,7 +12,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.datastore.core.DataStore
 import androidx.test.rule.GrantPermissionRule
@@ -150,37 +149,29 @@ class ScreenshotTakerTest {
         composeRule.onNodeWithText("Dicio-main").assertDoesNotExist()
 
 
-        // screenshot 0: home screen with "Here is what I can do" and STT listening
+        // screenshot 0: minimal home while listening
         dataStore.updateData { it.copy { theme = Theme.THEME_DARK } }
         fakeSttInputDeviceWrapper.uiState.emit(SttState.Listening)
         composeRule.takeScreenshot("en-US", "0")
 
-        // screenshot 1: home screen with interactions with weather, timer and lyrics skills
+        // screenshot 1: current response, not an interaction history
         dataStore.updateData { it.copy { theme = Theme.THEME_LIGHT } }
         fakeSttInputDeviceWrapper.uiState.emit(SttState.Loaded)
         coilEventListener.resetStartedImages()
-        fakeSkillEvaluator.state.value = screenshot1InteractionLog
-        composeRule.onNodeWithTag("interaction_list")
-            .performScrollToIndex(3) // scroll to the first interaction
-        runCatching { composeRule.waitUntil { coilEventListener.isIdle(startedAtLeast = 1) } }
+        fakeSkillEvaluator.voicePresentation.value = org.stypox.dicio.eval.VoicePresentation(status = "Ответ", answer = "Сегодня солнечно")
         composeRule.takeScreenshot("en-US", "1")
 
-        // screenshot 2: home screen with interactions with calculator and search skills
+        // screenshot 2: current calculator response
         dataStore.updateData { it.copy { theme = Theme.THEME_BLACK } }
         fakeSttInputDeviceWrapper.uiState.emit(SttState.Loaded)
         coilEventListener.resetStartedImages()
-        fakeSkillEvaluator.state.value = screenshot2InteractionLog
-        composeRule.onNodeWithTag("interaction_list")
-            .performScrollToIndex(3) // scroll to the first interaction
-        runCatching { composeRule.waitUntil { coilEventListener.isIdle(startedAtLeast = 2) } }
+        fakeSkillEvaluator.voicePresentation.value = org.stypox.dicio.eval.VoicePresentation(status = "Ответ", answer = "42")
         composeRule.takeScreenshot("en-US", "2")
 
-        // screenshot 3: home screen with interactions with translation, joke and media skills
+        // screenshot 3: current error
         dataStore.updateData { it.copy { theme = Theme.THEME_LIGHT } }
         fakeSttInputDeviceWrapper.uiState.emit(SttState.Loaded)
-        fakeSkillEvaluator.state.value = screenshot3InteractionLog
-        composeRule.onNodeWithTag("interaction_list")
-            .performScrollToIndex(3) // scroll to the second interaction
+        fakeSkillEvaluator.voicePresentation.value = org.stypox.dicio.eval.VoicePresentation(status = "Ошибка", answer = "Не удалось выполнить запрос")
         composeRule.takeScreenshot("en-US", "3")
 
         // screenshot 5: settings screen

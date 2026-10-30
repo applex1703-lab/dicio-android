@@ -39,6 +39,7 @@ class VoiceInputCoordinatorTest {
     }
 
     private class Evaluator : SkillEvaluator {
+        override val currentOutput = MutableStateFlow<org.dicio.skill.skill.SkillOutput?>(null)
         override val state = MutableStateFlow(InteractionLog(emptyList(), null))
         override val voicePresentation = MutableStateFlow(VoicePresentation())
         override var permissionRequester: suspend (List<Permission>) -> Boolean = { false }

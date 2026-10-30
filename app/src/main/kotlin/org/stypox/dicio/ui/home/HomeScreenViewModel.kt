@@ -14,7 +14,6 @@ import org.stypox.dicio.di.SkillContextInternal
 import org.stypox.dicio.di.SpeechOutputDeviceWrapper
 import org.stypox.dicio.di.SttInputDeviceWrapper
 import org.stypox.dicio.eval.SkillEvaluator
-import org.stypox.dicio.eval.SkillHandler
 import org.stypox.dicio.io.input.SttState
 import org.stypox.dicio.io.speech.SnackbarSpeechDevice
 import org.stypox.dicio.settings.datastore.UserSettings
@@ -24,7 +23,6 @@ import javax.inject.Inject
 class HomeScreenViewModel @Inject constructor(
     application: Application,
     val skillContext: SkillContextInternal,
-    val skillHandler: SkillHandler,
     val dataStore: DataStore<UserSettings>,
     val sttInputDevice: SttInputDeviceWrapper,
     val speechOutputDevice: SpeechOutputDeviceWrapper,

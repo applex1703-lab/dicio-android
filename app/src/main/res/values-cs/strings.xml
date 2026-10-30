@@ -232,7 +232,7 @@
     <string name="about">O aplikaci</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">Kopírovat informace o verzi</string>
-    <string name="about_description">Vícejazyčný, lokální a svobodný hlasový asistent</string>
+    <string name="about_description">Voice assistant for Android TV</string>
     <string name="about_repository_title">Repozitář se zdrojovým kódem</string>
     <string name="about_repository_description">Dicio je bezplatné a open-source, pod licencí GPLv3</string>
     <string name="about_issues_title">Našli jste chybu?</string>
@@ -240,5 +240,5 @@
     <string name="about_contributing_title">Přispívání</string>
     <string name="about_contributing_description">Dicio je vyvíjené dobrovolníky z celého světa. Můžete také pomoci vylepšením kódu, překládáním či přidáváním nových funkcí!</string>
     <string name="about_privacy_title">Ochrana soukromí</string>
-    <string name="about_privacy_description">Dicio se připojuje k externím službám pouze v případě, že se to očekává od funkce, nebo ke stažení modelů strojového učení během prvotního nastavení. Veškeré zpracování zvuku probíhá lokálně na zařízení a většinu funkcí lze používat offline.</string>
+    <string name="about_privacy_description">Speech recognition uses Google; optional RouterAI requests are sent online. See the privacy notes for details.</string>
 </resources>

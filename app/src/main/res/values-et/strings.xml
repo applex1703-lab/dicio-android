@@ -122,7 +122,7 @@
     <string name="about">Rakenduse teave</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">Kopeeri versiooni teave</string>
-    <string name="about_description">Mitmekeelne, kohalikus seadmes töötav ning vaba ja tasuta häälabiline</string>
+    <string name="about_description">Voice assistant for Android TV</string>
     <string name="about_repository_title">Lähtekoodi hoidla</string>
     <string name="about_repository_description">Dicio on vaba, tasuta ja avatud lähtekoodiga. Rakendus on litsentseeritud GPLv3 alusel</string>
     <string name="about_issues_title">Kas leidsid vea?</string>
@@ -226,7 +226,7 @@
 
     <string name="about_issues_description">Võid julgelt soovitada uut funktsionaalsust või teatada vigadest (ära unusta lisada logifaile)</string>
     <string name="about_contributing_description">Dicot arendavad vabatahtlikud üle kogu maailma. Ka sina saad kaasa aidata, pakkudes välja koodi täiustusi, tõlkeid ja isegi uusi oskusi!</string>
-    <string name="about_privacy_description">Dicio ühendub väliste teenustega ainult siis, kui oskus seda nõuab või masinõppemudelite allalaadimiseks seadistamise ajal. Kogu kõnetöötlus toimub kohapeal seadmes ning enamikku oskusi saad kasutada ka võrguühenduseta.</string>
+    <string name="about_privacy_description">Speech recognition uses Google; optional RouterAI requests are sent online. See the privacy notes for details.</string>
 
 
     <string name="failed_to_copy">Lõikelauale kopeerimine ei õnnestunud</string>

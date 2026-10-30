@@ -231,7 +231,7 @@
     <string name="about">关于</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">复制版本信息</string>
-    <string name="about_description">多语言、本地和自由的语音助手</string>
+    <string name="about_description">Voice assistant for Android TV</string>
     <string name="about_repository_title">源代码仓库</string>
     <string name="about_repository_description">Dicio 自由开源，在 GPLv3 下授权</string>
     <string name="about_issues_title">发现了 bug？</string>
@@ -239,7 +239,7 @@
     <string name="about_contributing_title">作贡献</string>
     <string name="about_contributing_description">Dicio 由全球志愿者开发。您可以贡献代码改进、翻译和助手新技能来帮忙！</string>
     <string name="about_privacy_title">隐私政策</string>
-    <string name="about_privacy_description">Dicio 只在技能预期到连接外部服务时或者在设置期间下载机器学习模型时才会外联。所有语音处理均在设备本地执行，多数技能可以断网使用。</string>
+    <string name="about_privacy_description">Speech recognition uses Google; optional RouterAI requests are sent online. See the privacy notes for details.</string>
     <string name="about_wiki_title">文档</string>
     <string name="about_wiki_description">查找一般信息、配置指南、故障排除提示及更多内容？请查看我们的 wiki！</string>
     <string name="about_wiki_link">https://dicio.stypox.org/</string>

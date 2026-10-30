@@ -232,8 +232,8 @@
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">Kopieer versieinformatie</string>
     <string name="about_privacy_title">Privacybeleid</string>
-    <string name="about_privacy_description">Dicio verbindt enkel met externe services wanneer dat van een skill verwacht wordt, of om machine learning modellen te downloaden tijdens installatie. Alle spraakverwerking wordt lokaal op het apparaat gedaan, en de meeste skills kunnen offline gebruikt worden.</string>
-    <string name="about_description">Meertalige, lokale en libre spraakassistent</string>
+    <string name="about_privacy_description">Speech recognition uses Google; optional RouterAI requests are sent online. See the privacy notes for details.</string>
+    <string name="about_description">Voice assistant for Android TV</string>
     <string name="about_repository_title">Broncoderepository</string>
     <string name="about_repository_description">Dicio is vrije en opensourcesoftware onder de GPLv3-licentie</string>
     <string name="about_issues_title">Bug gevonden?</string>

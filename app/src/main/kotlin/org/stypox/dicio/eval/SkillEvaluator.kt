@@ -14,24 +14,28 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.dicio.skill.skill.InteractionPlan
 import org.dicio.skill.skill.Permission
 import org.dicio.skill.skill.SkillOutput
+import org.stypox.dicio.io.graphical.ErrorSkillOutput
 import org.stypox.dicio.di.SkillContextInternal
 import org.stypox.dicio.di.SttInputDeviceWrapper
-import org.stypox.dicio.io.graphical.ErrorSkillOutput
 import org.stypox.dicio.io.graphical.MissingPermissionsSkillOutput
 import org.stypox.dicio.io.input.InputEvent
-import org.stypox.dicio.ui.home.Interaction
 import org.stypox.dicio.ui.home.InteractionLog
 import org.stypox.dicio.ui.home.PendingQuestion
-import org.stypox.dicio.ui.home.QuestionAnswer
+import org.stypox.dicio.skills.fallback.text.TextFallbackOutput
 import javax.inject.Singleton
+import javax.inject.Provider
 import org.dicio.skill.standard.util.MatchHelper
 
 interface SkillEvaluator {
     val state: StateFlow<InteractionLog>
     val voicePresentation: StateFlow<VoicePresentation>
+    /** One current legacy result, cleared on the next request or cancellation; never history. */
+    val currentOutput: StateFlow<SkillOutput?>
 
     var permissionRequester: suspend (List<Permission>) -> Boolean
 
@@ -43,7 +47,7 @@ interface SkillEvaluator {
 
 class SkillEvaluatorImpl(
     private val skillContext: SkillContextInternal,
-    private val skillHandler: SkillHandler,
+    private val skillHandler: Provider<SkillHandler>,
     private val sttInputDevice: SttInputDeviceWrapper,
     private val polzaSettings: org.stypox.dicio.llm.PolzaSettings,
     private val polzaClient: org.stypox.dicio.llm.PolzaClient,
@@ -52,9 +56,7 @@ class SkillEvaluatorImpl(
 
     private val scope = CoroutineScope(Dispatchers.Main.immediate)
     private val requests = LatestInputRequest(scope)
-
-    private val skillRanker: SkillRanker
-        get() = skillHandler.skillRanker.value
+    private val legacyLock = Mutex()
 
     private val _state = MutableStateFlow(
         InteractionLog(
@@ -63,9 +65,12 @@ class SkillEvaluatorImpl(
         )
     )
     override val state: StateFlow<InteractionLog> = _state
-    private val _voicePresentation = MutableStateFlow(VoicePresentation())
-    override val voicePresentation: StateFlow<VoicePresentation> = _voicePresentation
-    override fun resetVoicePresentation() { _voicePresentation.value = VoicePresentation() }
+    private val presentation = CurrentVoicePresentation()
+    override val voicePresentation: StateFlow<VoicePresentation> = presentation.state
+    private val outputSlot = CurrentLegacyOutput()
+    override val currentOutput: StateFlow<SkillOutput?> = outputSlot.state
+    private var previousFallback: TextFallbackOutput? = null
+    override fun resetVoicePresentation() { presentation.clear() }
 
     // must be kept up to date even when the activity is recreated, for this reason it is `var`
     override var permissionRequester: suspend (List<Permission>) -> Boolean = { false }
@@ -79,7 +84,9 @@ class SkillEvaluatorImpl(
     override fun cancelPendingInput() {
         scope.launch {
             requests.cancel()
-            _state.value = _state.value.copy(pendingQuestion = null)
+            outputSlot.clear()
+            _state.value = InteractionLog(emptyList(), null)
+            presentation.clear()
             skillContext.speechOutputDevice.stopSpeaking()
             skillContext.speechOutputDevice.cleanup()
         }
@@ -88,8 +95,9 @@ class SkillEvaluatorImpl(
     private suspend fun suspendProcessInputEvent(event: InputEvent) {
         when (event) {
             InputEvent.Started -> {
-                _voicePresentation.value = VoicePresentation()
-                _state.value = _state.value.copy(pendingQuestion = null)
+                outputSlot.clear()
+                presentation.clear()
+                _state.value = InteractionLog(emptyList(), null)
                 skillContext.speechOutputDevice.stopSpeaking()
                 (skillContext.speechOutputDevice as? org.stypox.dicio.di.SpeechOutputDeviceWrapper)?.beginSession()
             }
@@ -97,12 +105,17 @@ class SkillEvaluatorImpl(
                 addErrorInteractionFromPending(event.throwable)
             }
             is InputEvent.Final -> {
-                if (event.utterances.isEmpty()) return
-                _voicePresentation.value = VoicePresentation(request = event.utterances[0].first, status = "Думаю…")
+                outputSlot.clear()
+                if (event.utterances.isEmpty()) {
+                    _state.value = InteractionLog(emptyList(), null)
+                    presentation.noInput()
+                    return
+                }
+                presentation.thinking(event.utterances[0].first)
                 _state.value = _state.value.copy(
                     pendingQuestion = PendingQuestion(
                         userInput = event.utterances[0].first,
-                        continuesLastInteraction = skillRanker.hasAnyBatches(),
+                        continuesLastInteraction = false,
                         skillBeingEvaluated = null,
                     )
                 )
@@ -133,11 +146,11 @@ class SkillEvaluatorImpl(
                         Log.i("DicioPolza", "Decision received elapsedMs=${providerDone - catalogDone} type=${decision.javaClass.simpleName}")
                         val result = tvActions.execute(decision, apps, skillContext.locale, media)
                         Log.i("DicioPolza", "Response received elapsedMs=${android.os.SystemClock.elapsedRealtime() - startedAt} chars=${result.text.length} speak=${result.speak}")
-                        val output = org.stypox.dicio.llm.AssistantOutput(result.text, result.speak)
-                        addInteractionFromPending(output)
-                        _voicePresentation.value = _voicePresentation.value.copy(
-                            status = if (result.speak) "Ответ" else "Выполнено",
-                            answer = if (result.speak) result.text else "", dismiss = !result.speak)
+                        coroutineContext.ensureActive()
+                        outputSlot.clear()
+                        previousFallback = null
+                        _state.value = InteractionLog(emptyList(), null)
+                        presentation.answer(result.text, silent = !result.speak)
                         if (result.speak) {
                             withContext(Dispatchers.Main) { skillContext.speechOutputDevice.speak(result.text) }
                         }
@@ -147,25 +160,20 @@ class SkillEvaluatorImpl(
                         addErrorInteractionFromPending(error)
                     }
                 } else {
-                    withContext(Dispatchers.Default) {
-                        evaluateMatchingSkill(event.utterances.map { it.first })
-                    }
+                    evaluateMatchingSkill(event.utterances.map { it.first })
                 }
             }
             InputEvent.None -> {
-                _voicePresentation.value = _voicePresentation.value.copy(status = "Речь не распознана",
-                    answer = "Нажмите кнопку Ассистента, чтобы попробовать снова.")
-                _state.value = _state.value.copy(pendingQuestion = null)
+                outputSlot.clear()
+                presentation.noInput()
+                _state.value = InteractionLog(emptyList(), null)
             }
             is InputEvent.Partial -> {
-                _voicePresentation.value = VoicePresentation(request = event.utterance, status = "Слушаю…")
+                presentation.listening(event.utterance)
                 _state.value = _state.value.copy(
                     pendingQuestion = PendingQuestion(
                         userInput = event.utterance,
-                        // the next input can be a continuation of the last interaction only if the
-                        // last skill invocation provided some skill batches (which are the only way
-                        // to continue an interaction/conversation)
-                        continuesLastInteraction = skillRanker.hasAnyBatches(),
+                        continuesLastInteraction = false,
                         skillBeingEvaluated = null,
                     )
                 )
@@ -173,26 +181,41 @@ class SkillEvaluatorImpl(
         }
     }
 
-    private suspend fun evaluateMatchingSkill(utterances: List<String>) {
+    private suspend fun evaluateMatchingSkill(utterances: List<String>) = legacyLock.withLock {
+        // Capture one ready ranker for the entire request. The next request rechecks the handler,
+        // so settings/locale replacements are observed without splitting a dialogue plan across rankers.
+        val skillRanker = try {
+            skillHandler.get().awaitSkillRanker()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            coroutineContext.ensureActive()
+            addErrorInteractionFromPending(error)
+            return@withLock
+        }
+        coroutineContext.ensureActive()
         val (chosenInput, chosenSkill) = try {
-            utterances.firstNotNullOfOrNull { input: String ->
+            withContext(Dispatchers.Default) { utterances.firstNotNullOfOrNull { input: String ->
                 skillContext.standardMatchHelper = MatchHelper(skillContext.parserFormatter, input)
                 skillRanker.getBest(skillContext, input)?.let { skillWithResult ->
                     Pair(input, skillWithResult)
                 }
-            } ?: Pair(utterances[0], skillRanker.getFallbackSkill(skillContext, utterances[0]))
+            } ?: Pair(utterances[0], skillRanker.getFallbackSkill(skillContext, utterances[0])) }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (throwable: Throwable) {
+            coroutineContext.ensureActive()
             addErrorInteractionFromPending(throwable)
-            return
+            return@withLock
         } finally {
             // standardMatchHelper only needs to be set while calling score() on skills, so once
             // all matching and scoring is done, free up the memory it uses (which may be
             // significant since the purpose of MatchHelper is to cache information about the input)
             skillContext.standardMatchHelper = null
         }
+        coroutineContext.ensureActive()
         val skillInfo = chosenSkill.skill.correspondingSkillInfo
+        presentation.thinking(chosenInput)
 
         _state.value = _state.value.copy(
             pendingQuestion = PendingQuestion(
@@ -209,20 +232,28 @@ class SkillEvaluatorImpl(
             val permissions = skillInfo.neededPermissions
             if (permissions.isNotEmpty() && !permissionRequester(permissions)) {
                 // permissions were not granted, show message
-                addInteractionFromPending(MissingPermissionsSkillOutput(skillInfo))
-                return
+                coroutineContext.ensureActive()
+                previousFallback = null
+                _state.value = InteractionLog(emptyList(), null)
+                presentation.error(MissingPermissionsSkillOutput(skillInfo).getSpeechOutput(skillContext))
+                return@withLock
             }
 
-            skillContext.previousOutput =
-                _state.value.interactions.lastOrNull()?.questionsAnswers?.lastOrNull()?.answer
-            val output = chosenSkill.generateOutput(skillContext)
+            skillContext.previousOutput = previousFallback
+            val output = try {
+                withContext(Dispatchers.Default) { chosenSkill.generateOutput(skillContext) }
+            } finally {
+                skillContext.previousOutput = null
+            }
             coroutineContext.ensureActive()
 
             val interactionPlan = output.getInteractionPlan(skillContext)
-            addInteractionFromPending(output)
-            _voicePresentation.value = _voicePresentation.value.copy(status = "Ответ",
-                answer = output.getSpeechOutput(skillContext))
-            output.getSpeechOutput(skillContext).let {
+            previousFallback = output as? TextFallbackOutput
+            _state.value = InteractionLog(emptyList(), null)
+            val speech = output.getSpeechOutput(skillContext)
+            outputSlot.replace(if (output is ErrorSkillOutput) null else output)
+            presentation.answer(speech)
+            speech.let {
                 if (it.isNotBlank()) {
                     withContext (Dispatchers.Main) {
                         skillContext.speechOutputDevice.speak(it)
@@ -255,44 +286,18 @@ class SkillEvaluatorImpl(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (throwable: Throwable) {
+            coroutineContext.ensureActive()
             addErrorInteractionFromPending(throwable)
-            return
+            return@withLock
         }
     }
 
     private fun addErrorInteractionFromPending(throwable: Throwable) {
-        _voicePresentation.value = _voicePresentation.value.copy(status = "Не удалось выполнить запрос",
-            answer = throwable.localizedMessage ?: "Повторите запрос по кнопке Ассистента.", dismiss = false)
+        outputSlot.clear()
+        previousFallback = null
+        _state.value = InteractionLog(emptyList(), null)
+        presentation.error(throwable.localizedMessage ?: "Повторите запрос по кнопке Ассистента.")
         Log.e(TAG, "Error while evaluating skills", throwable)
-        addInteractionFromPending(ErrorSkillOutput(throwable, true))
-    }
-
-    private fun addInteractionFromPending(skillOutput: SkillOutput) {
-        val log = _state.value
-        val pendingUserInput = log.pendingQuestion?.userInput
-        val pendingContinuesLastInteraction = log.pendingQuestion?.continuesLastInteraction
-            ?: skillRanker.hasAnyBatches()
-        val pendingSkill = log.pendingQuestion?.skillBeingEvaluated
-        val questionAnswer = QuestionAnswer(pendingUserInput, skillOutput)
-
-        _state.value = log.copy(
-            interactions = log.interactions.toMutableList().also { inters ->
-                if (pendingContinuesLastInteraction && inters.isNotEmpty()) {
-                    inters[inters.size - 1] = inters[inters.size - 1].let { i -> i.copy(
-                        questionsAnswers = i.questionsAnswers.toMutableList()
-                            .apply { add(questionAnswer) }
-                    ) }
-                } else {
-                    inters.add(
-                        Interaction(
-                            skill = pendingSkill,
-                            questionsAnswers = listOf(questionAnswer)
-                        )
-                    )
-                }
-            },
-            pendingQuestion = null,
-        )
     }
 
     companion object {
@@ -307,7 +312,7 @@ class SkillEvaluatorModule {
     @Singleton
     fun provideSkillEvaluator(
         skillContext: SkillContextInternal,
-        skillHandler: SkillHandler,
+        skillHandler: Provider<SkillHandler>,
         sttInputDevice: SttInputDeviceWrapper,
         polzaSettings: org.stypox.dicio.llm.PolzaSettings,
         polzaClient: org.stypox.dicio.llm.PolzaClient,

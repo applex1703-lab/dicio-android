@@ -231,7 +231,7 @@
     <string name="about">Tentang</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">Salin info versi</string>
-    <string name="about_description">Asisten suara multibahasa, lokal, dan bebas</string>
+    <string name="about_description">Voice assistant for Android TV</string>
     <string name="about_repository_title">Repositori kode sumber</string>
     <string name="about_repository_description">Dicio bebas dan sumber terbuka, dilisensikan di bawah GPLv3</string>
     <string name="about_issues_title">Menemukan bug?</string>
@@ -239,5 +239,5 @@
     <string name="about_contributing_title">Kontribusi</string>
     <string name="about_contributing_description">Dicio dikembangkan oleh para relawan di seluruh dunia. Anda juga dapat membantu dengan menyumbangkan perbaikan kode, terjemahan, dan bahkan kemampuan baru!</string>
     <string name="about_privacy_title">Kebijakan privasi</string>
-    <string name="about_privacy_description">Dicio terhubung ke layanan eksternal hanya ketika suatu kemampuan memang memerlukannya, atau untuk mengunduh model pembelajaran mesin selama proses penyiapan. Semua pemrosesan suara dilakukan secara lokal di perangkat, dan sebagian besar kemampuan dapat digunakan secara offline.</string>
+    <string name="about_privacy_description">Speech recognition uses Google; optional RouterAI requests are sent online. See the privacy notes for details.</string>
 </resources>

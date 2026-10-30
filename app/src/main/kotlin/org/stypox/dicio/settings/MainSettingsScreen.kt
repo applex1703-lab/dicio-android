@@ -1,12 +1,7 @@
 package org.stypox.dicio.settings
 
 import android.app.Application
-import android.Manifest
-import android.content.ComponentName
-import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
-import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.PaddingValues
@@ -26,7 +21,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,15 +29,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.stypox.dicio.R
 import org.stypox.dicio.io.input.SttInputDevice
 import org.stypox.dicio.settings.datastore.InputDevice
@@ -56,7 +45,6 @@ import org.stypox.dicio.settings.ui.SettingsCategoryTitle
 import org.stypox.dicio.settings.ui.SettingsItem
 import org.stypox.dicio.ui.theme.AppTheme
 import org.stypox.dicio.ui.home.isTelevision
-import org.stypox.dicio.llm.MediaAccessService
 
 
 @Composable
@@ -91,33 +79,11 @@ private fun MainSettingsScreen(
     val settings by viewModel.settingsState.collectAsState()
     val isTv = isTelevision()
     var skillsFocused by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var systemStatus by remember(context) { mutableStateOf(readTvSystemStatus(context)) }
-    DisposableEffect(context, lifecycleOwner, isTv) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (isTv && event == Lifecycle.Event.ON_RESUME) {
-                systemStatus = readTvSystemStatus(context)
-            }
-        }
-        if (isTv) lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
     LazyColumn(
         modifier = modifier,
         contentPadding = if (isTv) PaddingValues(horizontal = 24.dp, vertical = 12.dp)
             else PaddingValues(0.dp),
     ) {
-        if (isTv) {
-            item {
-                Text(
-                    text = tvStatusText(systemStatus, settings.speechOutputDevice),
-                    modifier = Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-            }
-        }
         item { org.stypox.dicio.llm.PolzaSettingsCard() }
         /* GENERAL SETTINGS */
         item { SettingsCategoryTitle(stringResource(R.string.pref_general), topPadding = 4.dp) }
@@ -216,59 +182,6 @@ private fun MainSettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
-}
-
-internal data class TvSystemStatus(
-    val microphoneGranted: Boolean?,
-    val assistant: String?,
-    val mediaListenerGranted: Boolean?,
-)
-
-// A missing setting means no selected component; an exception means the check is unavailable.
-internal fun componentSelected(value: String?, component: ComponentName): Boolean =
-    value.orEmpty().split(':').any { ComponentName.unflattenFromString(it) == component }
-
-internal fun readTvSystemStatus(context: Context): TvSystemStatus {
-    val microphone = runCatching {
-        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-    }.getOrNull()
-    val assistant = runCatching {
-        val value = Settings.Secure.getString(context.contentResolver, "assistant")
-        when {
-            value.isNullOrBlank() -> "не удалось определить назначение"
-            ComponentName.unflattenFromString(value)?.packageName == context.packageName -> "выбрано это приложение"
-            ComponentName.unflattenFromString(value) != null -> "выбрано другое приложение"
-            else -> "не удалось определить"
-        }
-    }.getOrNull()
-    val media = runCatching {
-        componentSelected(
-            Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners"),
-            ComponentName(context, MediaAccessService::class.java),
-        )
-    }.getOrNull()
-    return TvSystemStatus(microphone, assistant, media)
-}
-
-internal fun tvStatusText(status: TvSystemStatus, output: SpeechOutputDevice): String {
-    fun permission(value: Boolean?) = when (value) {
-        true -> "предоставлено"
-        false -> "не предоставлено"
-        null -> "не удалось проверить"
-    }
-    val mode = when (output) {
-        SpeechOutputDevice.SPEECH_OUTPUT_DEVICE_ANDROID_TTS, SpeechOutputDevice.SPEECH_OUTPUT_DEVICE_UNSET,
-        SpeechOutputDevice.UNRECOGNIZED -> "Android TTS (в том числе режим по умолчанию)"
-        SpeechOutputDevice.SPEECH_OUTPUT_DEVICE_NOTHING -> "отключён"
-        SpeechOutputDevice.SPEECH_OUTPUT_DEVICE_TOAST -> "всплывающее сообщение"
-        SpeechOutputDevice.SPEECH_OUTPUT_DEVICE_SNACKBAR -> "сообщение на экране"
-        else -> "неизвестен"
-    }
-    return "Системный ассистент: ${status.assistant ?: "не удалось проверить"}; работа не проверена\n" +
-        "Микрофон: разрешение ${permission(status.microphoneGranted)}; запись и распознавание не проверены\n" +
-        "RouterAI: конфигурация не проверена; подключение не проверено\n" +
-        "Вывод речи: выбран $mode; работа и доступность не проверены\n" +
-        "Медиа: доступ слушателя уведомлений ${permission(status.mediaListenerGranted)}; управление не проверено"
 }
 
 @Preview

@@ -14,7 +14,7 @@
     <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="done">Done</string>
     <string name="permission_denied">Permission denied</string>
-    <string name="text_input_hint">Ask me anything…</string>
+    <string name="text_input_hint">Text request</string>
     <string name="grant_microphone_permission">Grant microphone permission</string>
     <string name="error_loading">Error loading</string>
     <string name="error_unzipping">Error unzipping</string>
@@ -228,7 +228,7 @@
     <string name="about">About</string>
     <string name="about_version">%1$s (%2$d)</string>
     <string name="about_version_copy">Copy version info</string>
-    <string name="about_description">Multilanguage, local and libre voice assistant</string>
+    <string name="about_description">Voice assistant for Android TV</string>
     <string name="about_repository_title">Source code repository</string>
     <string name="about_repository_description">Dicio is free and open source, licensed under GPLv3</string>
     <string name="about_repository_link" translatable="false">https://github.com/Stypox/dicio-android</string>
@@ -242,6 +242,6 @@
     <string name="about_contributing_description">Dicio is developed by volunteers around the world. You can help out too by contributing code improvements, translations and even new skills!</string>
     <string name="about_contributing_link" translatable="false">https://github.com/Stypox/dicio-android#contributing</string>
     <string name="about_privacy_title">Privacy policy</string>
-    <string name="about_privacy_description">Dicio connects to external services only when a skill is expected to do so, or to download machine learning models during setup. All speech processing is performed locally on-device, and most skills can be used offline.</string>
-    <string name="about_privacy_link" translatable="false">https://stypox.org/dicio-privacy-policy.html</string>
+    <string name="about_privacy_description">Speech recognition uses Google; optional RouterAI requests are sent online. See the privacy notes for details.</string>
+    <string name="about_privacy_link" translatable="false">https://github.com/applex1703-lab/dicio-android/blob/HEAD/PRIVACY.md</string>
 </resources>

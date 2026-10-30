@@ -1,9 +1,9 @@
 package org.stypox.dicio.ui.home
 
 import androidx.compose.foundation.layout.padding
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.QuestionAnswer
@@ -14,7 +14,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -24,7 +23,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalContext
 import android.content.ContextWrapper
 import org.stypox.dicio.MainActivity
@@ -35,18 +33,16 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import dev.shreyaspatil.permissionflow.compose.rememberPermissionFlowRequestLauncher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import org.dicio.skill.context.SkillContext
 import org.dicio.skill.skill.Permission
-import org.dicio.skill.skill.SkillInfo
+import org.dicio.skill.skill.SkillOutput
+import org.dicio.skill.context.SkillContext
 import org.stypox.dicio.R
 import org.stypox.dicio.di.SkillContextImpl
-import org.stypox.dicio.eval.SkillEvaluator
-import org.stypox.dicio.io.input.InputEvent
+import org.stypox.dicio.eval.VoicePresentation
 import org.stypox.dicio.io.input.SttState
 import org.stypox.dicio.ui.nav.SearchTopAppBar
 import org.stypox.dicio.ui.theme.AppTheme
 import org.stypox.dicio.ui.util.InteractionLogPreviews
-import org.stypox.dicio.ui.util.SkillInfoPreviews
 import org.stypox.dicio.ui.util.SttStatesPreviews
 import org.stypox.dicio.util.checkPermissions
 import org.stypox.dicio.util.getNonGrantedSecurePermissions
@@ -55,7 +51,6 @@ import kotlin.math.abs
 @Composable
 fun HomeScreen(
     navigationIcon: @Composable () -> Unit,
-    onSettingsClick: () -> Unit = {},
 ) {
     val channel = remember { Channel<Boolean>() }
     val coroutineScope = rememberCoroutineScope()
@@ -65,6 +60,12 @@ fun HomeScreen(
         }
     }
     val context = LocalContext.current
+    var activityContext = context
+    while (activityContext is ContextWrapper && activityContext !is MainActivity && activityContext.baseContext !== activityContext) {
+        activityContext = activityContext.baseContext
+    }
+    val activity = activityContext as? MainActivity
+    var startError by remember { mutableStateOf<String?>(null) }
 
     suspend fun requestPermissions(permissions: List<Permission>): Boolean {
         val nonGrantedSecurePermissions = getNonGrantedSecurePermissions(
@@ -94,31 +95,32 @@ fun HomeScreen(
     // the activity is recreated (no rememberSaveable is available)
     viewModel.skillEvaluator.permissionRequester = ::requestPermissions
 
-    val enabledSkillsInfo = viewModel.skillHandler.enabledSkillsInfo.collectAsState()
     val interactionsState = viewModel.skillEvaluator.state.collectAsState()
+    val presentation = viewModel.skillEvaluator.voicePresentation.collectAsState()
+    val currentOutput = viewModel.skillEvaluator.currentOutput.collectAsState()
     val sttState = viewModel.sttInputDevice.uiState.collectAsState()
+    val ownsWork = activity?.voiceInputCoordinator?.ownsWork(activity) == true
 
     HomeScreen(
-        skillContext = viewModel.skillContext,
-        skills = enabledSkillsInfo.value,
         interactionLog = interactionsState.value,
+        presentation = presentation.value,
+        currentOutput = currentOutput.value,
+        skillContext = viewModel.skillContext,
+        ownsWork = ownsWork,
+        startError = startError,
         sttState = sttState.value,
         onSttClick = {
-            var current = context
-            while (current is ContextWrapper && current !is MainActivity && current.baseContext !== current) {
-                current = current.baseContext
-            }
-            (current as? MainActivity)?.startHomeStt()
+            startError = if (activity?.startHomeStt() == true) null else "Не удалось запустить голосовой ввод."
         },
         onManualUserInput = {
-            var current = context
-            while (current is ContextWrapper && current !is MainActivity && current.baseContext !== current) {
-                current = current.baseContext
-            }
-            (current as? MainActivity)?.submitHomeText(it)
+            startError = null
+            activity?.submitHomeText(it)
+        },
+        onCancel = {
+            startError = null
+            activity?.let { it.voiceInputCoordinator.cancel(it) }
         },
         navigationIcon = navigationIcon,
-        onSettingsClick = onSettingsClick,
         snackbarHost = {
             SnackbarHost(hostState = viewModel.snackbarHostState)
         },
@@ -127,28 +129,23 @@ fun HomeScreen(
 
 @Composable
 fun HomeScreen(
-    skillContext: SkillContext,
-    // will be null when skills have not been initialized yet
-    skills: List<SkillInfo>?,
     interactionLog: InteractionLog,
+    presentation: VoicePresentation,
+    currentOutput: SkillOutput?,
+    skillContext: SkillContext,
+    ownsWork: Boolean,
+    startError: String?,
     // if the STT state is null, it means the user disabled the STT
     sttState: SttState?,
     onSttClick: () -> Unit,
     onManualUserInput: (String) -> Unit,
+    onCancel: () -> Unit,
     navigationIcon: @Composable () -> Unit,
     snackbarHost: @Composable () -> Unit,
-    onSettingsClick: () -> Unit = {},
 ) {
     var searchString by rememberSaveable { mutableStateOf<String?>(null) }
     val isTv = isTelevision()
-    val textFocus = remember { FocusRequester() }
-    val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
-    LaunchedEffect(isTv, searchString) {
-        if (isTv && searchString == null) {
-            textFocus.requestFocus()
-        }
-    }
+    BackHandler(enabled = searchString == null && ownsWork && (interactionLog.pendingQuestion != null || sttState == SttState.Listening || sttState == SttState.WaitingForResult || (sttState is SttState.Loading && sttState.thenStartListening))) { onCancel() }
 
     Scaffold(
         topBar = {
@@ -167,34 +164,19 @@ fun HomeScreen(
                     )
                 },
                 navigationIcon = navigationIcon,
+                initialFocus = isTv,
             )
         },
         content = { paddingValues ->
             Column(modifier = Modifier.padding(paddingValues)) {
-                if (isTv) {
-                    TvHomeActions(
-                        sttState = sttState,
-                        onSttClick = onSttClick,
-                        onTextClick = { searchString = "" },
-                        onSettingsClick = onSettingsClick,
-                        initialFocus = textFocus,
-                        onHistoryUp = { scope.launch { listState.animateScrollBy(-listState.layoutInfo.viewportSize.height.toFloat() * 0.8f) } },
-                        onHistoryDown = { scope.launch { listState.animateScrollBy(listState.layoutInfo.viewportSize.height.toFloat() * 0.8f) } },
-                    )
-                }
-                InteractionList(
-                    skillContext = skillContext,
-                    skills = skills,
-                    interactionLog = interactionLog,
-                    onConfirmedQuestionClick = { searchString = it },
-                    modifier = Modifier.weight(1f),
-                    listState = listState,
-                )
+                CurrentResponse(presentation, currentOutput, skillContext,
+                    starting = ownsWork && (sttState == SttState.Listening || sttState == SttState.WaitingForResult || (sttState is SttState.Loading && sttState.thenStartListening)),
+                    error = startError, modifier = Modifier.fillMaxWidth().padding(16.dp))
             }
         },
         floatingActionButton = {
             // if the STT state is null, it means the user disabled the STT
-            if (!isTv && sttState != null) {
+            if (sttState != null) {
                 SttFab(
                     state = sttState,
                     onClick = onSttClick,
@@ -214,12 +196,16 @@ private fun HomeScreenPreview(@PreviewParameter(InteractionLogPreviews::class) i
 
     AppTheme {
         HomeScreen(
-            skillContext = SkillContextImpl.newForPreviews(LocalContext.current),
-            skills = SkillInfoPreviews().values.toList(),
             interactionLog = interactionLog,
+            presentation = VoicePresentation(status = "Ответ", answer = "42"),
+            currentOutput = null,
+            skillContext = SkillContextImpl.newForPreviews(LocalContext.current),
+            ownsWork = false,
+            startError = null,
             sttState = sttStatesPreviews[i % sttStatesPreviews.size],
             onSttClick = { i += 1 },
             onManualUserInput = {},
+            onCancel = {},
             navigationIcon = {
                 IconButton(onClick = {}) {
                     Icon(

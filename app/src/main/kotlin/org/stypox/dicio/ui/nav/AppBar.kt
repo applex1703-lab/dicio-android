@@ -197,7 +197,8 @@ fun SearchTopAppBar(
     hint: String,
     title: @Composable () -> Unit,
     searchIcon: @Composable () -> Unit,
-    navigationIcon: @Composable () -> Unit
+    navigationIcon: @Composable () -> Unit,
+    initialFocus: Boolean = false,
 ) {
     if (searchString != null) {
         SearchTopAppBarExpanded(
@@ -212,6 +213,7 @@ fun SearchTopAppBar(
             title = title,
             searchIcon = searchIcon,
             navigationIcon = navigationIcon,
+            initialFocus = initialFocus,
         )
     }
 }
@@ -241,13 +243,18 @@ private fun SearchTopAppBarUnexpanded(
     onSearchClick: () -> Unit,
     title: @Composable () -> Unit,
     searchIcon: @Composable () -> Unit,
-    navigationIcon: @Composable () -> Unit
+    navigationIcon: @Composable () -> Unit,
+    initialFocus: Boolean = false,
 ) {
+    val requester = remember { FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(initialFocus) {
+        if (initialFocus) requester.requestFocus()
+    }
     TopAppBar(
         title = title,
         navigationIcon = navigationIcon,
         actions = {
-            IconButton(onClick = onSearchClick) {
+            IconButton(onClick = onSearchClick, modifier = Modifier.focusRequester(requester).testTag("home_text_input")) {
                 searchIcon()
             }
         }

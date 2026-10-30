@@ -226,11 +226,11 @@
     <string name="skill_search_duckduckgo_recaptcha">لم تقدم DuckDuckGo نتائج، وطلبت حل Captcha</string>
     <string name="about">حول</string>
     <string name="about_version">%1$s (%2$d)</string>
-    <string name="about_description">مساعد صوتي حر، محلي، ومتعدد اللغات</string>
+    <string name="about_description">Voice assistant for Android TV</string>
     <string name="about_repository_description">ديسيو هو حر ومفتوح المصدر، تحت رخصة GNU العمومية، الإصدار الثالث (GPLv3)</string>
     <string name="about_issues_title">هل وجدت خطأبرمجي؟</string>
     <string name="about_issues_description">لو ترغب تفضل واطلب ميزاتًا جديدةً أو أخبرنا عن أية مشاكل (لا تنس أن ترفق السجلات)</string>
     <string name="about_contributing_title">المساهمة</string>
     <string name="about_contributing_description">ديسيو يتم تطويره بمتطوعين حول العالم. يمكنك المساعدة أيضاً بتقديم تطويرات برمجية، ترجمة، أو حتى مهارات جديدة!</string>
-    <string name="about_privacy_description">ديسيو يتواصل مع خدمات خارجية فقط عندما يُتوقع من مهارة أن تفعل ذلك، أو لتحميل موديلات تعلم آلي أثناء التأسيس. كل معالجة الكلام تتم محليا على جهازك، ومعظم المهارات يمكن استعمالها بدون اتصال إنترنت.</string>
+    <string name="about_privacy_description">Speech recognition uses Google; optional RouterAI requests are sent online. See the privacy notes for details.</string>
 </resources>
