@@ -52,9 +52,17 @@ class IntentProtocolTest : StringSpec({
     "choose search accepts only a validated query" {
         IntentProtocol.parse(decision("choose_search", query = "  кошки  "), emptySet()) shouldBe
             AssistantIntent.ChooseSearch("кошки")
+        IntentProtocol.parse(decision("choose_search", id = "app_1", settings = "WIFI",
+            text = "Где искать?", query = "кошки"), setOf("app_1")) shouldBe AssistantIntent.ChooseSearch("кошки")
+        for (body in listOf(
+            decision("choose_search", id = "app_1", query = "кошки"),
+            decision("choose_search", settings = "WIFI", query = "кошки"),
+            decision("choose_search", text = "Где искать?", query = "кошки"),
+        )) {
+            IntentProtocol.parse(body, setOf("app_1")) shouldBe AssistantIntent.ChooseSearch("кошки")
+        }
         for (body in listOf(decision("choose_search"), decision("choose_search", query = "a\nb"),
-            decision("choose_search", query = "x".repeat(301)), decision("choose_search", id = "app_1", query = "x"),
-            decision("choose_search", settings = "WIFI", query = "x"), decision("choose_search", text = "x", query = "x"),
+            decision("choose_search", query = "x".repeat(301)),
             decision("choose_search", query = "x").replace("\"media_id\":\"\"", "\"media_id\":\"m\""),
             decision("choose_search", query = "x").replace("\"media_operation\":\"\"", "\"media_operation\":\"PAUSE\""),
             decision("choose_search", query = "x").replace("\"media_seconds\":0", "\"media_seconds\":1"))) {

@@ -45,6 +45,7 @@ internal object IntentProtocol {
                         "search_youtube — показать результаты поиска в YouTube, без запуска видео. " +
                         "search_query содержит только поисковую фразу без команды и названия сервиса; " +
                         "choose_search — если поисковая фраза известна, но сервис не указан, предложить выбор сервиса. " +
+                        "Для choose_search положи фразу только в search_query, а text, app_id и settings_section оставь пустыми. " +
                         "Для поисковых действий все остальные параметры пустые; для остальных действий search_query пустой. " +
                         "Не заменяй выбранный сервис другим. Если сама поисковая фраза неясна, используй clarify. " +
                         "media — управление одной сессией из media_sessions: media_id, media_operation и media_seconds. " +
@@ -130,14 +131,29 @@ internal object IntentProtocol {
                 command.validate(media)
                 AssistantIntent.Media(command)
             }
-            "search_rutube", "search_youtube", "choose_search" -> {
+            "choose_search" -> {
+                // This action only asks the user to choose a local target. Ignore unrelated model
+                // fields rather than letting them select an application, settings, or spoken text.
+                if (id.isNotEmpty() || settings.isNotEmpty() || text.isNotEmpty()) {
+                    java.util.logging.Logger.getLogger("DicioSearchProtocol").info(
+                        "choice ignored unused fields appPresent=${id.isNotEmpty()} " +
+                            "settingsPresent=${settings.isNotEmpty()} textPresent=${text.isNotEmpty()}"
+                    )
+                }
+                AssistantIntent.ChooseSearch(ContentSearch.validateQuery(query))
+            }
+            "search_rutube", "search_youtube" -> {
+                if (id.isNotEmpty() || settings.isNotEmpty() || text.isNotEmpty()) {
+                    // Record only field presence, never the model response or request contents.
+                    java.util.logging.Logger.getLogger("DicioSearchProtocol").warning(
+                        "search rejected action=$action appPresent=${id.isNotEmpty()} " +
+                            "settingsPresent=${settings.isNotEmpty()} textPresent=${text.isNotEmpty()}"
+                    )
+                }
                 check(id.isEmpty() && settings.isEmpty() && text.isEmpty()) { "Недопустимые параметры поиска." }
                 val validated = ContentSearch.validateQuery(query)
-                when (action) {
-                    "search_rutube" -> AssistantIntent.SearchRutube(validated)
-                    "search_youtube" -> AssistantIntent.SearchYoutube(validated)
-                    else -> AssistantIntent.ChooseSearch(validated)
-                }
+                if (action == "search_rutube") AssistantIntent.SearchRutube(validated)
+                else AssistantIntent.SearchYoutube(validated)
             }
             "reply", "clarify" -> {
                 check(id.isEmpty() && settings.isEmpty() && text.isNotBlank()) { "Некорректный ответ модели." }
