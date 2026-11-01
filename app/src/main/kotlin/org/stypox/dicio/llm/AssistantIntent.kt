@@ -9,6 +9,7 @@ internal sealed interface AssistantIntent {
     data class OpenSettings(val section: SettingsSection) : AssistantIntent
     data class SearchRutube(val query: String) : AssistantIntent
     data class SearchYoutube(val query: String) : AssistantIntent
+    data class ChooseSearch(val query: String) : AssistantIntent
     data class Media(val command: MediaCommand) : AssistantIntent
     data object Time : AssistantIntent
     data object Date : AssistantIntent
@@ -24,7 +25,7 @@ internal enum class SettingsSection(val action: String, val label: String) {
 
 /** A single decision, not an arbitrary tool loop. All fields are checked again locally. */
 internal object IntentProtocol {
-    private val actions = listOf("reply", "clarify", "open_app", "open_settings", "get_time", "get_date", "search_rutube", "search_youtube", "media")
+    private val actions = listOf("reply", "clarify", "open_app", "open_settings", "get_time", "get_date", "search_rutube", "search_youtube", "choose_search", "media")
 
     fun request(model: String, text: String, apps: Map<String, String>, media: List<MediaTarget> = emptyList()): String {
         val base = Json.parseToJsonElement(PolzaProtocol.request(model, text)).jsonObject
@@ -43,8 +44,9 @@ internal object IntentProtocol {
                         "search_rutube — показать результаты поиска в Rutube, без запуска видео. " +
                         "search_youtube — показать результаты поиска в YouTube, без запуска видео. " +
                         "search_query содержит только поисковую фразу без команды и названия сервиса; " +
-                        "для остальных действий search_query пустой. Для обоих поисковых действий все остальные параметры пустые. " +
-                        "Не заменяй выбранный сервис другим. Если сервис не указан, уточни где искать. " +
+                        "choose_search — если поисковая фраза известна, но сервис не указан, предложить выбор сервиса. " +
+                        "Для поисковых действий все остальные параметры пустые; для остальных действий search_query пустой. " +
+                        "Не заменяй выбранный сервис другим. Если сама поисковая фраза неясна, используй clarify. " +
                         "media — управление одной сессией из media_sessions: media_id, media_operation и media_seconds. " +
                         "Операция только из operations выбранной сессии. PAUSE — пауза, RESUME — продолжить, STOP — остановить, " +
                         "NEXT/PREVIOUS — следующий/предыдущий, SEEK_RELATIVE — перемотка на число секунд " +
@@ -118,7 +120,7 @@ internal object IntentProtocol {
         check(secondsValue != null && !secondsValue.isString) { "Недопустимое время медиакоманды." }
         val seconds = secondsValue.longOrNull ?: error("Недопустимое время медиакоманды.")
         check(action == "media" || (mediaId.isEmpty() && operation.isEmpty() && seconds == 0L)) { "Лишние параметры медиакоманды." }
-        check(action in setOf("search_rutube", "search_youtube") || query.isEmpty()) { "Поиск не разрешён для этого действия." }
+        check(action in setOf("search_rutube", "search_youtube", "choose_search") || query.isEmpty()) { "Поиск не разрешён для этого действия." }
         check(text.length <= 6000) { "Ответ модели слишком длинный." }
         return when (action) {
             "media" -> {
@@ -128,11 +130,14 @@ internal object IntentProtocol {
                 command.validate(media)
                 AssistantIntent.Media(command)
             }
-            "search_rutube", "search_youtube" -> {
+            "search_rutube", "search_youtube", "choose_search" -> {
                 check(id.isEmpty() && settings.isEmpty() && text.isEmpty()) { "Недопустимые параметры поиска." }
                 val validated = ContentSearch.validateQuery(query)
-                if (action == "search_rutube") AssistantIntent.SearchRutube(validated)
-                else AssistantIntent.SearchYoutube(validated)
+                when (action) {
+                    "search_rutube" -> AssistantIntent.SearchRutube(validated)
+                    "search_youtube" -> AssistantIntent.SearchYoutube(validated)
+                    else -> AssistantIntent.ChooseSearch(validated)
+                }
             }
             "reply", "clarify" -> {
                 check(id.isEmpty() && settings.isEmpty() && text.isNotBlank()) { "Некорректный ответ модели." }

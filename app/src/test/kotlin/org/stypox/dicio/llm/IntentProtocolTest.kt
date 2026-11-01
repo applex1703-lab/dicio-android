@@ -49,6 +49,21 @@ class IntentProtocolTest : StringSpec({
             IntentProtocol.parse(decision("get_time", text = "12:00"), emptySet())
         }
     }
+    "choose search accepts only a validated query" {
+        IntentProtocol.parse(decision("choose_search", query = "  кошки  "), emptySet()) shouldBe
+            AssistantIntent.ChooseSearch("кошки")
+        for (body in listOf(decision("choose_search"), decision("choose_search", query = "a\nb"),
+            decision("choose_search", query = "x".repeat(301)), decision("choose_search", id = "app_1", query = "x"),
+            decision("choose_search", settings = "WIFI", query = "x"), decision("choose_search", text = "x", query = "x"),
+            decision("choose_search", query = "x").replace("\"media_id\":\"\"", "\"media_id\":\"m\""),
+            decision("choose_search", query = "x").replace("\"media_operation\":\"\"", "\"media_operation\":\"PAUSE\""),
+            decision("choose_search", query = "x").replace("\"media_seconds\":0", "\"media_seconds\":1"))) {
+            shouldThrow<IllegalStateException> { IntentProtocol.parse(body, setOf("app_1")) }
+        }
+        val request = Json.parseToJsonElement(IntentProtocol.request("model", "найди кошек", emptyMap())).jsonObject
+        val actions = request["response_format"]!!.jsonObject["json_schema"]!!.jsonObject["schema"]!!.jsonObject["properties"]!!.jsonObject["action"]!!.jsonObject["enum"]!!.jsonArray
+        actions.any { it.jsonPrimitive.content == "choose_search" } shouldBe true
+    }
     "execution speaks answers but not visible device actions" {
         TvActions.Execution("answer", true).speak shouldBe true
         TvActions.Execution("opened", false).speak shouldBe false

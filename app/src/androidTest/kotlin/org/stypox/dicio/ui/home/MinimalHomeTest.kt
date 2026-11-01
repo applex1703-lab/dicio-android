@@ -7,8 +7,14 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.runtime.mutableStateOf
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.stypox.dicio.eval.ChoiceOption
+import org.stypox.dicio.eval.ChoicePresentation
 import org.stypox.dicio.eval.VoicePresentation
 import org.stypox.dicio.di.SkillContextImpl
 import org.stypox.dicio.skills.calculator.CalculatorOutput
@@ -17,6 +23,24 @@ import org.stypox.dicio.ui.nav.SearchTopAppBar
 
 class MinimalHomeTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun choiceRequiresExplicitClickAndUsesCurrentIds() {
+        val choice = mutableStateOf(ChoicePresentation(7, listOf(
+            ChoiceOption("a", "Первый"), ChoiceOption("b", "Второй"))))
+        val selected = mutableListOf<Pair<Long, String>>()
+        compose.setContent {
+            AppTheme { ChoiceButtons(choice.value, { id, option -> selected.add(id to option) }) }
+        }
+        compose.waitForIdle()
+        assertTrue(selected.isEmpty())
+        compose.onNodeWithText("Первый").assertIsFocused()
+        compose.onNodeWithText("Второй").performClick()
+        assertEquals(listOf(7L to "b"), selected)
+        compose.runOnIdle { choice.value = ChoicePresentation(8, listOf(ChoiceOption("c", "Третий"))) }
+        compose.onNodeWithText("Первый").assertDoesNotExist()
+        compose.onNodeWithText("Третий").performClick()
+        assertEquals(listOf(7L to "b", 8L to "c"), selected)
+    }
 
     @Test fun homeShowsCurrentErrorWithoutHistoryControls() {
         compose.setContent {

@@ -30,6 +30,9 @@ import org.stypox.dicio.skills.fallback.text.TextFallbackOutput
 import javax.inject.Singleton
 import javax.inject.Provider
 import org.dicio.skill.standard.util.MatchHelper
+import org.stypox.dicio.llm.AssistantIntent
+import org.stypox.dicio.llm.ContentSearch
+import org.stypox.dicio.llm.SearchTarget
 
 interface SkillEvaluator {
     val state: StateFlow<InteractionLog>
@@ -43,6 +46,7 @@ interface SkillEvaluator {
 
     fun cancelPendingInput()
     fun resetVoicePresentation()
+    fun selectChoice(choiceId: Long, optionId: String) = Unit
 }
 
 class SkillEvaluatorImpl(
@@ -57,6 +61,7 @@ class SkillEvaluatorImpl(
     private val scope = CoroutineScope(Dispatchers.Main.immediate)
     private val requests = LatestInputRequest(scope)
     private val legacyLock = Mutex()
+    private val pendingChoice = PendingChoice<SearchTarget>()
 
     private val _state = MutableStateFlow(
         InteractionLog(
@@ -70,13 +75,18 @@ class SkillEvaluatorImpl(
     private val outputSlot = CurrentLegacyOutput()
     override val currentOutput: StateFlow<SkillOutput?> = outputSlot.state
     private var previousFallback: TextFallbackOutput? = null
-    override fun resetVoicePresentation() { presentation.clear() }
+    override fun resetVoicePresentation() {
+        requests.cancel()
+        pendingChoice.clear()
+        presentation.clear()
+    }
 
     // must be kept up to date even when the activity is recreated, for this reason it is `var`
     override var permissionRequester: suspend (List<Permission>) -> Boolean = { false }
 
     override fun processInputEvent(event: InputEvent) {
         scope.launch {
+            pendingChoice.clear()
             requests.replace { suspendProcessInputEvent(event) }
         }
     }
@@ -84,11 +94,33 @@ class SkillEvaluatorImpl(
     override fun cancelPendingInput() {
         scope.launch {
             requests.cancel()
+            pendingChoice.clear()
             outputSlot.clear()
             _state.value = InteractionLog(emptyList(), null)
             presentation.clear()
             skillContext.speechOutputDevice.stopSpeaking()
             skillContext.speechOutputDevice.cleanup()
+        }
+    }
+
+    override fun selectChoice(choiceId: Long, optionId: String) {
+        // Consume synchronously before starting any coroutine or action.
+        val (query, target) = pendingChoice.consume(choiceId, optionId) ?: return
+        presentation.choosing()
+        requests.replace {
+            try {
+                // A queued clarification must not play over the selected silent action.
+                skillContext.speechOutputDevice.stopSpeaking()
+                val result = tvActions.executeSearchTarget(target, query)
+                coroutineContext.ensureActive()
+                presentation.answer(result.text, silent = true)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                coroutineContext.ensureActive()
+                // Do not log errors from a search: they may contain the query.
+                presentation.error(error.localizedMessage ?: "Не удалось открыть сервис поиска.")
+            }
         }
     }
 
@@ -142,6 +174,31 @@ class SkillEvaluatorImpl(
                         val decision = polzaClient.decide(config, event.utterances[0].first,
                             apps.associate { it.id to it.label }, media.targets)
                         coroutineContext.ensureActive()
+                        if (decision is AssistantIntent.ChooseSearch) {
+                            try {
+                                val query = ContentSearch.validateQuery(decision.query)
+                                val targets = tvActions.searchTargets()
+                                coroutineContext.ensureActive()
+                                check(targets.isNotEmpty()) { "Нет доступных сервисов поиска." }
+                                val id = pendingChoice.create(query, targets.associateBy { it.id })
+                                outputSlot.clear()
+                                previousFallback = null
+                                _state.value = InteractionLog(emptyList(), null)
+                                val question = "Где искать?"
+                                presentation.choice(id, targets.map { ChoiceOption(it.id, it.label) }, question)
+                                skillContext.speechOutputDevice.speak(question)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                coroutineContext.ensureActive()
+                                pendingChoice.clear()
+                                outputSlot.clear()
+                                previousFallback = null
+                                _state.value = InteractionLog(emptyList(), null)
+                                presentation.error(error.localizedMessage ?: "Не удалось получить сервисы поиска.")
+                            }
+                            return
+                        }
                         val providerDone = android.os.SystemClock.elapsedRealtime()
                         Log.i("DicioPolza", "Decision received elapsedMs=${providerDone - catalogDone} type=${decision.javaClass.simpleName}")
                         val result = tvActions.execute(decision, apps, skillContext.locale, media)

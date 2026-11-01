@@ -4,6 +4,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.QuestionAnswer
@@ -13,7 +19,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -23,6 +32,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import android.content.ContextWrapper
 import org.stypox.dicio.MainActivity
@@ -40,6 +51,7 @@ import org.dicio.skill.context.SkillContext
 import org.stypox.dicio.R
 import org.stypox.dicio.di.SkillContextImpl
 import org.stypox.dicio.eval.VoicePresentation
+import org.stypox.dicio.eval.ChoicePresentation
 import org.stypox.dicio.io.input.SttState
 import org.stypox.dicio.ui.nav.SearchTopAppBar
 import org.stypox.dicio.ui.theme.AppTheme
@@ -121,6 +133,9 @@ fun HomeScreen(
             startError = null
             activity?.let { it.voiceInputCoordinator.cancel(it) }
         },
+        onSelectChoice = { choiceId, optionId ->
+            activity?.let { it.voiceInputCoordinator.selectChoice(it, choiceId, optionId) }
+        },
         navigationIcon = navigationIcon,
         snackbarHost = {
             SnackbarHost(hostState = viewModel.snackbarHostState)
@@ -143,10 +158,11 @@ fun HomeScreen(
     onCancel: () -> Unit,
     navigationIcon: @Composable () -> Unit,
     snackbarHost: @Composable () -> Unit,
+    onSelectChoice: (Long, String) -> Unit = { _, _ -> },
 ) {
     var searchString by rememberSaveable { mutableStateOf<String?>(null) }
     val isTv = isTelevision()
-    BackHandler(enabled = searchString == null && ownsWork && (interactionLog.pendingQuestion != null || sttState == SttState.Listening || sttState == SttState.WaitingForResult || (sttState is SttState.Loading && sttState.thenStartListening))) { onCancel() }
+    BackHandler(enabled = searchString == null && ownsWork && (presentation.choice != null || interactionLog.pendingQuestion != null || sttState == SttState.Listening || sttState == SttState.WaitingForResult || (sttState is SttState.Loading && sttState.thenStartListening))) { onCancel() }
 
     Scaffold(
         topBar = {
@@ -170,9 +186,14 @@ fun HomeScreen(
         },
         content = { paddingValues ->
             Column(modifier = Modifier.padding(paddingValues)) {
-                CurrentResponse(presentation, currentOutput, skillContext,
+                CurrentResponse(presentation, if (presentation.choice != null) null else currentOutput, skillContext,
                     starting = ownsWork && (sttState == SttState.Listening || sttState == SttState.WaitingForResult || (sttState is SttState.Loading && sttState.thenStartListening)),
-                    error = startError, modifier = Modifier.fillMaxWidth().padding(16.dp))
+                    error = startError, modifier = Modifier.fillMaxWidth().weight(1f, fill = false).padding(16.dp))
+                if (ownsWork && startError == null) {
+                    presentation.choice?.let { choice ->
+                        ChoiceButtons(choice, onSelectChoice, Modifier.weight(1f, fill = false))
+                    }
+                }
             }
         },
         floatingActionButton = {
@@ -187,6 +208,27 @@ fun HomeScreen(
         floatingActionButtonPosition = FabPosition.Center,
         snackbarHost = snackbarHost,
     )
+}
+
+@Composable
+internal fun ChoiceButtons(choice: ChoicePresentation, onSelect: (Long, String) -> Unit, modifier: Modifier = Modifier) {
+    val focusRequester = remember(choice.id, choice.options) { FocusRequester() }
+    LaunchedEffect(choice.id, choice.options) {
+        if (choice.options.isNotEmpty()) focusRequester.requestFocus()
+    }
+    Column(modifier.fillMaxWidth().heightIn(max = 300.dp).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+        choice.options.forEachIndexed { index, option ->
+            val interaction = remember(choice.id, option.id) { MutableInteractionSource() }
+            val focused by interaction.collectIsFocusedAsState()
+            Button(
+                onClick = { onSelect(choice.id, option.id) },
+                interactionSource = interaction,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    .then(if (index == 0) Modifier.focusRequester(focusRequester) else Modifier)
+                    .then(if (focused) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, MaterialTheme.shapes.small) else Modifier),
+            ) { Text(option.label) }
+        }
+    }
 }
 
 @Preview

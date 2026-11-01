@@ -45,13 +45,30 @@ class VoiceInputCoordinatorTest {
         override var permissionRequester: suspend (List<Permission>) -> Boolean = { false }
         val events = mutableListOf<InputEvent>()
         var cancellations = 0
+        val choices = mutableListOf<Pair<Long, String>>()
         override fun processInputEvent(event: InputEvent) { events.add(event) }
         override fun cancelPendingInput() { cancellations++ }
         override fun resetVoicePresentation() = Unit
+        override fun selectChoice(choiceId: Long, optionId: String) { choices.add(choiceId to optionId) }
     }
 
     private fun onMain(block: () -> Unit) =
         InstrumentationRegistry.getInstrumentation().runOnMainSync(block)
+
+    @Test fun choiceRequiresCurrentEvaluationOwner() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val owner = Any()
+        coordinator.selectChoice(owner, 1, "a")
+        coordinator.submitText(owner, "search")
+        coordinator.selectChoice(Any(), 1, "a")
+        coordinator.selectChoice(owner, 1, "a")
+        coordinator.release(owner)
+        coordinator.selectChoice(owner, 1, "a")
+        assertEquals(listOf(1L to "a"), evaluator.choices)
+        assertEquals(0, input.starts)
+    }
 
     @Test fun cancelRejectsLateCallbacksAndForeignRelease() = onMain {
         val input = Input()

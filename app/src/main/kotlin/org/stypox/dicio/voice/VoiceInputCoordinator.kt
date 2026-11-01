@@ -95,6 +95,12 @@ class VoiceInputCoordinator @Inject constructor(
 
     fun startHome(owner: Any): Boolean = start(owner)
 
+    fun selectChoice(owner: Any, choiceId: Long, optionId: String) {
+        checkMain()
+        if (tearingDown || evaluationLease?.owner !== owner) return
+        evaluator.selectChoice(choiceId, optionId)
+    }
+
     fun submitText(owner: Any, text: String) {
         checkMain()
         if (tearingDown) return

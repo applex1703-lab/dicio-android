@@ -4,12 +4,16 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.service.voice.VoiceInteractionSession
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
+import android.widget.Button
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.annotation.RequiresApi
@@ -26,6 +30,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import org.stypox.dicio.di.SttInputDeviceWrapper
 import org.stypox.dicio.eval.SkillEvaluator
+import org.stypox.dicio.eval.ChoicePresentation
 import org.stypox.dicio.io.input.SttState
 
 @EntryPoint
@@ -48,6 +53,9 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private lateinit var status: TextView
     private lateinit var transcript: TextView
     private lateinit var answer: TextView
+    private lateinit var choiceScroll: ScrollView
+    private lateinit var choiceButtons: LinearLayout
+    private var renderedChoice: ChoicePresentation? = null
     private var visible = false
 
     private fun dp(value: Int) = (app.resources.displayMetrics.density * value).toInt()
@@ -67,8 +75,50 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             status = line(18, Color.rgb(138, 180, 248))
             transcript = line(28, Color.WHITE)
             answer = line(22, Color.rgb(230, 232, 237)).apply { maxLines = 8 }
+            choiceScroll = ScrollView(app).apply {
+                visibility = View.GONE
+                isFillViewport = false
+                choiceButtons = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
+                addView(choiceButtons)
+            }
+            addView(choiceScroll, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(240)))
             line(14, Color.LTGRAY).text = "Назад — закрыть · Новый запрос — кнопка Ассистента"
         }
+    }
+
+    private fun renderChoice(choice: ChoicePresentation?) {
+        if (renderedChoice == choice) return
+        renderedChoice = choice
+        transcript.maxLines = if (choice == null) Int.MAX_VALUE else 2
+        transcript.ellipsize = if (choice == null) null else TextUtils.TruncateAt.END
+        answer.maxLines = if (choice == null) 8 else 2
+        choiceButtons.removeAllViews()
+        choiceScroll.scrollTo(0, 0)
+        choiceScroll.visibility = if (choice == null || choice.options.isEmpty()) View.GONE else View.VISIBLE
+        choice?.options?.forEach { option ->
+            val button = Button(app).apply {
+                text = option.label
+                isAllCaps = false
+                isFocusable = true
+                setTextColor(Color.WHITE)
+                fun updateBackground(focused: Boolean) {
+                    background = GradientDrawable().apply {
+                        setColor(if (focused) Color.rgb(45, 80, 135) else Color.rgb(48, 51, 58))
+                        cornerRadius = dp(8).toFloat()
+                        setStroke(dp(if (focused) 3 else 1), if (focused) Color.WHITE else Color.LTGRAY)
+                    }
+                }
+                updateBackground(false)
+                setOnFocusChangeListener { _, focused -> updateBackground(focused) }
+                setOnClickListener { coordinator.selectChoice(this@TvVoiceSession, choice.id, option.id) }
+            }
+            choiceButtons.addView(button, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(8)
+            })
+        }
+        if (choice != null && choice.options.isNotEmpty()) choiceButtons.getChildAt(0).requestFocus()
     }
 
     private fun LinearLayout.line(size: Int, colour: Int): TextView = TextView(app).also {
@@ -98,6 +148,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         if (!coordinator.start(this) {
                 updates?.cancel()
                 updates = null
+                renderChoice(null)
                 if (visible) status.text = "Голосовой запрос прерван"
             }) {
             status.text = "Распознавание речи недоступно"
@@ -113,6 +164,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                         stt == SttState.Listening) "Распознаватель готов…" else presentation.status
                     transcript.text = presentation.request
                     answer.text = presentation.answer
+                    renderChoice(presentation.choice)
                     if (presentation.dismiss) hide()
                 }
         }
@@ -123,6 +175,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         visible = false
         updates?.cancel()
         updates = null
+        if (::choiceButtons.isInitialized) renderChoice(null)
         coordinator.release(this)
     }
 

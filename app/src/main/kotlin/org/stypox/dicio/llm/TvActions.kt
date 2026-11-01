@@ -24,6 +24,12 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
     private var cachedApps: List<App>? = null
     private var cachedAt = 0L
     private var cachedLocale = ""
+    private val searchCatalog = SearchCatalog(context)
+
+    internal suspend fun searchTargets(): List<SearchTarget> = searchCatalog.targets()
+
+    internal suspend fun executeSearchTarget(target: SearchTarget, query: String): Execution =
+        searchCatalog.execute(target, query)
 
     internal suspend fun catalog(): List<App> = withContext(Dispatchers.IO) { catalogMutex.withLock {
         val now = android.os.SystemClock.elapsedRealtime()
@@ -64,6 +70,7 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
             is AssistantIntent.Media -> mediaActions.execute(decision.command, media)
             is AssistantIntent.Reply -> Execution(decision.text, true)
             is AssistantIntent.Clarify -> Execution(decision.text, true)
+            is AssistantIntent.ChooseSearch -> error("Необходимо выбрать сервис поиска.")
             is AssistantIntent.SearchYoutube -> withContext(Dispatchers.Main) {
                 coroutineContext.ensureActive()
                 val query = ContentSearch.validateQuery(decision.query)
