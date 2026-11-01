@@ -3,9 +3,13 @@ package org.stypox.dicio.io.input
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -15,6 +19,19 @@ import kotlinx.coroutines.flow.StateFlow
 import org.stypox.dicio.di.LocaleManager
 import java.io.IOException
 
+internal interface GoogleRecognizer {
+    fun setRecognitionListener(listener: RecognitionListener)
+    fun startListening(intent: Intent)
+    fun stopListening()
+    fun destroy()
+}
+
+internal interface GoogleSpeechPlatform {
+    fun createRecognizer(): GoogleRecognizer
+    fun bind(intent: Intent, connection: ServiceConnection, flags: Int): Boolean
+    fun unbind(connection: ServiceConnection)
+}
+
 /** One-shot Google recognition, returning text to Dicio rather than executing Google actions. */
 class GoogleSpeechInputDevice(
     private val context: Context,
@@ -23,11 +40,38 @@ class GoogleSpeechInputDevice(
     private val main = Handler(Looper.getMainLooper())
     private val state = MutableStateFlow<SttState>(SttState.Loaded)
     override val uiState: StateFlow<SttState> = state
-    private var recognizer: SpeechRecognizer? = null
+    private var platform: GoogleSpeechPlatform = object : GoogleSpeechPlatform {
+        override fun createRecognizer(): GoogleRecognizer {
+            val delegate = SpeechRecognizer.createSpeechRecognizer(context, SERVICE_COMPONENT)
+            return object : GoogleRecognizer {
+                override fun setRecognitionListener(listener: RecognitionListener) = delegate.setRecognitionListener(listener)
+                override fun startListening(intent: Intent) = delegate.startListening(intent)
+                override fun stopListening() = delegate.stopListening()
+                override fun destroy() = delegate.destroy()
+            }
+        }
+        override fun bind(intent: Intent, connection: ServiceConnection, flags: Int) =
+            context.bindService(intent, connection, flags)
+        override fun unbind(connection: ServiceConnection) = context.unbindService(connection)
+    }
+    internal constructor(context: Context, localeManager: LocaleManager, platform: GoogleSpeechPlatform) :
+        this(context, localeManager) {
+        this.platform = platform
+    }
+    private var recognizer: GoogleRecognizer? = null
     private var listener: ((InputEvent) -> Unit)? = null
     @Volatile private var closed = false
     private var generation = 0
+    private var binding: ServiceConnection? = null
+    private var recognitionStarted = false
+    private val bindTimeout = Runnable {
+        Log.w(TAG, "Google diagnostic bind timed out")
+        generation++
+        releaseRecognizer()
+        complete(InputEvent.Error(IOException("Google speech service bind timed out")))
+    }
     private val timeout = Runnable {
+        generation++
         releaseRecognizer()
         complete(InputEvent.Error(IOException("Google speech input timed out")))
     }
@@ -41,11 +85,8 @@ class GoogleSpeechInputDevice(
     override fun onClick(eventListener: (InputEvent) -> Unit) { start(eventListener) }
 
     // Create the recognizer only when a recording is explicitly requested.
-    private fun prepareRecognizer(): SpeechRecognizer {
-        return recognizer ?: SpeechRecognizer.createSpeechRecognizer(context, ComponentName(
-            "com.google.android.katniss",
-            "com.google.android.apps.tvsearch.voice.recognition.KatnissRecognitionService",
-        )).also {
+    private fun prepareRecognizer(): GoogleRecognizer {
+        return recognizer ?: platform.createRecognizer().also {
             recognizer = it
             Log.i(TAG, "Google recognizer created (not listening)")
         }
@@ -109,7 +150,10 @@ class GoogleSpeechInputDevice(
                         if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ||
                             error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_NETWORK ||
                             error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
-                            error == SpeechRecognizer.ERROR_SERVER) releaseRecognizer()
+                            error == SpeechRecognizer.ERROR_SERVER) {
+                            generation++
+                            releaseRecognizer()
+                        }
                         complete(InputEvent.Error(IOException(message)))
                     }
                     override fun onResults(results: Bundle?) {
@@ -136,16 +180,70 @@ class GoogleSpeechInputDevice(
                     }
                     override fun onEvent(eventType: Int, params: Bundle?) { }
                 })
-                main.postDelayed(timeout, 30000)
                 val locale = localeManager.locale.value
                 val language = if (locale.language == "ru") "ru-RU" else locale.toLanguageTag()
-                service.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                val recognitionIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                })
-                Log.i(TAG, "Google recognition requested")
+                }
+                var started = false
+                val bindRequestedAt = SystemClock.elapsedRealtime()
+                val connection = object : ServiceConnection {
+                    // Posting also handles a callback delivered reentrantly during bindService.
+                    private fun dispatch(action: () -> Unit) {
+                        main.post {
+                            if (!closed && session == generation && listener != null && binding === this) {
+                                action()
+                            }
+                        }
+                    }
+                    private fun fail(reason: String) {
+                        Log.w(TAG, "Google diagnostic bind $reason")
+                        generation++
+                        releaseRecognizer()
+                        complete(InputEvent.Error(IOException("Google speech service bind $reason")))
+                    }
+                    override fun onServiceConnected(name: ComponentName?, binder: IBinder?) = dispatch {
+                        if (binder == null) {
+                            fail("returned null binder")
+                        } else if (!started) {
+                            started = true
+                            Log.i(TAG, "Google diagnostic bind connected after ${SystemClock.elapsedRealtime() - bindRequestedAt} ms")
+                            main.removeCallbacks(bindTimeout)
+                            try {
+                                main.postDelayed(timeout, 30000)
+                                recognitionStarted = true
+                                service.startListening(recognitionIntent)
+                                Log.i(TAG, "Google recognition requested after diagnostic bind")
+                            } catch (error: Exception) {
+                                generation++
+                                releaseRecognizer()
+                                complete(InputEvent.Error(error))
+                            }
+                        }
+                    }
+                    override fun onServiceDisconnected(name: ComponentName?) = dispatch { fail("disconnected") }
+                    override fun onBindingDied(name: ComponentName?) = dispatch { fail("died") }
+                    override fun onNullBinding(name: ComponentName?) = dispatch { fail("returned null binding") }
+                }
+                val flags = Context.BIND_AUTO_CREATE or
+                    (if (Build.VERSION.SDK_INT >= 29) Context.BIND_INCLUDE_CAPABILITIES else 0)
+                binding = connection
+                val bound = platform.bind(Intent("android.speech.RecognitionService").apply {
+                    component = SERVICE_COMPONENT
+                }, connection, flags)
+                if (!bound) {
+                    Log.w(TAG, "Google diagnostic bind rejected")
+                    generation++
+                    releaseRecognizer()
+                    complete(InputEvent.Error(IOException("Google speech service bind rejected")))
+                } else {
+                    main.postDelayed(bindTimeout, 10000)
+                    Log.i(TAG, "Google diagnostic bind requested")
+                }
             } catch (error: Exception) {
+                generation++
                 releaseRecognizer()
                 complete(InputEvent.Error(error))
             }
@@ -156,14 +254,37 @@ class GoogleSpeechInputDevice(
     private fun complete(event: InputEvent) {
         val target = listener ?: return
         listener = null
+        recognitionStarted = false
         generation++
         main.removeCallbacks(timeout)
+        main.removeCallbacks(bindTimeout)
+        val previousBinding = binding
+        binding = null
+        if (previousBinding != null) {
+            try {
+                platform.unbind(previousBinding)
+            } catch (error: IllegalArgumentException) {
+                Log.w(TAG, "Google diagnostic unbind failed", error)
+            } catch (error: SecurityException) {
+                Log.w(TAG, "Google diagnostic unbind denied", error)
+            }
+        }
         state.value = SttState.Loaded
         if (!closed) target(event)
     }
 
     override fun stopListening() {
-        val stop = { if (!closed) recognizer?.stopListening(); Unit }
+        val stop = {
+            if (!closed && listener != null) {
+                if (recognitionStarted) {
+                    recognizer?.stopListening()
+                } else {
+                    generation++
+                    releaseRecognizer()
+                    complete(InputEvent.None)
+                }
+            }
+        }
         if (Looper.myLooper() == Looper.getMainLooper()) stop() else main.post { stop() }
     }
 
@@ -178,5 +299,11 @@ class GoogleSpeechInputDevice(
         if (Looper.myLooper() == Looper.getMainLooper()) cleanup() else main.post { cleanup() }
     }
 
-    companion object { private const val TAG = "DicioGoogleSpeech" }
+    companion object {
+        private const val TAG = "DicioGoogleSpeech"
+        private val SERVICE_COMPONENT = ComponentName(
+            "com.google.android.katniss",
+            "com.google.android.apps.tvsearch.voice.recognition.KatnissRecognitionService",
+        )
+    }
 }
