@@ -1,7 +1,5 @@
 package org.stypox.dicio.llm
 
-import android.os.SystemClock
-import android.util.Log
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
@@ -17,6 +15,7 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import java.util.logging.Logger
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
@@ -82,9 +81,10 @@ class PolzaClient @Inject constructor(client: OkHttpClient) {
 /** Timings only: never log request or response contents, credentials, hosts, or addresses. */
 private class RouterNetworkTiming : EventListener() {
     private val id = nextId.incrementAndGet()
-    private val startedAt = SystemClock.elapsedRealtime()
+    private val startedAt = System.nanoTime()
     private fun event(stage: String) {
-        Log.i("DicioRouterNet", "id=$id stage=$stage elapsedMs=${SystemClock.elapsedRealtime() - startedAt}")
+        val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
+        logger.info("id=$id stage=$stage elapsedMs=$elapsedMs")
     }
 
     override fun callStart(call: Call) = event("call_start")
@@ -105,5 +105,8 @@ private class RouterNetworkTiming : EventListener() {
         if (ioe is java.io.InterruptedIOException) "call_failed_timeout_or_interrupted" else "call_failed_io"
     )
 
-    companion object { private val nextId = AtomicLong() }
+    companion object {
+        private val nextId = AtomicLong()
+        private val logger = Logger.getLogger("DicioRouterNet")
+    }
 }
