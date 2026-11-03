@@ -132,7 +132,7 @@ class SttInputDeviceWrapperImpl(
             }
             synchronized(deviceLock) {
                 if (!success) cleanupFailed = true
-                else {
+                else if (!cleanupFailed) {
                     try {
                         sttInputDevice = buildInputDevice(inputDeviceSetting)
                         restartUiStateJob()
@@ -245,8 +245,12 @@ class SttInputDeviceWrapperImpl(
         if (Looper.myLooper() == Looper.getMainLooper()) deliver() else main.post { deliver() }
     }
 
-    private fun failedDeviceCall(device: SttInputDevice, error: Exception) {
+    private fun failedDeviceCall(device: SttInputDevice, generation: Long, error: Exception) {
         android.util.Log.e("SttInputDeviceWrapper", "STT device call failed", error)
+        if (synchronized(deviceLock) { deviceGeneration != generation }) {
+            quarantineAfterStaleCall(error)
+            return
+        }
         var interrupted: ((InputEvent) -> Unit)? = null
         val shouldRelease = synchronized(deviceLock) {
             if (sttInputDevice !== device) false else {
@@ -260,12 +264,42 @@ class SttInputDeviceWrapperImpl(
         interrupted?.let { notifySafely(it, InputEvent.Error(IOException("Voice input failed", error))) }
     }
 
+    // A call that returned after replacement can have modified its old resource after destroy.
+    // Quarantine rather than attributing that exception to the newly published device generation.
+    private fun quarantineAfterStaleCall(error: Exception) {
+        var interrupted: ((InputEvent) -> Unit)? = null
+        val current = synchronized(deviceLock) {
+            cleanupFailed = true
+            interrupted = activeListener
+            activeListener = null
+            val old = sttInputDevice
+            if (old != null) {
+                sttInputDevice = null
+                deviceGeneration++
+                cleanupPending = true
+                restartUiStateJob()
+            }
+            old
+        }
+        if (current != null) {
+            scope.launch(Dispatchers.Main.immediate, start = CoroutineStart.UNDISPATCHED) {
+                try { current.destroy() }
+                catch (cleanupError: Exception) {
+                    android.util.Log.e("SttInputDeviceWrapper", "Quarantined STT cleanup failed", cleanupError)
+                } finally {
+                    synchronized(deviceLock) { cleanupPending = false }
+                }
+            }
+        }
+        interrupted?.let { notifySafely(it, InputEvent.Error(IOException("Voice input disabled: stale operation outcome is uncertain", error))) }
+    }
+
     override fun tryLoad(thenStartListeningEventListener: ((InputEvent) -> Unit)?): Boolean {
         checkMain()
         val device = synchronized(deviceLock) { if (cleanupFailed || cleanupPending) null else sttInputDevice } ?: return false
         val generation = deviceGeneration
         if (thenStartListeningEventListener == null) return try { device.tryLoad(null) } catch (error: Exception) {
-            failedDeviceCall(device, error)
+            failedDeviceCall(device, generation, error)
             false
         }
         if (synchronized(deviceLock) { activeListener != null }) {
@@ -275,7 +309,7 @@ class SttInputDeviceWrapperImpl(
         val callback = wrapEventListener(thenStartListeningEventListener)
         synchronized(deviceLock) { activeListener = callback }
         val loaded = try { device.tryLoad(listenerFor(device, generation, callback)) } catch (error: Exception) {
-            failedDeviceCall(device, error)
+            failedDeviceCall(device, generation, error)
             false
         }
         if (!loaded) synchronized(deviceLock) {
@@ -287,8 +321,9 @@ class SttInputDeviceWrapperImpl(
     override fun stopListening() {
         checkMain()
         val device = synchronized(deviceLock) { sttInputDevice }
+        val generation = deviceGeneration
         if (device != null) try { device.stopListening() } catch (error: Exception) {
-            failedDeviceCall(device, error)
+            failedDeviceCall(device, generation, error)
         }
     }
 
@@ -307,7 +342,7 @@ class SttInputDeviceWrapperImpl(
         val generation = deviceGeneration
         synchronized(deviceLock) { activeListener = callback }
         try { device.onClick(listenerFor(device, generation, callback)) } catch (error: Exception) {
-            failedDeviceCall(device, error)
+            failedDeviceCall(device, generation, error)
         }
     }
 

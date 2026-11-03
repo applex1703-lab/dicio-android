@@ -66,6 +66,7 @@ class GoogleSpeechInputDevice(
     @Volatile private var closed = false
     private var generation = 0
     private var binding: ServiceConnection? = null
+    private var bindCallsInFlight = 0
     private var recognitionStarted = false
     @Volatile private var cleanupFailure: Exception? = null
     private var recognizerDestroyAttempted = false
@@ -130,6 +131,7 @@ class GoogleSpeechInputDevice(
             eventListener(InputEvent.Started)
             if (closed || session != generation || listener == null) return@begin
             state.value = SttState.WaitingForResult
+            var bindInFlight = false
             try {
                 val service = prepareRecognizer()
                 service.setRecognitionListener(object : RecognitionListener {
@@ -262,9 +264,16 @@ class GoogleSpeechInputDevice(
                 bindTimeout = bindDeadline
                 binding = connection
                 unbindAttempted = false
-                val bound = platform.bind(Intent("android.speech.RecognitionService").apply {
-                    component = SERVICE_COMPONENT
-                }, connection, flags)
+                bindInFlight = true
+                bindCallsInFlight++
+                val bound = try {
+                    platform.bind(Intent("android.speech.RecognitionService").apply {
+                        component = SERVICE_COMPONENT
+                    }, connection, flags)
+                } finally {
+                    bindCallsInFlight--
+                }
+                bindInFlight = false
                 if (closed || session != generation || listener == null || binding !== connection) return@begin
                 if (!bound) {
                     Log.w(TAG, "Google diagnostic bind rejected")
@@ -276,6 +285,19 @@ class GoogleSpeechInputDevice(
                     Log.i(TAG, "Google diagnostic bind requested")
                 }
             } catch (error: Exception) {
+                if (session != generation || closed || listener == null) {
+                    if (bindInFlight) {
+                        // The old bind threw after its terminal callback. Its effects after the
+                        // earlier unbind are unknowable, even if another session has started.
+                        recordCleanupFailure(IOException("Stale Google bind outcome is uncertain", error))
+                        generation++
+                        releaseRecognizer()
+                        if (listener != null) complete(InputEvent.Error(error)) else cleanupBinding()
+                    } else {
+                        Log.w(TAG, "Ignoring exception from obsolete Google session", error)
+                    }
+                    return@begin
+                }
                 generation++
                 releaseRecognizer()
                 complete(InputEvent.Error(error))
@@ -332,6 +354,9 @@ class GoogleSpeechInputDevice(
         // Invalidate queued starts immediately and wait for main-thread cleanup and its result.
         closed = true
         withContext(NonCancellable + Dispatchers.Main.immediate) {
+            if (bindCallsInFlight != 0 && cleanupFailure == null) {
+                recordCleanupFailure(IOException("Google bind is still in progress during cleanup"))
+            }
             complete(InputEvent.None)
             main.removeCallbacks(timeout)
             bindTimeout?.let { main.removeCallbacks(it) }

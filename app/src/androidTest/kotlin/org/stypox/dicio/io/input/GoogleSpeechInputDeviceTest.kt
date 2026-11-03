@@ -417,6 +417,75 @@ class GoogleSpeechInputDeviceTest {
         }
     }
 
+    @Test fun staleBindExceptionQuarantinesReentrantSessionWithoutMisattributingIt() {
+        val platform = FakePlatform()
+        val device = device(platform)
+        val firstEvents = mutableListOf<InputEvent>()
+        val secondEvents = mutableListOf<InputEvent>()
+        onMain {
+            platform.onBind = {
+                if (platform.connections.size == 1) {
+                    platform.recognizers.single().callback.onResults(Bundle().apply {
+                        putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("first"))
+                    })
+                    throw SecurityException("old bind failed after callback")
+                }
+            }
+            device.onClick { event ->
+                firstEvents.add(event)
+                if (event is InputEvent.Final) device.onClick { secondEvents.add(it) }
+            }
+            assertTrue(firstEvents.last() is InputEvent.Final)
+            assertEquals(2, platform.connections.size)
+            assertEquals(InputEvent.Started, secondEvents.first())
+            assertTrue(secondEvents.last() is InputEvent.Error)
+            val failure = (secondEvents.last() as InputEvent.Error).throwable
+            assertTrue(failure.cause?.message?.contains("Stale Google bind") == true)
+            assertEquals(2, platform.unbound.size)
+            assertEquals(1, platform.recognizers.single().destroys)
+            assertFalse(device.tryLoad(null))
+            platform.recognizers.single().callback.onResults(Bundle().apply {
+                putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("late"))
+            })
+            assertEquals(2, secondEvents.size)
+            repeat(2) {
+                try { runBlocking { device.destroy() }; fail("stale bind failure was hidden") }
+                catch (_: java.io.IOException) { }
+            }
+            assertEquals(1, platform.recognizers.single().destroys)
+        }
+    }
+
+    @Test fun synchronousBindTerminalCannotReachEvaluatorBeforeBindReturns() {
+        val platform = FakePlatform().apply {
+            onBind = {
+                recognizers.single().callback.onResults(Bundle().apply {
+                    putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("must not execute"))
+                })
+                throw SecurityException("bind failed after terminal")
+            }
+        }
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val locale = LocaleManager.newForPreviews(context)
+        var builds = 0
+        val input = SttInputDeviceWrapperImpl(context, UserSettingsModule.newDataStoreForPreviews(), locale) {
+            builds++
+            GoogleSpeechInputDevice(context, locale, platform)
+        }
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        onMain {
+            assertTrue(coordinator.start(Any()))
+            assertTrue(evaluator.events.none { it is InputEvent.Final })
+            assertTrue(evaluator.events.any { it is InputEvent.Error })
+            assertFalse(input.isCleanupSafe())
+            assertFalse(coordinator.start(Any()))
+            assertEquals(1, builds)
+            assertEquals(1, platform.unbound.size)
+            assertEquals(1, platform.recognizers.single().destroys)
+        }
+    }
+
     @Test fun realCoordinatorAndWrapperDeliverFinalAfterSuccessfulCleanup() {
         val platform = FakePlatform()
         val context = ApplicationProvider.getApplicationContext<Context>()

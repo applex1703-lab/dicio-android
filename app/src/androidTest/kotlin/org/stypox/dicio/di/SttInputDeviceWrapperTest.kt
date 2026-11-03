@@ -281,4 +281,38 @@ class SttInputDeviceWrapperTest {
             assertEquals(listOf(InputEvent.Final(listOf("new" to 1f))), events)
         }
     }
+
+    @Test fun staleDeviceCallAfterRepublishingSameInstanceQuarantinesNewOwner() {
+        for (click in listOf(false, true)) {
+            val device = Device()
+            var calls = 0
+            device.onLoad = { callback ->
+                if (++calls == 1) {
+                    callback!!(InputEvent.Final(listOf("old" to 1f)))
+                    throw IllegalStateException("obsolete operation")
+                }
+            }
+            var builds = 0
+            val wrapper = wrapper(Store()) { builds++; device }
+            val received = mutableListOf<InputEvent>()
+            main {
+                val old: (InputEvent) -> Unit = {
+                    assertTrue(wrapper.reinitializeToReleaseResources())
+                    assertTrue(wrapper.tryLoad { event -> received.add(event) })
+                }
+                if (click) wrapper.onClick(old) else assertFalse(wrapper.tryLoad(old))
+                assertEquals(2, builds)
+                assertEquals(2, device.destroys) // once per published generation
+                assertEquals(1, received.size)
+                val event = received.single() as InputEvent.Error
+                assertTrue(event.throwable.message!!.contains("stale operation"))
+                assertFalse(wrapper.isCleanupSafe())
+                assertFalse(wrapper.tryLoad(null))
+                assertFalse(wrapper.reinitializeToReleaseResources())
+                device.callback!!(InputEvent.Final(listOf("late" to 1f)))
+                assertEquals(1, received.size)
+                assertEquals(2, device.destroys)
+            }
+        }
+    }
 }
