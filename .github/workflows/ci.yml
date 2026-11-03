@@ -60,10 +60,49 @@ jobs:
           name: app
           path: app/build/outputs/apk/debug/*.apk
 
+  android-instrumentation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v5
+      - name: Create branch for pull request build
+        if: github.event_name == 'pull_request'
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: git checkout -B "$BRANCH"
+      - name: Set up Java JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: temurin
+          cache: gradle
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run Android instrumentation tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: default
+          arch: x86_64
+          script: |
+            chmod +x gradlew
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.stypox.dicio.screenshot.ScreenshotTakerTest --stacktrace
+            python3 -c 'import glob, sys, xml.etree.ElementTree as ET; files = glob.glob("app/build/outputs/androidTest-results/connected/**/*.xml", recursive=True); classes = {case.get("classname") for path in files for case in ET.parse(path).iter("testcase") if case.find("skipped") is None}; required = {"org.stypox.dicio.io.input.GoogleSpeechInputDeviceTest", "org.stypox.dicio.voice.VoiceInputCoordinatorTest"}; missing = required - classes; print("Required voice test classes executed:", len(required) - len(missing), "/", len(required)); sys.exit(bool(missing))'
+
   sign-tv-apk:
     # Never expose the signing key to pull request code or non-main refs.
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    needs: build-and-test-jvm
+    needs: [build-and-test-jvm, android-instrumentation]
     runs-on: ubuntu-latest
     permissions:
       contents: read
