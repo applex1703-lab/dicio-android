@@ -96,8 +96,16 @@ jobs:
           arch: x86_64
           script: |
             chmod +x gradlew
+            adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+            adb -s emulator-5554 shell wm dismiss-keyguard
+            # Exercise TV-style directional navigation, not touch-mode focus.
+            adb -s emulator-5554 shell input keyevent KEYCODE_DPAD_DOWN
             ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.stypox.dicio.screenshot.ScreenshotTakerTest --stacktrace
             python3 -c 'import glob, sys, xml.etree.ElementTree as ET; files = glob.glob("app/build/outputs/androidTest-results/connected/**/*.xml", recursive=True); classes = {case.get("classname") for path in files for case in ET.parse(path).iter("testcase") if case.find("skipped") is None}; required = {"org.stypox.dicio.io.input.GoogleSpeechInputDeviceTest", "org.stypox.dicio.voice.VoiceInputCoordinatorTest"}; missing = required - classes; print("Required voice test classes executed:", len(required) - len(missing), "/", len(required)); sys.exit(bool(missing))'
+      - name: Summarize failed Android tests
+        if: failure()
+        run: |
+          python3 -c 'import glob, xml.etree.ElementTree as ET; files = glob.glob("app/build/outputs/androidTest-results/connected/**/*.xml", recursive=True); [(print(case.get("classname"), case.get("name"), (failure.get("message") or "")[:500], (failure.text or "")[:2000])) for path in files for case in ET.parse(path).iter("testcase") for failure in list(case) if failure.tag in ("failure", "error")]; print("Test reports:", len(files))'
 
   sign-tv-apk:
     # Never expose the signing key to pull request code or non-main refs.

@@ -111,5 +111,6 @@ class SkillHandlerLazyTest {
         withTimeout(10_000) {
             handler.enabledSkillsInfo.first { skills -> skills?.any { it.id == "calculator" } == true }
         }
+        Unit
     }
 }
