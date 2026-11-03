@@ -18,6 +18,6 @@ class FakeSttInputDeviceWrapper : SttInputDeviceWrapper {
     override fun onClick(eventListener: (InputEvent) -> Unit) {
     }
 
-    override fun reinitializeToReleaseResources() {
-    }
+    override fun reinitializeToReleaseResources(): Boolean = true
+    override fun isCleanupSafe(): Boolean = true
 }

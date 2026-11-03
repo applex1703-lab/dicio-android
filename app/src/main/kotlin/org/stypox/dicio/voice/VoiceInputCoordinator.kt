@@ -23,9 +23,21 @@ class VoiceInputCoordinator @Inject constructor(
     private var inputLease: InputLease? by mutableStateOf(null)
     private var evaluationLease: EvaluationLease? by mutableStateOf(null)
     private var tearingDown = false
+    // A throwing wrapper has not provided a trustworthy cleanup result.
+    private var inputFaulted = false
+    private var evaluatorFaulted = false
     private val deferredReleases = mutableListOf<Pair<Any, Boolean>>()
 
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
+
+    private fun inputCleanupSafe(): Boolean {
+        if (inputFaulted) return false
+        return try { input.isCleanupSafe() } catch (error: Exception) {
+            inputFaulted = true
+            android.util.Log.e("VoiceInputCoordinator", "Could not determine input cleanup state", error)
+            false
+        }
+    }
 
     /** Observed by Home so another owner's work cannot consume its Back press. */
     fun ownsWork(owner: Any): Boolean {
@@ -36,9 +48,9 @@ class VoiceInputCoordinator @Inject constructor(
     /** Explicit voice request; preempts prior input and evaluation, but never retries. */
     fun start(owner: Any, onRevoked: () -> Unit = {}): Boolean {
         checkMain()
-        if (tearingDown) return false
+        if (tearingDown || evaluatorFaulted || !inputCleanupSafe()) return false
         if (inputLease?.owner === owner && evaluationLease?.owner === owner) return true
-        clear(inputLease, evaluationLease, notify = true)
+        if (!clear(inputLease, evaluationLease, notify = true)) return false
         if (inputLease != null || evaluationLease != null) return false
         val evaluation = EvaluationLease(owner, onRevoked)
         evaluationLease = evaluation
@@ -51,7 +63,7 @@ class VoiceInputCoordinator @Inject constructor(
      */
     fun startPopup(owner: Any, onEvent: (InputEvent) -> Unit): Boolean {
         checkMain()
-        if (tearingDown) return false
+        if (tearingDown || evaluatorFaulted || !inputCleanupSafe()) return false
         if (inputLease?.owner === owner) return true
         if (inputLease != null || evaluationLease?.let { it.owner !== owner } == true) return false
         return startInput(owner, { onEvent(InputEvent.None) }, onEvent)
@@ -60,6 +72,7 @@ class VoiceInputCoordinator @Inject constructor(
     fun startService(owner: Any, onEvent: (InputEvent) -> Unit, onRevoked: () -> Unit): Boolean? {
         checkMain()
         if (tearingDown || inputLease != null || evaluationLease?.let { it.owner !== owner } == true) return null
+        if (evaluatorFaulted || !inputCleanupSafe()) return false
         return startInput(owner, onRevoked, onEvent)
     }
 
@@ -78,11 +91,17 @@ class VoiceInputCoordinator @Inject constructor(
         inputLease = lease
         var terminalDelivered = false
         val loaded = input.tryLoad { event ->
-            val deliver = {
+            val deliver = deliver@{
                 if (inputLease === lease) {
                     if (event is InputEvent.Final || event is InputEvent.Error || event is InputEvent.None) {
                         terminalDelivered = true
-                        clear(lease, null, notify = false)
+                        val cleaned = clear(lease, null, notify = false)
+                        if (!cleaned) {
+                            if (evaluation == null || evaluationLease === evaluation) {
+                                onEvent(InputEvent.Error(java.io.IOException("Voice input cleanup did not complete")))
+                            }
+                            return@deliver
+                        }
                     }
                     if (evaluation == null || evaluationLease === evaluation) onEvent(event)
                 }
@@ -97,15 +116,15 @@ class VoiceInputCoordinator @Inject constructor(
 
     fun selectChoice(owner: Any, choiceId: Long, optionId: String) {
         checkMain()
-        if (tearingDown || evaluationLease?.owner !== owner) return
+        if (tearingDown || evaluatorFaulted || evaluationLease?.owner !== owner) return
         evaluator.selectChoice(choiceId, optionId)
     }
 
     fun submitText(owner: Any, text: String) {
         checkMain()
         if (tearingDown) return
-        clear(inputLease, evaluationLease, notify = true)
-        if (inputLease != null || evaluationLease != null) return
+        if (!clear(inputLease, evaluationLease, notify = true)) return
+        if (inputLease != null || evaluationLease != null || evaluatorFaulted || !inputCleanupSafe()) return
         evaluationLease = EvaluationLease(owner) {}
         evaluator.processInputEvent(InputEvent.Final(listOf(text to 1.0f)))
     }
@@ -130,20 +149,43 @@ class VoiceInputCoordinator @Inject constructor(
             evaluationLease?.takeIf { it.owner === owner }, notify = false)
     }
 
-    private fun clear(inputTarget: InputLease?, evaluationTarget: EvaluationLease?, notify: Boolean) {
+    private fun clear(inputTarget: InputLease?, evaluationTarget: EvaluationLease?, notify: Boolean): Boolean {
         val oldInput = inputTarget?.takeIf { inputLease === it }
         val oldEvaluation = evaluationTarget?.takeIf { evaluationLease === it }
-        if (oldInput == null && oldEvaluation == null) return
+        if (oldInput == null && oldEvaluation == null) return true
         if (oldInput != null) inputLease = null
         if (oldEvaluation != null) evaluationLease = null
         tearingDown = true
+        var cleaned = true
         try {
-            if (oldInput != null) input.reinitializeToReleaseResources()
-            if (oldEvaluation != null) evaluator.cancelPendingInput()
+            if (oldInput != null) {
+                try {
+                    cleaned = input.reinitializeToReleaseResources()
+                } catch (error: Exception) {
+                    cleaned = false
+                    inputFaulted = true
+                    android.util.Log.e("VoiceInputCoordinator", "Input teardown failed", error)
+                }
+            }
+            if (oldEvaluation != null) {
+                // This API is synchronous: success does not prove asynchronous work or TTS has stopped.
+                try { evaluator.cancelPendingInput() }
+                catch (error: Exception) {
+                    cleaned = false
+                    evaluatorFaulted = true
+                    android.util.Log.e("VoiceInputCoordinator", "Evaluator teardown failed", error)
+                }
+            }
             if (notify) {
                 // Reject reentrant acquisitions until every old owner has been notified.
-                oldInput?.revoked?.invoke()
-                oldEvaluation?.revoked?.invoke()
+                try { oldInput?.revoked?.invoke() }
+                catch (error: Exception) {
+                    android.util.Log.e("VoiceInputCoordinator", "Input revocation failed", error)
+                }
+                try { oldEvaluation?.revoked?.invoke() }
+                catch (error: Exception) {
+                    android.util.Log.e("VoiceInputCoordinator", "Evaluation revocation failed", error)
+                }
             }
         } finally {
             tearingDown = false
@@ -153,5 +195,6 @@ class VoiceInputCoordinator @Inject constructor(
                     evaluationLease?.takeIf { it.owner === owner }, notifyRelease)
             }
         }
+        return cleaned
     }
 }

@@ -14,6 +14,9 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.stypox.dicio.di.LocaleManager
@@ -64,12 +67,10 @@ class GoogleSpeechInputDevice(
     private var generation = 0
     private var binding: ServiceConnection? = null
     private var recognitionStarted = false
-    private val bindTimeout = Runnable {
-        Log.w(TAG, "Google diagnostic bind timed out")
-        generation++
-        releaseRecognizer()
-        complete(InputEvent.Error(IOException("Google speech service bind timed out")))
-    }
+    @Volatile private var cleanupFailure: Exception? = null
+    private var recognizerDestroyAttempted = false
+    private var unbindAttempted = false
+    private var bindTimeout: Runnable? = null
     private val timeout = Runnable {
         generation++
         releaseRecognizer()
@@ -77,7 +78,7 @@ class GoogleSpeechInputDevice(
     }
 
     override fun tryLoad(thenStartListeningEventListener: ((InputEvent) -> Unit)?): Boolean {
-        if (closed) return false
+        if (closed || cleanupFailure != null) return false
         thenStartListeningEventListener?.let { start(it) }
         return true
     }
@@ -88,19 +89,36 @@ class GoogleSpeechInputDevice(
     private fun prepareRecognizer(): GoogleRecognizer {
         return recognizer ?: platform.createRecognizer().also {
             recognizer = it
+            recognizerDestroyAttempted = false
             Log.i(TAG, "Google recognizer created (not listening)")
         }
     }
 
+    // A failed operation is never retried: its outcome may already have taken effect.
     private fun releaseRecognizer() {
-        val previous = recognizer
-        recognizer = null
-        previous?.destroy()
+        val previous = recognizer ?: return
+        if (recognizerDestroyAttempted) return
+        recognizerDestroyAttempted = true
+        try {
+            previous.destroy()
+            recognizer = null
+        } catch (error: Exception) {
+            recordCleanupFailure(error)
+        }
+    }
+
+    private fun recordCleanupFailure(error: Exception) {
+        if (cleanupFailure == null) cleanupFailure = error
+        else if (cleanupFailure !== error) cleanupFailure?.addSuppressed(error)
+        Log.e(TAG, "Google speech cleanup failed; voice input disabled", error)
     }
 
     private fun start(eventListener: (InputEvent) -> Unit) {
         val begin = begin@{
-            if (closed) return@begin
+            if (closed || cleanupFailure != null) {
+                eventListener(InputEvent.Error(IOException("Google speech cleanup failed; voice input disabled", cleanupFailure)))
+                return@begin
+            }
             if (listener != null) {
                 // Preserve the existing listener and its request; never emit a second terminal event.
                 Log.w(TAG, "Rejecting start while recognition is active")
@@ -180,6 +198,8 @@ class GoogleSpeechInputDevice(
                     }
                     override fun onEvent(eventType: Int, params: Bundle?) { }
                 })
+                // A platform may deliver a terminal callback synchronously while installing it.
+                if (closed || session != generation || listener == null) return@begin
                 val locale = localeManager.locale.value
                 val language = if (locale.language == "ru") "ru-RU" else locale.toLanguageTag()
                 val recognitionIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -189,6 +209,7 @@ class GoogleSpeechInputDevice(
                 }
                 var started = false
                 val bindRequestedAt = SystemClock.elapsedRealtime()
+                lateinit var bindDeadline: Runnable
                 val connection = object : ServiceConnection {
                     // Posting also handles a callback delivered reentrantly during bindService.
                     private fun dispatch(action: () -> Unit) {
@@ -210,7 +231,8 @@ class GoogleSpeechInputDevice(
                         } else if (!started) {
                             started = true
                             Log.i(TAG, "Google diagnostic bind connected after ${SystemClock.elapsedRealtime() - bindRequestedAt} ms")
-                            main.removeCallbacks(bindTimeout)
+                            main.removeCallbacks(bindDeadline)
+                            if (bindTimeout === bindDeadline) bindTimeout = null
                             try {
                                 main.postDelayed(timeout, 30000)
                                 recognitionStarted = true
@@ -229,17 +251,28 @@ class GoogleSpeechInputDevice(
                 }
                 val flags = Context.BIND_AUTO_CREATE or
                     (if (Build.VERSION.SDK_INT >= 29) Context.BIND_INCLUDE_CAPABILITIES else 0)
+                bindDeadline = Runnable {
+                    if (!closed && session == generation && listener != null && binding === connection) {
+                        Log.w(TAG, "Google diagnostic bind timed out")
+                        generation++
+                        releaseRecognizer()
+                        complete(InputEvent.Error(IOException("Google speech service bind timed out")))
+                    }
+                }
+                bindTimeout = bindDeadline
                 binding = connection
+                unbindAttempted = false
                 val bound = platform.bind(Intent("android.speech.RecognitionService").apply {
                     component = SERVICE_COMPONENT
                 }, connection, flags)
+                if (closed || session != generation || listener == null || binding !== connection) return@begin
                 if (!bound) {
                     Log.w(TAG, "Google diagnostic bind rejected")
                     generation++
                     releaseRecognizer()
                     complete(InputEvent.Error(IOException("Google speech service bind rejected")))
                 } else {
-                    main.postDelayed(bindTimeout, 10000)
+                    main.postDelayed(bindDeadline, 10000)
                     Log.i(TAG, "Google diagnostic bind requested")
                 }
             } catch (error: Exception) {
@@ -257,20 +290,27 @@ class GoogleSpeechInputDevice(
         recognitionStarted = false
         generation++
         main.removeCallbacks(timeout)
-        main.removeCallbacks(bindTimeout)
-        val previousBinding = binding
-        binding = null
-        if (previousBinding != null) {
-            try {
-                platform.unbind(previousBinding)
-            } catch (error: IllegalArgumentException) {
-                Log.w(TAG, "Google diagnostic unbind failed", error)
-            } catch (error: SecurityException) {
-                Log.w(TAG, "Google diagnostic unbind denied", error)
-            }
-        }
+        bindTimeout?.let { main.removeCallbacks(it) }
+        bindTimeout = null
+        cleanupBinding()
+        if (cleanupFailure != null) releaseRecognizer()
         state.value = SttState.Loaded
-        if (!closed) target(event)
+        val failure = cleanupFailure
+        if (!closed) target(if (failure != null) InputEvent.Error(
+            IOException("Google speech cleanup failed; voice input disabled", failure)
+        ) else event)
+    }
+
+    private fun cleanupBinding() {
+        val previous = binding ?: return
+        if (unbindAttempted) return
+        unbindAttempted = true
+        try {
+            platform.unbind(previous)
+            binding = null
+        } catch (error: Exception) {
+            recordCleanupFailure(error)
+        }
     }
 
     override fun stopListening() {
@@ -289,14 +329,17 @@ class GoogleSpeechInputDevice(
     }
 
     override suspend fun destroy() {
-        // Invalidate queued starts immediately, even when called off the main thread.
+        // Invalidate queued starts immediately and wait for main-thread cleanup and its result.
         closed = true
-        val cleanup = {
+        withContext(NonCancellable + Dispatchers.Main.immediate) {
             complete(InputEvent.None)
             main.removeCallbacks(timeout)
+            bindTimeout?.let { main.removeCallbacks(it) }
+            bindTimeout = null
+            cleanupBinding()
             releaseRecognizer()
+            cleanupFailure?.let { throw IOException("Google speech cleanup failed", it) }
         }
-        if (Looper.myLooper() == Looper.getMainLooper()) cleanup() else main.post { cleanup() }
     }
 
     companion object {

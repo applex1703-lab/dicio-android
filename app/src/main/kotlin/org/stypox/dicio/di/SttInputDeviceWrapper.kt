@@ -3,6 +3,7 @@ package org.stypox.dicio.di
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.os.Handler
 import android.os.Looper
 import androidx.datastore.core.DataStore
 import dagger.Module
@@ -45,21 +46,29 @@ interface SttInputDeviceWrapper {
 
     fun onClick(eventListener: (InputEvent) -> Unit)
 
-    fun reinitializeToReleaseResources()
+    fun reinitializeToReleaseResources(): Boolean
+
+    /** Whether no STT cleanup is pending or known to have failed. */
+    fun isCleanupSafe(): Boolean
 }
 
 class SttInputDeviceWrapperImpl(
     @param:ApplicationContext private val appContext: Context,
     dataStore: DataStore<UserSettings>,
     private val localeManager: LocaleManager,
+    private val deviceFactory: ((InputDevice) -> SttInputDevice?)? = null,
 ) : SttInputDeviceWrapper {
     private val scope = CoroutineScope(Dispatchers.Default)
     private val deviceLock = Any()
+    private val main = Handler(Looper.getMainLooper())
 
     private var inputDeviceSetting: InputDevice
     private var sttPlaySoundSetting: SttPlaySound
     private var sttInputDevice: SttInputDevice?
+    private var cleanupPending = false
+    private var cleanupFailed = false
     private var activeListener: ((InputEvent) -> Unit)? = null
+    private var deviceGeneration = 0L
 
     // null means that the user has not enabled any STT input device
     private val _uiState: MutableStateFlow<SttState?> = MutableStateFlow(null)
@@ -76,43 +85,73 @@ class SttInputDeviceWrapperImpl(
 
         inputDeviceSetting = firstSettings.first
         sttPlaySoundSetting = firstSettings.second
-        sttInputDevice = buildInputDevice(inputDeviceSetting)
+        sttInputDevice = try { buildInputDevice(inputDeviceSetting) } catch (error: Exception) {
+            cleanupFailed = true
+            android.util.Log.e("SttInputDeviceWrapper", "STT construction failed", error)
+            null
+        }
         synchronized(deviceLock) { restartUiStateJob() }
 
         scope.launch(Dispatchers.Main.immediate) {
             nextSettingsFlow.collect { (inputDevice, sttPlaySound) ->
-                var interrupted: ((InputEvent) -> Unit)? = null
-                var previous: SttInputDevice? = null
+                val interrupted: ((InputEvent) -> Unit)?
                 synchronized(deviceLock) {
                     sttPlaySoundSetting = sttPlaySound
-                    if (inputDeviceSetting != inputDevice) {
-                        interrupted = activeListener
-                        activeListener = null
-                        previous = changeInputDeviceTo(inputDevice)
-                    }
+                    if (inputDeviceSetting == inputDevice) return@collect
+                    inputDeviceSetting = inputDevice
+                    interrupted = activeListener
+                    activeListener = null
                 }
-                destroyDevice(previous)
-                interrupted?.invoke(InputEvent.Error(IOException("Настройка голосового ввода изменена. Начните новый запрос.")))
+                replaceDevice()
+                interrupted?.let { notifySafely(it, InputEvent.Error(IOException("Voice input settings changed. Start a new request."))) }
             }
         }
     }
 
-    // Called with deviceLock held. Invalidate the old device before another caller can use it.
-    private fun changeInputDeviceTo(setting: InputDevice): SttInputDevice? {
-        val prevSttInputDevice = sttInputDevice
-        inputDeviceSetting = setting
-        sttInputDevice = buildInputDevice(setting)
-        restartUiStateJob()
-        return prevSttInputDevice
-    }
-
-    private fun destroyDevice(device: SttInputDevice?) {
-        if (device != null) scope.launch(start = CoroutineStart.UNDISPATCHED) { device.destroy() }
+    // Main-thread callers see no replacement until destroy has actually completed.
+    // An uncertain cleanup permanently disables voice input for this wrapper instance.
+    private fun replaceDevice(): Boolean {
+        checkMain()
+        val previous = synchronized(deviceLock) {
+            if (cleanupFailed || cleanupPending) return false
+            cleanupPending = true
+            val old = sttInputDevice
+            sttInputDevice = null
+            deviceGeneration++
+            restartUiStateJob()
+            old
+        }
+        var completed = false
+        scope.launch(Dispatchers.Main.immediate, start = CoroutineStart.UNDISPATCHED) {
+            var success = false
+            try {
+                previous?.destroy()
+                success = true
+            } catch (error: Exception) {
+                android.util.Log.e("SttInputDeviceWrapper", "STT cleanup failed; voice input disabled", error)
+            }
+            synchronized(deviceLock) {
+                if (!success) cleanupFailed = true
+                else {
+                    try {
+                        sttInputDevice = buildInputDevice(inputDeviceSetting)
+                        restartUiStateJob()
+                        completed = true
+                    } catch (error: Exception) {
+                        cleanupFailed = true
+                        android.util.Log.e("SttInputDeviceWrapper", "STT construction failed", error)
+                    }
+                }
+                cleanupPending = false
+            }
+        }
+        return completed
     }
 
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
 
     private fun buildInputDevice(setting: InputDevice): SttInputDevice? {
+        deviceFactory?.let { return it(setting) }
         return when (setting) {
             UNRECOGNIZED,
             INPUT_DEVICE_UNSET,
@@ -175,22 +214,69 @@ class SttInputDeviceWrapperImpl(
         eventListener(it)
     }
 
-    override fun tryLoad(thenStartListeningEventListener: ((InputEvent) -> Unit)?): Boolean {
-        checkMain()
-        val device = synchronized(deviceLock) { sttInputDevice } ?: return false
-        if (thenStartListeningEventListener == null) return device.tryLoad(null)
-        val callback = wrapEventListener(thenStartListeningEventListener)
-        synchronized(deviceLock) { activeListener = callback }
-        val loaded = device.tryLoad { event ->
-            val deliver = synchronized(deviceLock) {
-                if (activeListener !== callback) false else {
-                    if (event is InputEvent.Final || event is InputEvent.Error || event is InputEvent.None) {
-                        activeListener = null
-                    }
+    private fun notifySafely(callback: (InputEvent) -> Unit, event: InputEvent): Boolean = try {
+        callback(event)
+        true
+    } catch (error: Exception) {
+        android.util.Log.e("SttInputDeviceWrapper", "STT callback failed", error)
+        false
+    }
+
+    // Serialize validation and delivery with settings changes and reinitialization on main.
+    private fun listenerFor(device: SttInputDevice, generation: Long, callback: (InputEvent) -> Unit): (InputEvent) -> Unit = { event ->
+        val deliver = {
+            val current = synchronized(deviceLock) {
+                if (activeListener !== callback || sttInputDevice !== device || deviceGeneration != generation) false else {
+                    if (event is InputEvent.Final || event is InputEvent.Error || event is InputEvent.None) activeListener = null
                     true
                 }
             }
-            if (deliver) callback(event)
+            if (current && !notifySafely(callback, event)) {
+                val shouldRelease = synchronized(deviceLock) {
+                    if (sttInputDevice !== device || deviceGeneration != generation ||
+                        (activeListener != null && activeListener !== callback)) false else {
+                        if (activeListener === callback) activeListener = null
+                        true
+                    }
+                }
+                if (shouldRelease) replaceDevice()
+            }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) deliver() else main.post { deliver() }
+    }
+
+    private fun failedDeviceCall(device: SttInputDevice, error: Exception) {
+        android.util.Log.e("SttInputDeviceWrapper", "STT device call failed", error)
+        var interrupted: ((InputEvent) -> Unit)? = null
+        val shouldRelease = synchronized(deviceLock) {
+            if (sttInputDevice !== device) false else {
+                interrupted = activeListener
+                activeListener = null
+                true
+            }
+        }
+        if (shouldRelease) replaceDevice()
+        // This may be a reentrant new owner of the same now-uncertain device.
+        interrupted?.let { notifySafely(it, InputEvent.Error(IOException("Voice input failed", error))) }
+    }
+
+    override fun tryLoad(thenStartListeningEventListener: ((InputEvent) -> Unit)?): Boolean {
+        checkMain()
+        val device = synchronized(deviceLock) { if (cleanupFailed || cleanupPending) null else sttInputDevice } ?: return false
+        val generation = deviceGeneration
+        if (thenStartListeningEventListener == null) return try { device.tryLoad(null) } catch (error: Exception) {
+            failedDeviceCall(device, error)
+            false
+        }
+        if (synchronized(deviceLock) { activeListener != null }) {
+            notifySafely(thenStartListeningEventListener, InputEvent.Error(IOException("Voice input is busy")))
+            return false
+        }
+        val callback = wrapEventListener(thenStartListeningEventListener)
+        synchronized(deviceLock) { activeListener = callback }
+        val loaded = try { device.tryLoad(listenerFor(device, generation, callback)) } catch (error: Exception) {
+            failedDeviceCall(device, error)
+            false
         }
         if (!loaded) synchronized(deviceLock) {
             if (activeListener === callback) activeListener = null
@@ -201,23 +287,41 @@ class SttInputDeviceWrapperImpl(
     override fun stopListening() {
         checkMain()
         val device = synchronized(deviceLock) { sttInputDevice }
-        device?.stopListening()
+        if (device != null) try { device.stopListening() } catch (error: Exception) {
+            failedDeviceCall(device, error)
+        }
     }
 
     override fun onClick(eventListener: (InputEvent) -> Unit) {
         checkMain()
-        val device = synchronized(deviceLock) { sttInputDevice }
-        device?.onClick(wrapEventListener(eventListener))
+        val device = synchronized(deviceLock) { if (cleanupFailed || cleanupPending) null else sttInputDevice }
+        if (device == null) {
+            notifySafely(eventListener, InputEvent.Error(IOException("Voice input unavailable: cleanup did not complete.")))
+            return
+        }
+        if (synchronized(deviceLock) { activeListener != null }) {
+            notifySafely(eventListener, InputEvent.Error(IOException("Voice input is busy")))
+            return
+        }
+        val callback = wrapEventListener(eventListener)
+        val generation = deviceGeneration
+        synchronized(deviceLock) { activeListener = callback }
+        try { device.onClick(listenerFor(device, generation, callback)) } catch (error: Exception) {
+            failedDeviceCall(device, error)
+        }
     }
 
-    override fun reinitializeToReleaseResources() {
+    override fun reinitializeToReleaseResources(): Boolean {
         checkMain()
-        val previous = synchronized(deviceLock) {
-            activeListener = null
-            changeInputDeviceTo(inputDeviceSetting)
-        }
-        destroyDevice(previous)
+        synchronized(deviceLock) { activeListener = null }
+        return replaceDevice()
     }
+
+    override fun isCleanupSafe(): Boolean {
+        checkMain()
+        return synchronized(deviceLock) { !cleanupFailed && !cleanupPending }
+    }
+
 }
 
 @Module

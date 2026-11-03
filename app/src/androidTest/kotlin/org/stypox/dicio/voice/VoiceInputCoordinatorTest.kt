@@ -26,6 +26,8 @@ class VoiceInputCoordinatorTest {
         var synchronousEvent: InputEvent? = null
         var returnAfterEvent = true
         var onRelease: (() -> Unit)? = null
+        var cleanupSucceeds = true
+        var cleanupSafe = true
         override fun tryLoad(thenStartListeningEventListener: ((InputEvent) -> Unit)?): Boolean {
             if (!available) return false
             callback = thenStartListeningEventListener
@@ -35,7 +37,13 @@ class VoiceInputCoordinatorTest {
         }
         override fun stopListening() { stops++ }
         override fun onClick(eventListener: (InputEvent) -> Unit) = Unit
-        override fun reinitializeToReleaseResources() { releases++; onRelease?.invoke() }
+        override fun reinitializeToReleaseResources(): Boolean {
+            releases++
+            onRelease?.invoke()
+            if (!cleanupSucceeds) cleanupSafe = false
+            return cleanupSucceeds
+        }
+        override fun isCleanupSafe(): Boolean = cleanupSafe
     }
 
     private class Evaluator : SkillEvaluator {
@@ -45,9 +53,10 @@ class VoiceInputCoordinatorTest {
         override var permissionRequester: suspend (List<Permission>) -> Boolean = { false }
         val events = mutableListOf<InputEvent>()
         var cancellations = 0
+        var failCancel = false
         val choices = mutableListOf<Pair<Long, String>>()
         override fun processInputEvent(event: InputEvent) { events.add(event) }
-        override fun cancelPendingInput() { cancellations++ }
+        override fun cancelPendingInput() { cancellations++; if (failCancel) throw IllegalStateException("evaluator") }
         override fun resetVoicePresentation() = Unit
         override fun selectChoice(choiceId: Long, optionId: String) { choices.add(choiceId to optionId) }
     }
@@ -304,6 +313,98 @@ class VoiceInputCoordinatorTest {
         assertEquals(1, input.stops)
         coordinator.release(home)
         assertEquals(1, evaluator.cancellations)
+        assertEquals(1, input.releases)
+    }
+    @Test fun failedTerminalCleanupNeverExecutesFinalOrRetries() = onMain {
+        val input = Input().apply { cleanupSucceeds = false }
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        assertTrue(coordinator.start(Any()))
+        input.callback!!(InputEvent.Final(listOf("danger" to 1f)))
+        assertEquals(1, evaluator.events.size)
+        assertTrue(evaluator.events.single() is InputEvent.Error)
+        assertEquals(1, input.releases)
+        assertEquals(1, input.starts)
+    }
+
+    @Test fun failedPreemptionDoesNotStartAnotherRecording() = onMain {
+        val input = Input().apply { cleanupSucceeds = false }
+        val coordinator = VoiceInputCoordinator(input, Evaluator())
+        assertEquals(true, coordinator.startService(Any(), {}, {}))
+        assertFalse(coordinator.start(Any()))
+        assertEquals(1, input.starts)
+        assertEquals(1, input.releases)
+    }
+
+    @Test fun failedVoiceTeardownBlocksCurrentTextButNotLaterText() = onMain {
+        val input = Input().apply { cleanupSucceeds = false }
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        assertTrue(coordinator.start(Any()))
+        val late = input.callback!!
+        coordinator.submitText(Any(), "must not execute")
+        assertTrue(evaluator.events.none { it is InputEvent.Final })
+        assertEquals(1, evaluator.cancellations)
+        late(InputEvent.Final(listOf("late" to 1f)))
+        assertTrue(evaluator.events.none { it is InputEvent.Final })
+        coordinator.submitText(Any(), "still unsafe")
+        assertTrue(evaluator.events.none { it is InputEvent.Final })
+        input.cleanupSafe = true // Explicitly completed; no implicit retry or execution.
+        coordinator.submitText(Any(), "explicit later text")
+        assertEquals(listOf(InputEvent.Final(listOf("explicit later text" to 1f))), evaluator.events)
+        assertEquals(1, input.releases)
+    }
+
+    @Test fun throwingInputTeardownStillCancelsEvaluatorAndNotifiesOwners() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        var revoked = 0
+        assertTrue(coordinator.start(Any()) { revoked++ })
+        input.onRelease = { throw IllegalStateException("injected") }
+        assertFalse(coordinator.start(Any()))
+        assertEquals(1, evaluator.cancellations)
+        assertEquals(1, revoked)
+        assertEquals(1, input.starts)
+        input.onRelease = null
+        assertFalse(coordinator.start(Any()))
+        assertFalse(coordinator.startPopup(Any()) { })
+        assertEquals(false, coordinator.startService(Any(), {}, {}))
+        coordinator.submitText(Any(), "must remain blocked")
+        assertTrue(evaluator.events.isEmpty())
+        assertEquals(1, input.starts)
+    }
+
+    @Test fun evaluatorTeardownFailureBlocksNewExecutionAndStillNotifies() = onMain {
+        val input = Input()
+        val evaluator = Evaluator().apply { failCancel = true }
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        var revoked = 0
+        assertTrue(coordinator.start(Any()) { revoked++ })
+        coordinator.submitText(Any(), "blocked")
+        assertEquals(1, input.releases)
+        assertEquals(1, evaluator.cancellations)
+        assertEquals(1, revoked)
+        assertTrue(evaluator.events.none { it is InputEvent.Final })
+        coordinator.submitText(Any(), "still blocked")
+        assertFalse(coordinator.start(Any()))
+        assertEquals(1, input.starts)
+        assertTrue(evaluator.events.none { it is InputEvent.Final })
+    }
+
+    @Test fun pendingCleanupBlocksReentrantAndRepeatedTextUntilExplicitSafeRetry() = onMain {
+        val input = Input().apply { cleanupSucceeds = false }
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        assertTrue(coordinator.start(Any()))
+        input.onRelease = { coordinator.submitText(Any(), "reentrant") }
+        coordinator.submitText(Any(), "transition")
+        coordinator.submitText(Any(), "pending")
+        assertTrue(evaluator.events.none { it is InputEvent.Final })
+        assertEquals(1, input.releases)
+        input.cleanupSafe = true
+        coordinator.submitText(Any(), "explicit retry")
+        assertEquals(listOf(InputEvent.Final(listOf("explicit retry" to 1f))), evaluator.events)
         assertEquals(1, input.releases)
     }
 }
