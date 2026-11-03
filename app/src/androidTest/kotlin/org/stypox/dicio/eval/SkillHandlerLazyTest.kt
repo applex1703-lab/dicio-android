@@ -101,15 +101,16 @@ class SkillHandlerLazyTest {
         assertTrue(handler.isMatcherInitialized)
         assertTrue(reads.get() > 0)
         assertSame(handler.skillRanker, handler.skillRanker)
-        assertTrue(handler.enabledSkillsInfo.value!!.any { it.id == "calculator" })
+        // Preview contexts intentionally have no number parser, so calculator is not built.
+        assertTrue(handler.enabledSkillsInfo.value!!.any { it.id == "current_time" })
 
-        underlying.updateData { it.toBuilder().putEnabledSkills("calculator", false).build() }
+        underlying.updateData { it.toBuilder().putEnabledSkills("current_time", false).build() }
         withTimeout(10_000) {
-            handler.enabledSkillsInfo.first { skills -> skills != null && skills.none { it.id == "calculator" } }
+            handler.enabledSkillsInfo.first { skills -> skills != null && skills.none { it.id == "current_time" } }
         }
-        underlying.updateData { it.toBuilder().putEnabledSkills("calculator", true).build() }
+        underlying.updateData { it.toBuilder().putEnabledSkills("current_time", true).build() }
         withTimeout(10_000) {
-            handler.enabledSkillsInfo.first { skills -> skills?.any { it.id == "calculator" } == true }
+            handler.enabledSkillsInfo.first { skills -> skills?.any { it.id == "current_time" } == true }
         }
         Unit
     }
