@@ -64,9 +64,12 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
     internal suspend fun mediaSnapshot() = mediaActions.snapshot()
 
     internal suspend fun execute(decision: AssistantIntent, apps: List<App>, locale: Locale,
-        media: MediaActions.Snapshot = MediaActions.Snapshot(emptyList())): Execution {
+        media: MediaActions.Snapshot = MediaActions.Snapshot(emptyList()), userRequest: String = ""): Execution {
         coroutineContext.ensureActive()
         return when (decision) {
+            AssistantIntent.ConnectHapp -> withContext(Dispatchers.Main) {
+                HappConnect.execute(userRequest, AndroidHappLauncher(context))
+            }
             is AssistantIntent.Media -> mediaActions.execute(decision.command, media)
             is AssistantIntent.Reply -> Execution(decision.text, true)
             is AssistantIntent.Clarify -> Execution(decision.text, true)

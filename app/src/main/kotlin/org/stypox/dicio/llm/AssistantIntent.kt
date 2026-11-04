@@ -13,6 +13,7 @@ internal sealed interface AssistantIntent {
     data class Media(val command: MediaCommand) : AssistantIntent
     data object Time : AssistantIntent
     data object Date : AssistantIntent
+    data object ConnectHapp : AssistantIntent
 }
 
 internal enum class SettingsSection(val action: String, val label: String) {
@@ -25,7 +26,7 @@ internal enum class SettingsSection(val action: String, val label: String) {
 
 /** A single decision, not an arbitrary tool loop. All fields are checked again locally. */
 internal object IntentProtocol {
-    private val actions = listOf("reply", "clarify", "open_app", "open_settings", "get_time", "get_date", "search_rutube", "search_youtube", "choose_search", "media")
+    private val actions = listOf("reply", "clarify", "open_app", "open_settings", "get_time", "get_date", "search_rutube", "search_youtube", "choose_search", "media", "connect_happ")
 
     fun request(model: String, text: String, apps: Map<String, String>, media: List<MediaTarget> = emptyList()): String {
         val base = Json.parseToJsonElement(PolzaProtocol.request(model, text)).jsonObject
@@ -37,6 +38,7 @@ internal object IntentProtocol {
                         "reply — обычный ответ; clarify — уточнение; open_app — открыть установленное приложение; " +
                         "open_settings — открыть разрешённый раздел настроек без изменения параметров; " +
                         "get_time/get_date — запрос времени/даты с устройства. " +
+                        "connect_happ — только явная просьба подключить VPN Happ; не отключение и не переключение. Все остальные поля пустые, media_seconds=0. " +
                         "Не выдумывай дату, время и выполнение действий. Для действия text должен быть пустым. " +
                         "Для reply/clarify app_id должен быть пустым; для времени/даты тоже. " +
                         "При неоднозначном названии или отсутствии приложения уточняй, не выбирай похожее наугад. " +
@@ -124,6 +126,10 @@ internal object IntentProtocol {
         check(action in setOf("search_rutube", "search_youtube", "choose_search") || query.isEmpty()) { "Поиск не разрешён для этого действия." }
         check(text.length <= 6000) { "Ответ модели слишком длинный." }
         return when (action) {
+            "connect_happ" -> {
+                check(id.isEmpty() && settings.isEmpty() && text.isEmpty()) { "Недопустимые параметры подключения Happ." }
+                AssistantIntent.ConnectHapp
+            }
             "media" -> {
                 check(id.isEmpty() && settings.isEmpty() && text.isEmpty() && query.isEmpty()) { "Лишние параметры медиакоманды." }
                 val op = MediaOperation.entries.firstOrNull { it.name == operation } ?: error("Неизвестная медиакоманда.")

@@ -49,6 +49,20 @@ class IntentProtocolTest : StringSpec({
             IntentProtocol.parse(decision("get_time", text = "12:00"), emptySet())
         }
     }
+    "Happ connection rejects every unrelated parameter and unknown fields" {
+        IntentProtocol.parse(decision("connect_happ"), emptySet()) shouldBe AssistantIntent.ConnectHapp
+        for (body in listOf(
+            decision("connect_happ", id = "app_1"), decision("connect_happ", settings = "WIFI"),
+            decision("connect_happ", text = "connected"), decision("connect_happ", query = "happ://connect"),
+            decision("connect_happ").replace("\"media_id\":\"\"", "\"media_id\":\"m\""),
+            decision("connect_happ").replace("\"media_operation\":\"\"", "\"media_operation\":\"PAUSE\""),
+            decision("connect_happ").replace("\"media_seconds\":0", "\"media_seconds\":1"),
+            decision("connect_happ").replaceFirst("{", "{\"uri\":\"happ://connect\","),
+            decision("connect_happ").replaceFirst("{", "{\"subscription\":\"secret\","),
+        )) {
+            shouldThrow<IllegalStateException> { IntentProtocol.parse(body, setOf("app_1")) }
+        }
+    }
     "choose search accepts only a validated query" {
         IntentProtocol.parse(decision("choose_search", query = "  кошки  "), emptySet()) shouldBe
             AssistantIntent.ChooseSearch("кошки")
