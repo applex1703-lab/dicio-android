@@ -1,6 +1,7 @@
 package org.stypox.dicio.io.input
 
 import android.content.ComponentName
+import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
@@ -33,6 +34,9 @@ internal interface GoogleSpeechPlatform {
     fun createRecognizer(): GoogleRecognizer
     fun bind(intent: Intent, connection: ServiceConnection, flags: Int): Boolean
     fun unbind(connection: ServiceConnection)
+    fun requiresAudioOpWait(): Boolean = false
+    fun audioOpMode(): Int? = null
+    fun elapsedRealtime(): Long = SystemClock.elapsedRealtime()
 }
 
 /** One-shot Google recognition, returning text to Dicio rather than executing Google actions. */
@@ -56,6 +60,14 @@ class GoogleSpeechInputDevice(
         override fun bind(intent: Intent, connection: ServiceConnection, flags: Int) =
             context.bindService(intent, connection, flags)
         override fun unbind(connection: ServiceConnection) = context.unbindService(connection)
+        override fun requiresAudioOpWait() = Build.VERSION.SDK_INT == 30
+        override fun audioOpMode(): Int? {
+            val uid = context.packageManager.getPackageUid(SERVICE_COMPONENT.packageName, 0)
+            val appOps = context.getSystemService(AppOpsManager::class.java)
+                ?: throw IOException("AppOps service unavailable")
+            @Suppress("DEPRECATION")
+            return appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_RECORD_AUDIO, uid, SERVICE_COMPONENT.packageName)
+        }
     }
     internal constructor(context: Context, localeManager: LocaleManager, platform: GoogleSpeechPlatform) :
         this(context, localeManager) {
@@ -63,15 +75,19 @@ class GoogleSpeechInputDevice(
     }
     private var recognizer: GoogleRecognizer? = null
     private var listener: ((InputEvent) -> Unit)? = null
+    // Only this short gate crosses threads. Never hold it across a platform call or suspension.
+    private val startGate = Any()
     @Volatile private var closed = false
     private var generation = 0
     private var binding: ServiceConnection? = null
     private var bindCallsInFlight = 0
+    private var startCallsInFlight = 0 // main-thread owned
     private var recognitionStarted = false
     @Volatile private var cleanupFailure: Exception? = null
     private var recognizerDestroyAttempted = false
     private var unbindAttempted = false
     private var bindTimeout: Runnable? = null
+    private var appOpsPoll: Runnable? = null
     private val timeout = Runnable {
         generation++
         releaseRecognizer()
@@ -132,12 +148,19 @@ class GoogleSpeechInputDevice(
             if (closed || session != generation || listener == null) return@begin
             state.value = SttState.WaitingForResult
             var bindInFlight = false
+            var startInFlight = false
+            var pendingTerminal: (() -> Unit)? = null
+            val pendingCallbacks = mutableListOf<() -> Unit>()
             try {
                 val service = prepareRecognizer()
                 service.setRecognitionListener(object : RecognitionListener {
-                    private fun current() = !closed && session == generation && listener != null
+                    private fun current() = !closed && session == generation && listener != null && recognitionStarted
                     override fun onReadyForSpeech(params: Bundle?) {
                         if (current()) {
+                            if (startInFlight) {
+                                if (pendingTerminal == null) pendingCallbacks.add { onReadyForSpeech(params) }
+                                return
+                            }
                             state.value = SttState.Listening
                             Log.i(TAG, "Google ready for speech")
                         }
@@ -148,10 +171,20 @@ class GoogleSpeechInputDevice(
                     override fun onRmsChanged(rmsdB: Float) { }
                     override fun onBufferReceived(buffer: ByteArray?) { }
                     override fun onEndOfSpeech() {
-                        if (current()) state.value = SttState.WaitingForResult
+                        if (current()) {
+                            if (startInFlight) {
+                                if (pendingTerminal == null) pendingCallbacks.add { onEndOfSpeech() }
+                                return
+                            }
+                            state.value = SttState.WaitingForResult
+                        }
                     }
                     override fun onError(error: Int) {
                         if (!current()) return
+                        if (startInFlight) {
+                            if (pendingTerminal == null) pendingTerminal = { onError(error) }
+                            return
+                        }
                         Log.w(TAG, "Google recognition error=$error")
                         val message = when (error) {
                             SpeechRecognizer.ERROR_NO_MATCH ->
@@ -178,6 +211,10 @@ class GoogleSpeechInputDevice(
                     }
                     override fun onResults(results: Bundle?) {
                         if (!current()) return
+                        if (startInFlight) {
+                            if (pendingTerminal == null) pendingTerminal = { onResults(results) }
+                            return
+                        }
                         val texts = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         val scores = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
                         val hypotheses = texts.orEmpty().mapIndexedNotNull { index, text ->
@@ -192,6 +229,10 @@ class GoogleSpeechInputDevice(
                     }
                     override fun onPartialResults(partialResults: Bundle?) {
                         if (!current()) return
+                        if (startInFlight) {
+                            if (pendingTerminal == null) pendingCallbacks.add { onPartialResults(partialResults) }
+                            return
+                        }
                         val text = partialResults
                             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                             ?.firstOrNull { it.isNotBlank() } ?: return
@@ -235,16 +276,82 @@ class GoogleSpeechInputDevice(
                             Log.i(TAG, "Google diagnostic bind connected after ${SystemClock.elapsedRealtime() - bindRequestedAt} ms")
                             main.removeCallbacks(bindDeadline)
                             if (bindTimeout === bindDeadline) bindTimeout = null
-                            try {
-                                main.postDelayed(timeout, 30000)
-                                recognitionStarted = true
-                                service.startListening(recognitionIntent)
-                                Log.i(TAG, "Google recognition requested after diagnostic bind")
-                            } catch (error: Exception) {
-                                generation++
-                                releaseRecognizer()
-                                complete(InputEvent.Error(error))
+                            var waitStarted: Long? = null
+                            lateinit var poll: Runnable
+                            poll = Runnable {
+                                if (closed || session != generation || listener == null || binding !== this || appOpsPoll !== poll) return@Runnable
+                                try {
+                                    val now = platform.elapsedRealtime()
+                                    val began = waitStarted ?: now.also { waitStarted = it }
+                                    val limit = began + APP_OPS_WAIT_MS
+                                    // Do not accept a late ALLOWED after the deadline.
+                                    if (now >= limit) {
+                                        throw IOException("Google microphone AppOps wait timed out")
+                                    }
+                                    val requiresWait = platform.requiresAudioOpWait()
+                                    if (requiresWait && now - began < APP_OPS_MIN_WAIT_MS) {
+                                        main.postDelayed(poll, APP_OPS_POLL_MS)
+                                        return@Runnable
+                                    }
+                                    val mode = if (requiresWait) platform.audioOpMode() else null
+                                    if (closed || session != generation || listener == null || binding !== this || appOpsPoll !== poll) return@Runnable
+                                    val checkedAt = platform.elapsedRealtime()
+                                    if (checkedAt >= limit) throw IOException("Google microphone AppOps wait timed out")
+                                    if (!requiresWait || mode == AppOpsManager.MODE_ALLOWED) {
+                                        appOpsPoll = null
+                                        main.postDelayed(timeout, 30000)
+                                        // Linearize the start commitment against a destroy request.
+                                        // A committed call may already be in progress when destroy arrives.
+                                        val committed = synchronized(startGate) {
+                                            if (closed) false else {
+                                                recognitionStarted = true
+                                                startCallsInFlight++
+                                                true
+                                            }
+                                        }
+                                        if (!committed) return@Runnable
+                                        startInFlight = true
+                                        try {
+                                            try {
+                                                service.startListening(recognitionIntent)
+                                            } finally {
+                                                startCallsInFlight--
+                                            }
+                                        } catch (error: Exception) {
+                                            startInFlight = false
+                                            pendingTerminal = null
+                                            pendingCallbacks.clear()
+                                            // A throwing call may have started recording. Do not reuse this
+                                            // device even if destroy succeeds; its outcome is uncertain.
+                                            recordCleanupFailure(IOException("Google startListening outcome is uncertain", error))
+                                            generation++
+                                            releaseRecognizer()
+                                            if (listener != null) complete(InputEvent.Error(error)) else cleanupBinding()
+                                            return@Runnable
+                                        }
+                                        startInFlight = false
+                                        val terminal = pendingTerminal
+                                        pendingTerminal = null
+                                        val callbacks = pendingCallbacks.toList()
+                                        pendingCallbacks.clear()
+                                        callbacks.forEach { it() }
+                                        terminal?.invoke()
+                                        Log.i(TAG, "Google recognition requested after diagnostic bind (AppOps=$mode)")
+                                    } else if (mode == AppOpsManager.MODE_IGNORED || mode == AppOpsManager.MODE_FOREGROUND) {
+                                        main.postDelayed(poll, APP_OPS_POLL_MS)
+                                    } else {
+                                        throw IOException("Google microphone AppOps unavailable (mode=$mode)")
+                                    }
+                                } catch (error: Exception) {
+                                    if (!closed && session == generation && listener != null && binding === this) {
+                                        generation++
+                                        releaseRecognizer()
+                                        complete(InputEvent.Error(error))
+                                    }
+                                }
                             }
+                            appOpsPoll = poll
+                            poll.run()
                         }
                     }
                     override fun onServiceDisconnected(name: ComponentName?) = dispatch { fail("disconnected") }
@@ -312,13 +419,18 @@ class GoogleSpeechInputDevice(
         recognitionStarted = false
         generation++
         main.removeCallbacks(timeout)
+        appOpsPoll?.let { main.removeCallbacks(it) }
+        appOpsPoll = null
         bindTimeout?.let { main.removeCallbacks(it) }
         bindTimeout = null
         cleanupBinding()
         if (cleanupFailure != null) releaseRecognizer()
         state.value = SttState.Loaded
         val failure = cleanupFailure
-        if (!closed) target(if (failure != null) InputEvent.Error(
+        // Delivery and destroy have an explicit ordering without holding a lock in user code.
+        val deliver = synchronized(startGate) { !closed }
+
+        if (deliver) target(if (failure != null) InputEvent.Error(
             IOException("Google speech cleanup failed; voice input disabled", failure)
         ) else event)
     }
@@ -351,14 +463,19 @@ class GoogleSpeechInputDevice(
     }
 
     override suspend fun destroy() {
-        // Invalidate queued starts immediately and wait for main-thread cleanup and its result.
-        closed = true
+        // Prevent new commitments and terminal delivery immediately, even while main is busy.
+        synchronized(startGate) { closed = true }
         withContext(NonCancellable + Dispatchers.Main.immediate) {
             if (bindCallsInFlight != 0 && cleanupFailure == null) {
                 recordCleanupFailure(IOException("Google bind is still in progress during cleanup"))
             }
+            if (startCallsInFlight != 0) {
+                recordCleanupFailure(IOException("Google startListening is still in progress during cleanup"))
+            }
             complete(InputEvent.None)
             main.removeCallbacks(timeout)
+            appOpsPoll?.let { main.removeCallbacks(it) }
+            appOpsPoll = null
             bindTimeout?.let { main.removeCallbacks(it) }
             bindTimeout = null
             cleanupBinding()
@@ -369,6 +486,11 @@ class GoogleSpeechInputDevice(
 
     companion object {
         private const val TAG = "DicioGoogleSpeech"
+        // Observed TCL API 30 committed around five seconds after bind; this is only a
+        // device-specific settling heuristic, not evidence that microphone access is granted.
+        private const val APP_OPS_MIN_WAIT_MS = 6000L
+        private const val APP_OPS_WAIT_MS = 8000L
+        private const val APP_OPS_POLL_MS = 250L
         private val SERVICE_COMPONENT = ComponentName(
             "com.google.android.katniss",
             "com.google.android.apps.tvsearch.voice.recognition.KatnissRecognitionService",

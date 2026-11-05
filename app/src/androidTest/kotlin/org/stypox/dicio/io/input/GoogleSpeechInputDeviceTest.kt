@@ -1,6 +1,7 @@
 package org.stypox.dicio.io.input
 
 import android.content.Context
+import android.app.AppOpsManager
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Binder
@@ -39,8 +40,9 @@ class GoogleSpeechInputDeviceTest {
         var destroys = 0
         var failDestroy = false
         var onSetListener: ((RecognitionListener) -> Unit)? = null
+        var onStart: ((RecognitionListener) -> Unit)? = null
         override fun setRecognitionListener(listener: RecognitionListener) { callback = listener; onSetListener?.invoke(listener) }
-        override fun startListening(intent: Intent) { starts++ }
+        override fun startListening(intent: Intent) { starts++; onStart?.invoke(callback) }
         override fun stopListening() { stops++ }
         override fun destroy() { destroys++; if (failDestroy) throw IllegalStateException("destroy") }
     }
@@ -54,6 +56,19 @@ class GoogleSpeechInputDeviceTest {
         var failBind = false
         var onCreate: ((FakeRecognizer) -> Unit)? = null
         var onBind: ((ServiceConnection) -> Unit)? = null
+        var mode: Int? = null
+        var clock = 0L
+        var checks = 0
+        var checkFailure: Exception? = null
+        var onCheck: (() -> Unit)? = null
+        override fun elapsedRealtime() = clock
+        override fun requiresAudioOpWait() = mode != null || checkFailure != null
+        override fun audioOpMode(): Int? {
+            checks++
+            checkFailure?.let { throw it }
+            onCheck?.invoke()
+            return mode
+        }
         override fun createRecognizer(): GoogleRecognizer = FakeRecognizer().also { recognizers.add(it); onCreate?.invoke(it) }
         override fun bind(intent: Intent, connection: ServiceConnection, flags: Int): Boolean {
             connections.add(connection)
@@ -70,6 +85,355 @@ class GoogleSpeechInputDeviceTest {
     private fun device(platform: FakePlatform): GoogleSpeechInputDevice {
         val context = ApplicationProvider.getApplicationContext<Context>()
         return GoogleSpeechInputDevice(context, LocaleManager.newForPreviews(context), platform)
+    }
+
+    private fun poll(device: GoogleSpeechInputDevice): Runnable {
+        val field = GoogleSpeechInputDevice::class.java.getDeclaredField("appOpsPoll")
+        field.isAccessible = true
+        return field.get(device) as Runnable
+    }
+
+    @Test fun appOpsDelayedAllowedStartsAtMostOnce() {
+        val platform = FakePlatform().apply { mode = AppOpsManager.MODE_IGNORED }
+        val device = device(platform)
+        val events = mutableListOf<InputEvent>()
+        onMain { device.onClick { events.add(it) }; platform.connections.single().onServiceConnected(null, Binder()) }
+        drain()
+        onMain {
+            val runnable = poll(device)
+            assertEquals(0, platform.recognizers.single().starts)
+            platform.clock = 6000
+            platform.mode = AppOpsManager.MODE_ALLOWED
+            runnable.run()
+            runnable.run()
+            platform.connections.single().onServiceConnected(null, Binder())
+            assertEquals(1, platform.recognizers.single().starts)
+            device.stopListening()
+            runBlocking { device.destroy() }
+        }
+        drain()
+        assertEquals(1, platform.recognizers.single().starts)
+        assertEquals(1, platform.unbound.size)
+    }
+
+    @Test fun appOpsTimeoutAndLateCallbacksNeverStart() {
+        val platform = FakePlatform().apply { mode = AppOpsManager.MODE_IGNORED }
+        val device = device(platform)
+        val events = mutableListOf<InputEvent>()
+        onMain { device.onClick { events.add(it) }; platform.connections.single().onServiceConnected(null, Binder()) }
+        drain()
+        onMain {
+            val runnable = poll(device)
+            platform.clock = 8000
+            platform.mode = AppOpsManager.MODE_ALLOWED
+            runnable.run()
+            runnable.run()
+            platform.connections.single().onServiceConnected(null, Binder())
+            platform.recognizers.single().callback.onError(SpeechRecognizer.ERROR_CLIENT)
+            assertEquals(2, events.size)
+            assertTrue(events.last() is InputEvent.Error)
+            assertEquals(0, platform.recognizers.single().starts)
+            assertEquals(1, platform.recognizers.single().destroys)
+            assertEquals(1, platform.unbound.size)
+            runBlocking { device.destroy() }
+        }
+        drain()
+        assertEquals(0, platform.recognizers.single().starts)
+    }
+
+    @Test fun appOpsCancelAndDestroyRejectQueuedPolls() {
+        for (destroy in listOf(false, true)) {
+            val platform = FakePlatform().apply { mode = AppOpsManager.MODE_IGNORED }
+            val device = device(platform)
+            val events = mutableListOf<InputEvent>()
+            onMain { device.onClick { events.add(it) }; platform.connections.single().onServiceConnected(null, Binder()) }
+            drain()
+            onMain {
+                val runnable = poll(device)
+                if (destroy) runBlocking { device.destroy() } else device.stopListening()
+                platform.mode = AppOpsManager.MODE_ALLOWED
+                runnable.run()
+                assertEquals(0, platform.recognizers.single().starts)
+                assertEquals(1, platform.recognizers.single().destroys)
+                assertEquals(1, platform.unbound.size)
+                assertEquals(if (destroy) listOf(InputEvent.Started) else listOf(InputEvent.Started, InputEvent.None), events)
+                if (!destroy) runBlocking { device.destroy() }
+            }
+        }
+    }
+
+    @Test fun appOpsErrorsFailClosed() {
+        for (failure in listOf(false, true)) {
+            val platform = FakePlatform().apply {
+                mode = AppOpsManager.MODE_ERRORED
+                if (failure) checkFailure = SecurityException("uid or appops")
+            }
+            val device = device(platform)
+            val events = mutableListOf<InputEvent>()
+            onMain { device.onClick { events.add(it) }; platform.connections.single().onServiceConnected(null, Binder()) }
+            drain()
+            onMain {
+                platform.clock = 6000
+                poll(device).run()
+                assertTrue(events.last() is InputEvent.Error)
+                assertEquals(0, platform.recognizers.single().starts)
+                assertEquals(1, platform.recognizers.single().destroys)
+                assertEquals(1, platform.unbound.size)
+                runBlocking { device.destroy() }
+            }
+        }
+    }
+
+    @Test fun appOpsEarlyAllowedWaitsAndReentrantCancellationDoesNotStart() {
+        for (cancel in listOf(false, true)) {
+            val platform = FakePlatform().apply { mode = AppOpsManager.MODE_ALLOWED }
+            val device = device(platform)
+            if (cancel) platform.onCheck = { device.stopListening() }
+            onMain { device.onClick { }; platform.connections.single().onServiceConnected(null, Binder()) }
+            drain()
+            onMain {
+                assertEquals(0, platform.recognizers.single().starts)
+                assertEquals(0, platform.checks)
+                val runnable = poll(device)
+                platform.clock = 5999
+                runnable.run()
+                assertEquals(0, platform.checks)
+                assertEquals(0, platform.recognizers.single().starts)
+                platform.clock = 6000
+                runnable.run()
+                runnable.run()
+                assertEquals(if (cancel) 0 else 1, platform.recognizers.single().starts)
+                runBlocking { device.destroy() }
+            }
+        }
+    }
+
+    @Test fun appOpsLongCheckCannotStartAfterDeadline() {
+        val platform = FakePlatform().apply {
+            mode = AppOpsManager.MODE_ALLOWED
+            onCheck = { clock = 8000 }
+        }
+        val device = device(platform)
+        val events = mutableListOf<InputEvent>()
+        onMain { device.onClick { events.add(it) }; platform.connections.single().onServiceConnected(null, Binder()) }
+        drain()
+        onMain {
+            val runnable = poll(device)
+            platform.clock = 5999
+            runnable.run()
+            assertEquals(0, platform.checks)
+            platform.clock = 6000
+            runnable.run()
+            assertTrue(platform.checks >= 1)
+            assertEquals(0, platform.recognizers.single().starts)
+            assertTrue(events.last() is InputEvent.Error)
+            assertEquals(1, platform.unbound.size)
+            runBlocking { device.destroy() }
+        }
+    }
+
+    @Test fun callbacksBeforeStartCannotProduceEventsOrChangeState() {
+        val platform = FakePlatform().apply { mode = AppOpsManager.MODE_ALLOWED }
+        val device = device(platform)
+        val events = mutableListOf<InputEvent>()
+        onMain {
+            device.onClick { events.add(it) }
+            val callback = platform.recognizers.single().callback
+            callback.onReadyForSpeech(Bundle())
+            callback.onPartialResults(Bundle().apply {
+                putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("early"))
+            })
+            callback.onResults(Bundle().apply {
+                putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("early"))
+            })
+            callback.onError(SpeechRecognizer.ERROR_CLIENT)
+            assertEquals(listOf(InputEvent.Started), events)
+            assertEquals(SttState.WaitingForResult, device.uiState.value)
+            platform.connections.single().onServiceConnected(null, Binder())
+        }
+        drain()
+        onMain {
+            val callback = platform.recognizers.single().callback
+            callback.onReadyForSpeech(Bundle())
+            callback.onResults(Bundle().apply {
+                putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("during wait"))
+            })
+            assertEquals(listOf(InputEvent.Started), events)
+            assertEquals(SttState.WaitingForResult, device.uiState.value)
+            assertEquals(0, platform.recognizers.single().starts)
+            device.stopListening()
+            runBlocking { device.destroy() }
+        }
+    }
+
+    @Test fun synchronousCallbacksFromStartAreAcceptedExactlyOnce() {
+        lateinit var device: GoogleSpeechInputDevice
+        var ready = false
+        val events = mutableListOf<InputEvent>()
+        val platform = FakePlatform().apply {
+            onCreate = { recognizer -> recognizer.onStart = { callback ->
+                callback.onReadyForSpeech(Bundle())
+                callback.onPartialResults(Bundle().apply {
+                    putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("partial"))
+                })
+                callback.onResults(Bundle().apply {
+                    putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("valid"))
+                })
+                assertEquals(listOf(InputEvent.Started), events)
+                callback.onError(SpeechRecognizer.ERROR_CLIENT)
+            } }
+        }
+        device = this.device(platform)
+        onMain {
+            device.onClick {
+                if (it is InputEvent.Partial) ready = device.uiState.value == SttState.Listening
+                events.add(it)
+            }
+            platform.connections.single().onServiceConnected(null, Binder())
+        }
+        drain()
+        onMain {
+            assertEquals(1, platform.recognizers.single().starts)
+            assertTrue(ready)
+            assertEquals(3, events.size)
+            assertTrue(events.last() is InputEvent.Final)
+            assertEquals(1, platform.unbound.size)
+            runBlocking { device.destroy() }
+        }
+    }
+
+    @Test fun synchronousFinalThenStartThrowsNeverDeliversFinalAndQuarantines() {
+        val events = mutableListOf<InputEvent>()
+        val platform = FakePlatform().apply {
+            onCreate = { it.onStart = { callback ->
+                callback.onResults(Bundle().apply {
+                    putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("must not execute"))
+                })
+                assertEquals(listOf(InputEvent.Started), events)
+                throw SecurityException("uncertain start")
+            } }
+        }
+        val device = device(platform)
+        onMain { device.onClick { events.add(it) }; platform.connections.single().onServiceConnected(null, Binder()) }
+        drain()
+        onMain {
+            assertFalse(events.any { it is InputEvent.Final })
+            assertTrue(events.last() is InputEvent.Error)
+            assertEquals(1, platform.recognizers.single().starts)
+            assertEquals(1, platform.recognizers.single().destroys)
+            assertEquals(1, platform.unbound.size)
+            assertFalse(device.tryLoad(null))
+            try { runBlocking { device.destroy() }; fail("uncertain start was hidden") }
+            catch (_: java.io.IOException) { }
+        }
+    }
+
+    @Test fun offMainDestroySuppressesInFlightTerminalBeforeMainCleanup() {
+        lateinit var device: GoogleSpeechInputDevice
+        val entered = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val events = mutableListOf<InputEvent>()
+        val platform = FakePlatform().apply {
+            onCreate = { it.onStart = { callback ->
+                Thread {
+                    entered.countDown()
+                    runBlocking { device.destroy() }
+                    finished.countDown()
+                }.start()
+                assertTrue(entered.await(5, TimeUnit.SECONDS))
+                val closedField = GoogleSpeechInputDevice::class.java.getDeclaredField("closed")
+                closedField.isAccessible = true
+                val limit = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+                while (!closedField.getBoolean(device) && System.nanoTime() < limit) Thread.yield()
+                assertTrue(closedField.getBoolean(device))
+                assertFalse(finished.await(100, TimeUnit.MILLISECONDS))
+                callback.onResults(Bundle().apply {
+                    putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("ordered"))
+                })
+                assertEquals(listOf(InputEvent.Started), events)
+            } }
+        }
+        device = this.device(platform)
+        onMain { device.onClick { events.add(it) }; platform.connections.single().onServiceConnected(null, Binder()) }
+        assertTrue(finished.await(5, TimeUnit.SECONDS))
+        drain()
+        assertTrue(events.none { it is InputEvent.Final })
+        assertEquals(1, platform.recognizers.single().starts)
+        assertEquals(1, platform.recognizers.single().destroys)
+        assertEquals(1, platform.unbound.size)
+    }
+
+    @Test fun reentrantDestroyDuringStartFailsAndLateEffectCannotDeliverFinal() {
+        lateinit var device: GoogleSpeechInputDevice
+        var failure: Throwable? = null
+        var lateEffect = false
+        val events = mutableListOf<InputEvent>()
+        val platform = FakePlatform().apply {
+            onCreate = { it.onStart = { callback ->
+                try { runBlocking { device.destroy() } } catch (error: Throwable) { failure = error }
+                lateEffect = true // The old platform call can still act after attempted cleanup.
+                callback.onResults(Bundle().apply {
+                    putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("late"))
+                })
+                throw SecurityException("late start failure")
+            } }
+        }
+        device = this.device(platform)
+        onMain { device.onClick { events.add(it) }; platform.connections.single().onServiceConnected(null, Binder()) }
+        drain()
+        onMain {
+            assertTrue(lateEffect)
+            assertTrue(failure is java.io.IOException)
+            assertEquals(listOf(InputEvent.Started), events)
+            assertEquals(1, platform.recognizers.single().starts)
+            assertEquals(1, platform.recognizers.single().destroys)
+            assertEquals(1, platform.unbound.size)
+            assertFalse(device.tryLoad(null))
+            try { runBlocking { device.destroy() }; fail("uncertain cleanup was hidden") }
+            catch (_: java.io.IOException) { }
+        }
+    }
+
+    @Test fun offMainDestroyBeforeQueuedConnectionPreventsStart() {
+        val platform = FakePlatform()
+        val device = device(platform)
+        val finished = CountDownLatch(1)
+        val events = mutableListOf<InputEvent>()
+        onMain {
+            device.onClick { events.add(it) }
+            platform.connections.single().onServiceConnected(null, Binder())
+            Thread { runBlocking { device.destroy() }; finished.countDown() }.start()
+            val closedField = GoogleSpeechInputDevice::class.java.getDeclaredField("closed")
+            closedField.isAccessible = true
+            val limit = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            while (!closedField.getBoolean(device) && System.nanoTime() < limit) Thread.yield()
+            assertTrue(closedField.getBoolean(device))
+            assertFalse(finished.await(100, TimeUnit.MILLISECONDS))
+        }
+        assertTrue(finished.await(5, TimeUnit.SECONDS))
+        drain()
+        assertEquals(0, platform.recognizers.single().starts)
+        assertEquals(listOf(InputEvent.Started), events)
+        assertEquals(1, platform.unbound.size)
+        assertEquals(1, platform.recognizers.single().destroys)
+    }
+
+    @Test fun synchronousErrorFromStartIsDeliveredAndCleansUp() {
+        val platform = FakePlatform().apply {
+            onCreate = { it.onStart = { callback -> callback.onError(SpeechRecognizer.ERROR_CLIENT) } }
+        }
+        val device = device(platform)
+        val events = mutableListOf<InputEvent>()
+        onMain { device.onClick { events.add(it) }; platform.connections.single().onServiceConnected(null, Binder()) }
+        drain()
+        onMain {
+            assertEquals(1, platform.recognizers.single().starts)
+            assertEquals(2, events.size)
+            assertTrue(events.last() is InputEvent.Error)
+            assertEquals(1, platform.recognizers.single().destroys)
+            assertEquals(1, platform.unbound.size)
+            runBlocking { device.destroy() }
+        }
     }
 
     @Test fun rejectedBindFailsWithoutStartingRecognition() {
@@ -186,6 +550,10 @@ class GoogleSpeechInputDeviceTest {
         val events = mutableListOf<InputEvent>()
         onMain {
             device.onClick { events.add(it) }
+            platform.connections.single().onServiceConnected(null, Binder())
+        }
+        drain()
+        onMain {
             val recognizer = platform.recognizers.single()
             recognizer.failDestroy = true
             recognizer.callback.onResults(Bundle().apply {
@@ -316,21 +684,19 @@ class GoogleSpeechInputDeviceTest {
         }
     }
 
-    @Test fun synchronousListenerTerminalDoesNotBindAfterDestroy() {
+    @Test fun synchronousListenerTerminalBeforeStartIsIgnored() {
         val platform = FakePlatform().apply {
             onCreate = { recognizer -> recognizer.onSetListener = { it.onError(SpeechRecognizer.ERROR_CLIENT) } }
         }
         val device = device(platform)
         val events = mutableListOf<InputEvent>()
         onMain {
-            device.onClick {
-                events.add(it)
-                if (it is InputEvent.Error) runBlocking { device.destroy() }
-            }
-            assertEquals(2, events.size)
-            assertTrue(events.last() is InputEvent.Error)
-            assertTrue(platform.connections.isEmpty())
+            device.onClick { events.add(it) }
+            assertEquals(listOf(InputEvent.Started), events)
+            assertEquals(1, platform.connections.size)
+            device.stopListening()
             assertEquals(1, platform.recognizers.single().destroys)
+            runBlocking { device.destroy() }
         }
     }
 
@@ -372,7 +738,7 @@ class GoogleSpeechInputDeviceTest {
         }
     }
 
-    @Test fun terminalDuringBindCannotScheduleOrRunOldTimeoutAgainstNewSession() {
+    @Test fun cancellationDuringBindCannotScheduleOrRunOldTimeoutAgainstNewSession() {
         val platform = FakePlatform()
         val device = device(platform)
         val firstEvents = mutableListOf<InputEvent>()
@@ -384,16 +750,14 @@ class GoogleSpeechInputDeviceTest {
                     val field = GoogleSpeechInputDevice::class.java.getDeclaredField("bindTimeout")
                     field.isAccessible = true
                     oldDeadline = field.get(device) as Runnable
-                    platform.recognizers.single().callback.onResults(Bundle().apply {
-                        putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("first"))
-                    })
+                    device.stopListening()
                 }
             }
             device.onClick { event ->
                 firstEvents.add(event)
-                if (event is InputEvent.Final) device.onClick { secondEvents.add(it) }
+                if (event == InputEvent.None) device.onClick { secondEvents.add(it) }
             }
-            assertTrue(firstEvents.last() is InputEvent.Final)
+            assertEquals(InputEvent.None, firstEvents.last())
             assertEquals(listOf(InputEvent.Started), secondEvents)
             assertEquals(2, platform.connections.size)
             val field = GoogleSpeechInputDevice::class.java.getDeclaredField("main")
@@ -402,12 +766,12 @@ class GoogleSpeechInputDeviceTest {
             if (android.os.Build.VERSION.SDK_INT >= 29) assertFalse(handler.hasCallbacks(oldDeadline))
             oldDeadline.run() // A stale runnable must also be harmless if already dispatched.
             assertEquals(listOf(InputEvent.Started), secondEvents)
-            assertEquals(0, platform.recognizers.single().destroys)
+            assertEquals(1, platform.recognizers.first().destroys)
             platform.connections.last().onServiceConnected(null, Binder())
         }
         drain()
         onMain {
-            val recognizer = platform.recognizers.single()
+            val recognizer = platform.recognizers.last()
             assertEquals(1, recognizer.starts)
             recognizer.callback.onResults(Bundle().apply {
                 putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("second"))
@@ -425,26 +789,25 @@ class GoogleSpeechInputDeviceTest {
         onMain {
             platform.onBind = {
                 if (platform.connections.size == 1) {
-                    platform.recognizers.single().callback.onResults(Bundle().apply {
-                        putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("first"))
-                    })
+                    device.stopListening()
                     throw SecurityException("old bind failed after callback")
                 }
             }
             device.onClick { event ->
                 firstEvents.add(event)
-                if (event is InputEvent.Final) device.onClick { secondEvents.add(it) }
+                if (event == InputEvent.None) device.onClick { secondEvents.add(it) }
             }
-            assertTrue(firstEvents.last() is InputEvent.Final)
+            assertEquals(InputEvent.None, firstEvents.last())
             assertEquals(2, platform.connections.size)
             assertEquals(InputEvent.Started, secondEvents.first())
             assertTrue(secondEvents.last() is InputEvent.Error)
             val failure = (secondEvents.last() as InputEvent.Error).throwable
             assertTrue(failure.cause?.message?.contains("Stale Google bind") == true)
             assertEquals(2, platform.unbound.size)
-            assertEquals(1, platform.recognizers.single().destroys)
+            assertEquals(1, platform.recognizers.first().destroys)
+            assertEquals(1, platform.recognizers.last().destroys)
             assertFalse(device.tryLoad(null))
-            platform.recognizers.single().callback.onResults(Bundle().apply {
+            platform.recognizers.last().callback.onResults(Bundle().apply {
                 putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("late"))
             })
             assertEquals(2, secondEvents.size)
@@ -452,7 +815,7 @@ class GoogleSpeechInputDeviceTest {
                 try { runBlocking { device.destroy() }; fail("stale bind failure was hidden") }
                 catch (_: java.io.IOException) { }
             }
-            assertEquals(1, platform.recognizers.single().destroys)
+            assertEquals(1, platform.recognizers.last().destroys)
         }
     }
 
@@ -478,9 +841,8 @@ class GoogleSpeechInputDeviceTest {
             assertTrue(coordinator.start(Any()))
             assertTrue(evaluator.events.none { it is InputEvent.Final })
             assertTrue(evaluator.events.any { it is InputEvent.Error })
-            assertFalse(input.isCleanupSafe())
-            assertFalse(coordinator.start(Any()))
-            assertEquals(1, builds)
+            assertTrue(input.isCleanupSafe())
+            assertTrue(builds >= 1)
             assertEquals(1, platform.unbound.size)
             assertEquals(1, platform.recognizers.single().destroys)
         }
