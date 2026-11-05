@@ -62,6 +62,7 @@ class GoogleSpeechInputDevice(
         override fun unbind(connection: ServiceConnection) = context.unbindService(connection)
         override fun requiresAudioOpWait() = Build.VERSION.SDK_INT == 30
         override fun audioOpMode(): Int? {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
             val uid = context.packageManager.getPackageUid(SERVICE_COMPONENT.packageName, 0)
             val appOps = context.getSystemService(AppOpsManager::class.java)
                 ?: throw IOException("AppOps service unavailable")
