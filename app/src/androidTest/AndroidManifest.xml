@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Test APK only: inert service for platform bind/unbind coverage. -->
+        <service android:name="org.stypox.dicio.voice.ProbeTestService" android:exported="true" />
+    </application>
+</manifest>

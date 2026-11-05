@@ -1,6 +1,7 @@
 package org.stypox.dicio.settings
 
 import android.app.Application
+import android.content.Intent
 import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -29,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -84,6 +86,7 @@ private fun MainSettingsScreen(
 ) {
     val settings by viewModel.settingsState.collectAsState()
     val isTv = isTelevision()
+    val context = LocalContext.current
     var skillsFocused by remember { mutableStateOf(false) }
     LazyColumn(
         modifier = modifier,
@@ -140,6 +143,15 @@ private fun MainSettingsScreen(
 
         /* INPUT AND OUTPUT METHODS */
         item { SettingsCategoryTitle(stringResource(R.string.pref_io)) }
+        item {
+            SettingsItem(
+                title = "Диагностика соединения Google",
+                description = "Проверка соединения без запуска распознавания со стороны Dicio",
+                modifier = Modifier.clickable {
+                    context.startActivity(Intent(context, org.stypox.dicio.voice.BindDiagnosticActivity::class.java))
+                }.testTag("bind_diagnostic_item"),
+            )
+        }
         item {
             inputDevice().Render(
                 displayedInputDevice(settings.inputDevice),

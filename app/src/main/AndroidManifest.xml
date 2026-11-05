@@ -63,6 +63,8 @@
             android:name=".error.ErrorActivity"
             android:exported="false" />
 
+        <activity android:name=".voice.BindDiagnosticActivity" android:exported="false" />
+
         <activity
             android:name=".io.input.stt_popup.SttPopupActivity"
             android:taskAffinity=""
