@@ -178,6 +178,21 @@ class VoiceInputCoordinatorTest {
         assertFalse(evaluator.pendingClarification)
     }
 
+    @Test fun retainedContextTransferredToTextIsCancelledOnceOnPreemption() = onMain {
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(Input(), evaluator)
+        val owner = Any()
+        coordinator.submitText(owner, "question")
+        evaluator.pendingClarification = true
+        coordinator.release(owner)
+        assertEquals(1, evaluator.finishes)
+        coordinator.submitText(owner, "answer")
+        assertTrue(evaluator.pendingClarification)
+        coordinator.submitText(Any(), "new topic")
+        assertEquals(2, evaluator.cancellations) // one finish and one cancellation
+        assertFalse(evaluator.pendingClarification)
+    }
+
     @Test fun sessionCloseBeforeCompletionAndDifferentOwnerDiscardContext() = onMain {
         val input = Input()
         val evaluator = Evaluator()

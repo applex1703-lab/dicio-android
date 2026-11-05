@@ -83,6 +83,7 @@ class VoiceInputCoordinator @Inject constructor(
         evaluator.resetVoicePresentation()
         val evaluation = EvaluationLease(owner, scope, onRevoked)
         evaluationLease = evaluation
+        retainedOwner = null // The active lease now owns the retained context.
         return startInput(owner, {}, evaluator::processInputEvent, evaluation)
     }
 
@@ -159,6 +160,7 @@ class VoiceInputCoordinator @Inject constructor(
                 preserveClarification = evaluationLease?.scope === owner, retainFor = owner)) return
         if (inputLease != null || evaluationLease != null || evaluatorFaulted || !inputCleanupSafe()) return
         evaluationLease = EvaluationLease(owner, owner) {}
+        retainedOwner = null // The active lease now owns the retained context.
         evaluator.processInputEvent(InputEvent.Final(listOf(text to 1.0f)))
     }
 
