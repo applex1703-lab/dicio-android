@@ -138,7 +138,7 @@ class PolzaSettings @Inject constructor(@ApplicationContext context: Context) {
     }
 
     companion object {
-        const val DEFAULT_MODEL = "openai/gpt-6-luna"
+        const val DEFAULT_MODEL = "google/gemini-3.5-flash-lite"
         private const val ALIAS = "dicio.routerai.api-key"
         private val LOCK = Any()
         private var revision = 0L
