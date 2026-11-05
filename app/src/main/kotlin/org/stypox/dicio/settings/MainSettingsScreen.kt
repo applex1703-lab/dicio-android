@@ -2,6 +2,7 @@ package org.stypox.dicio.settings
 
 import android.app.Application
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -19,9 +20,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +49,8 @@ import org.stypox.dicio.settings.ui.SettingsCategoryTitle
 import org.stypox.dicio.settings.ui.SettingsItem
 import org.stypox.dicio.ui.theme.AppTheme
 import org.stypox.dicio.ui.home.isTelevision
+import org.stypox.dicio.voice.PREBIND_KEY
+import org.stypox.dicio.voice.prebindPreferences
 
 internal fun displayedInputDevice(inputDevice: InputDevice): InputDevice = when (inputDevice) {
     InputDevice.UNRECOGNIZED,
@@ -143,6 +148,7 @@ private fun MainSettingsScreen(
 
         /* INPUT AND OUTPUT METHODS */
         item { SettingsCategoryTitle(stringResource(R.string.pref_io)) }
+        item { BackgroundPrebindSetting() }
         item {
             SettingsItem(
                 title = "Диагностика соединения Google",
@@ -183,6 +189,29 @@ private fun MainSettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
+}
+
+@Composable
+private fun BackgroundPrebindSetting() {
+    val context = LocalContext.current
+    val preferences = remember(context) { prebindPreferences(context) }
+    var enabled by remember(preferences) { mutableStateOf(preferences.getBoolean(PREBIND_KEY, false)) }
+    DisposableEffect(preferences) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == PREBIND_KEY || key == null) enabled = preferences.getBoolean(PREBIND_KEY, false)
+        }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    SettingsItem(
+        title = "Фоновая подготовка Google",
+        description = "По умолчанию выключено. Сервис Google может оставаться в памяти и выполнять собственные фоновые действия, включая использование сети и возможный доступ к микрофону. Dicio не инициирует запись или распознавание при подготовке. После отключения успешное освобождение не гарантировано; неопределённость видна в журнале DicioPrebind.",
+        content = {
+            Switch(checked = enabled, onCheckedChange = {
+                preferences.edit().putBoolean(PREBIND_KEY, it).apply()
+            }, modifier = Modifier.testTag("background_prebind_switch"))
+        },
+    )
 }
 
 @Preview
