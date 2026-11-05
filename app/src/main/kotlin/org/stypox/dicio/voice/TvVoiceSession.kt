@@ -8,7 +8,9 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.service.voice.VoiceInteractionSession
 import android.text.TextUtils
+import android.util.Log
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
@@ -134,6 +136,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     }
 
     override fun onShow(args: Bundle?, showFlags: Int) {
+        Log.i("DicioVoiceRoute", "onShow visible=$visible flags=$showFlags")
         super.onShow(args, showFlags)
         window?.window?.apply {
             setGravity(Gravity.TOP)
@@ -184,14 +187,30 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     }
 
     override fun onHide() {
+        Log.i("DicioVoiceRoute", "onHide visible=$visible")
         releaseVoiceResources()
         super.onHide()
     }
 
     override fun onBackPressed() {
+        Log.i("DicioVoiceRoute", "onBackPressed visible=$visible")
         // Closing a completed clarification is not the same as cancelling an active request.
         teardown.close()
         super.onBackPressed()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_ASSIST || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
+            Log.i("DicioVoiceRoute", "keyDown code=$keyCode visible=$visible")
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_ASSIST || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
+            Log.i("DicioVoiceRoute", "keyUp code=$keyCode visible=$visible")
+        }
+        return super.onKeyUp(keyCode, event)
     }
 
     override fun onDestroy() {

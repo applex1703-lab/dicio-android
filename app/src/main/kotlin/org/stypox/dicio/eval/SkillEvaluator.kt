@@ -311,8 +311,9 @@ class SkillEvaluatorImpl(
                         previousFallback = null
                         _state.value = InteractionLog(emptyList(), null)
                         presentation.answer(result.text, silent = !result.speak)
-                        if (decision is AssistantIntent.Clarify && clarification == null) {
-                            pendingClarification.save(event.utterances[0].first, decision.text)
+                        if (decision is AssistantIntent.Clarify) {
+                            // Replace, never extend, the previous one-use context.
+                            pendingClarification.save(request, decision.text)
                         }
                         if (result.speak) {
                             withContext(Dispatchers.Main) { skillContext.speechOutputDevice.speak(result.text) }

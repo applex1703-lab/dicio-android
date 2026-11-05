@@ -53,6 +53,22 @@ class PendingClarificationTest : StringSpec({
         pending.consume() shouldBe null
         job.cancel()
     }
+    "each clarification replaces the consumed pair and starts a fresh one-use TTL" {
+        val job = Job()
+        var time = 100L
+        val pending = PendingClarification(CoroutineScope(job + Dispatchers.Unconfined)) { time }
+        pending.save("original request", "first question")
+        time += 59_999
+        pending.consume()?.context shouldBe ClarificationContext("original request", "first question")
+        pending.save("short answer", "second question")
+        time += 59_999
+        pending.consume()?.context shouldBe ClarificationContext("short answer", "second question")
+        pending.consume() shouldBe null
+        pending.save("next answer", "third question")
+        time += 60_000
+        pending.consume() shouldBe null
+        job.cancel()
+    }
     "only unambiguous cancellation phrases are intercepted" {
         isClarificationCancellation(" Отмена! ") shouldBe true
         isClarificationCancellation("cancel") shouldBe true
