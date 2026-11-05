@@ -23,11 +23,25 @@ import kotlin.coroutines.resumeWithException
 
 /** Chat Completions transport adapted from PR #370; no tools or Android actions are exposed. */
 @Singleton
-class PolzaClient @Inject constructor(client: OkHttpClient) {
-    private val http = client.newBuilder().callTimeout(40, TimeUnit.SECONDS)
-        .connectTimeout(10, TimeUnit.SECONDS).readTimeout(35, TimeUnit.SECONDS)
+class PolzaClient private constructor(client: OkHttpClient, private val endpoint: String,
+    callTimeoutMs: Long, connectTimeoutMs: Long, readTimeoutMs: Long,
+    onResponseBodyStart: (() -> Unit)? = null) {
+    @Inject constructor(client: OkHttpClient) : this(client,
+        "https://routerai.ru/api/v1/chat/completions", 40_000, 10_000, 35_000)
+
+    private val http = client.newBuilder().callTimeout(callTimeoutMs, TimeUnit.MILLISECONDS)
+        .connectTimeout(connectTimeoutMs, TimeUnit.MILLISECONDS).readTimeout(readTimeoutMs, TimeUnit.MILLISECONDS)
         .retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
-        .eventListenerFactory { RouterNetworkTiming() }.build()
+        .eventListenerFactory { RouterNetworkTiming(callTimeoutMs, connectTimeoutMs, readTimeoutMs, onResponseBodyStart) }.build()
+
+    companion object {
+        /** Loopback-only transport for JVM socket tests; never changes the injected production endpoint. */
+        internal fun forLoopbackTest(client: OkHttpClient, port: Int, callTimeoutMs: Long,
+            connectTimeoutMs: Long, readTimeoutMs: Long, onResponseBodyStart: (() -> Unit)? = null): PolzaClient {
+            require(port in 1..65535 && callTimeoutMs > 0 && connectTimeoutMs > 0 && readTimeoutMs > 0)
+            return PolzaClient(client, "http://127.0.0.1:$port/", callTimeoutMs, connectTimeoutMs, readTimeoutMs, onResponseBodyStart)
+        }
+    }
 
     suspend fun answer(config: PolzaSettings.Config, text: String): String {
         PolzaProtocol.validateInput(config, text)
@@ -41,7 +55,7 @@ class PolzaClient @Inject constructor(client: OkHttpClient) {
     }
 
     private suspend fun complete(config: PolzaSettings.Config, payload: String): String {
-        val request = Request.Builder().url("https://routerai.ru/api/v1/chat/completions")
+        val request = Request.Builder().url(endpoint)
             .header("Authorization", "Bearer ${config.apiKey}")
             .post(payload.toRequestBody("application/json".toMediaType())).build()
         return suspendCancellableCoroutine { continuation ->
@@ -67,7 +81,9 @@ class PolzaClient @Inject constructor(client: OkHttpClient) {
                         if (continuation.isActive) continuation.resume(answer)
                     } catch (error: Exception) {
                         if (continuation.isActive) continuation.resumeWithException(
-                            IllegalStateException(if (error is IOException)
+                            IllegalStateException(if (error is java.io.InterruptedIOException)
+                                "RouterAI: время ожидания истекло или запрос прерван."
+                            else if (error is IOException)
                                 "RouterAI: не удалось прочитать ответ."
                             else if (error is IllegalStateException) error.message ?: "Ошибка RouterAI."
                             else "RouterAI: ошибка обработки ответа."))
@@ -79,7 +95,8 @@ class PolzaClient @Inject constructor(client: OkHttpClient) {
 }
 
 /** Timings only: never log request or response contents, credentials, hosts, or addresses. */
-private class RouterNetworkTiming : EventListener() {
+private class RouterNetworkTiming(private val callTimeoutMs: Long, private val connectTimeoutMs: Long,
+    private val readTimeoutMs: Long, private val onResponseBodyStart: (() -> Unit)?) : EventListener() {
     private val id = nextId.incrementAndGet()
     private val startedAt = System.nanoTime()
     private fun event(stage: String) {
@@ -87,7 +104,11 @@ private class RouterNetworkTiming : EventListener() {
         logger.info("id=$id stage=$stage elapsedMs=$elapsedMs")
     }
 
-    override fun callStart(call: Call) = event("call_start")
+    override fun callStart(call: Call) {
+        event("call_start")
+        logger.info("id=$id configuredCallMs=$callTimeoutMs configuredConnectMs=$connectTimeoutMs " +
+            "configuredReadMs=$readTimeoutMs actualCallTimeoutMs=${TimeUnit.NANOSECONDS.toMillis(call.timeout().timeoutNanos())}")
+    }
     override fun dnsStart(call: Call, domainName: String) = event("dns_start")
     override fun dnsEnd(call: Call, domainName: String, inetAddressList: List<InetAddress>) = event("dns_end")
     override fun connectStart(call: Call, inetSocketAddress: InetSocketAddress, proxy: Proxy) = event("connect_start")
@@ -98,7 +119,10 @@ private class RouterNetworkTiming : EventListener() {
     override fun requestBodyEnd(call: Call, byteCount: Long) = event("request_body_end")
     override fun responseHeadersStart(call: Call) = event("response_headers_start")
     override fun responseHeadersEnd(call: Call, response: Response) = event("response_headers_end")
-    override fun responseBodyStart(call: Call) = event("response_body_start")
+    override fun responseBodyStart(call: Call) {
+        event("response_body_start")
+        onResponseBodyStart?.invoke()
+    }
     override fun responseBodyEnd(call: Call, byteCount: Long) = event("response_body_end")
     override fun callEnd(call: Call) = event("call_end")
     override fun callFailed(call: Call, ioe: IOException) = event(
