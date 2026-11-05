@@ -35,7 +35,7 @@ class BindDiagnosticActivityTest {
         assertFalse(visible.contains("без записи", ignoreCase = true))
         assertFalse(visible.contains("запись не", ignoreCase = true))
         assertFalse(visible.contains("не производилась", ignoreCase = true))
-        assertFalse(visible.contains("не более 10 секунд", ignoreCase = true))
+        assertFalse(visible.contains("не более 20 секунд", ignoreCase = true))
     }
 
     @Test fun buttonCanRetryAfterOtherLiveReservationIsReleased() {
@@ -189,7 +189,7 @@ class BindDiagnosticActivityTest {
                 activity.unbindForProbe = { finished.countDown() }
                 activity.startProbe()
             }
-            assertFalse("released before observation window", finished.await(200, TimeUnit.MILLISECONDS))
+            assertFalse("released before observation window", finished.await(11, TimeUnit.SECONDS))
             assertTrue("deadline did not release bind", finished.await(15, TimeUnit.SECONDS))
             scenario.onActivity { assertHonest(it) }
         }

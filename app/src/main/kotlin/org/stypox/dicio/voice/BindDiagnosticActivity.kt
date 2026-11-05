@@ -63,7 +63,7 @@ class BindDiagnosticActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        status = TextView(this).apply { text = "Dicio подключается к сервису Google и не запускает распознавание. Сторонний сервис может выполнять собственные действия. Запрошена передача доступных foreground-возможностей для диагностики. Завершение планируется через 10 секунд на главном потоке; это не жёсткий предел, при задержке оно может произойти позже."; textSize = 20f }
+        status = TextView(this).apply { text = "Dicio подключается к сервису Google и не запускает распознавание. Сторонний сервис может выполнять собственные действия. Запрошена передача доступных foreground-возможностей для диагностики. Завершение планируется через 20 секунд на главном потоке; это не жёсткий предел, при задержке оно может произойти позже."; textSize = 20f }
         button = Button(this).apply { text = "Начать проверку"; setOnClickListener { startProbe() } }
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -107,7 +107,7 @@ class BindDiagnosticActivity : Activity() {
         Log.i(TAG, "bind_requested id=$id flags=$flags component=$COMPONENT")
         val end = Runnable { if (connection === conn) finishProbe("timeout") }
         deadline = end
-        handler.postDelayed(end, 10_000)
+        handler.postDelayed(end, 20_000)
         bindInFlight = true
         val result = try {
             if (bindForProbe(Intent("android.speech.RecognitionService").setComponent(COMPONENT), conn, flags)) null else "rejected"
