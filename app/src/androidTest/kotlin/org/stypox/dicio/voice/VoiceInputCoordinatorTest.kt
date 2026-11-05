@@ -53,10 +53,14 @@ class VoiceInputCoordinatorTest {
         override var permissionRequester: suspend (List<Permission>) -> Boolean = { false }
         val events = mutableListOf<InputEvent>()
         var cancellations = 0
+        var finishes = 0
+        var pendingClarification = false
         var failCancel = false
         val choices = mutableListOf<Pair<Long, String>>()
         override fun processInputEvent(event: InputEvent) { events.add(event) }
-        override fun cancelPendingInput() { cancellations++; if (failCancel) throw IllegalStateException("evaluator") }
+        override fun cancelPendingInput() { cancellations++; pendingClarification = false; if (failCancel) throw IllegalStateException("evaluator") }
+        override fun finishInputSession() { finishes++; cancellations++; if (failCancel) throw IllegalStateException("evaluator") }
+        override fun hasPendingClarification() = pendingClarification
         override fun resetVoicePresentation() = Unit
         override fun selectChoice(choiceId: Long, optionId: String) { choices.add(choiceId to optionId) }
     }
@@ -121,8 +125,142 @@ class VoiceInputCoordinatorTest {
         callback(InputEvent.Final(listOf("first" to 1f)))
         callback(InputEvent.Final(listOf("second" to 1f)))
         assertEquals(1, evaluator.events.size)
+        evaluator.pendingClarification = true
         coordinator.release(owner)
-        assertEquals(1, evaluator.cancellations)
+        assertEquals(1, evaluator.finishes)
+    }
+
+    @Test fun completedReleaseAndSameOwnerRestartPreserveButCancelAndPreemptionDoNot() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val owner = Any()
+        assertTrue(coordinator.start(owner))
+        input.callback!!(InputEvent.Final(listOf("first" to 1f)))
+        evaluator.pendingClarification = true
+        assertTrue(coordinator.start(owner))
+        assertEquals(1, evaluator.finishes)
+        coordinator.cancel(owner)
+        assertEquals(2, evaluator.cancellations)
+        assertTrue(coordinator.start(owner))
+        input.callback!!(InputEvent.Final(listOf("question" to 1f)))
+        evaluator.pendingClarification = true
+        coordinator.release(owner)
+        assertEquals(2, evaluator.finishes)
+        assertTrue(coordinator.start(owner))
+        assertTrue(coordinator.start(Any()))
+        assertEquals(4, evaluator.cancellations)
+    }
+
+    @Test fun sessionCloseThenRestartOrExplicitCancelUsesSameOwner() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val owner = Any()
+        val session = VoiceSessionTeardown(coordinator, owner)
+        assertTrue(coordinator.start(owner))
+        val callback = input.callback!!
+        callback(InputEvent.Final(listOf("first" to 1f)))
+        evaluator.pendingClarification = true // question was published
+        session.close() // Back, then onHide and onDestroy
+        session.close()
+        session.close()
+        assertTrue(evaluator.pendingClarification)
+        assertTrue(coordinator.start(owner))
+        coordinator.cancel(owner)
+        assertFalse(evaluator.pendingClarification)
+        callback(InputEvent.Final(listOf("late" to 1f)))
+        assertFalse(evaluator.pendingClarification)
+        coordinator.submitText(owner, "new")
+        evaluator.pendingClarification = true
+        session.close()
+        coordinator.cancel(owner)
+        assertFalse(evaluator.pendingClarification)
+    }
+
+    @Test fun sessionCloseBeforeCompletionAndDifferentOwnerDiscardContext() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val first = Any()
+        val second = Any()
+        val session = VoiceSessionTeardown(coordinator, first)
+        assertTrue(coordinator.start(first))
+        evaluator.pendingClarification = true
+        val late = input.callback!!
+        session.close() // active input: interruption, not a completed question
+        assertFalse(evaluator.pendingClarification)
+        late(InputEvent.Final(listOf("late" to 1f)))
+        assertTrue(evaluator.events.isEmpty())
+        coordinator.submitText(first, "question")
+        evaluator.pendingClarification = true
+        session.close()
+        assertTrue(evaluator.pendingClarification)
+        coordinator.submitText(second, "unrelated")
+        assertFalse(evaluator.pendingClarification)
+        coordinator.cancel(first)
+        assertTrue(coordinator.ownsWork(second))
+    }
+
+    @Test fun tvScopeSurvivesRecreationAndLateOldCallbacksCannotCancelNewOwner() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val old = Any()
+        val next = Any()
+        assertTrue(coordinator.startTv(old))
+        input.callback!!(InputEvent.Final(listOf("question" to 1f)))
+        evaluator.pendingClarification = true
+        VoiceSessionTeardown(coordinator, old).close()
+        assertTrue(coordinator.startTv(next))
+        assertTrue(evaluator.pendingClarification)
+        VoiceSessionTeardown(coordinator, old).close()
+        coordinator.cancel(old)
+        assertTrue(coordinator.ownsWork(next))
+        assertTrue(evaluator.pendingClarification)
+        input.callback!!(InputEvent.Final(listOf("answer" to 1f)))
+        VoiceSessionTeardown(coordinator, next).close()
+        coordinator.cancel(old)
+        assertTrue(evaluator.pendingClarification)
+        coordinator.cancel(next)
+        assertFalse(evaluator.pendingClarification)
+    }
+
+    @Test fun tvOwnerHandoffPrecedesReentrantRevocation() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val old = Any()
+        val next = Any()
+        assertTrue(coordinator.startTv(old) { coordinator.cancel(old) })
+        input.callback!!(InputEvent.Final(listOf("question" to 1f)))
+        evaluator.pendingClarification = true
+        assertTrue(coordinator.startTv(next))
+        assertTrue(coordinator.ownsWork(next))
+        assertTrue(evaluator.pendingClarification)
+        coordinator.cancel(next)
+        assertFalse(evaluator.pendingClarification)
+    }
+
+    @Test fun tvScopeDoesNotTransferToHomeOrExternalInput() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val tv = Any()
+        val home = Any()
+        assertTrue(coordinator.startTv(tv))
+        input.callback!!(InputEvent.Final(listOf("question" to 1f)))
+        evaluator.pendingClarification = true
+        coordinator.release(tv)
+        coordinator.submitText(home, "new topic")
+        assertFalse(evaluator.pendingClarification)
+        coordinator.release(home)
+        assertTrue(coordinator.startTv(tv))
+        input.callback!!(InputEvent.Final(listOf("question" to 1f)))
+        evaluator.pendingClarification = true
+        coordinator.release(tv)
+        assertEquals(true, coordinator.startService(Any(), {}, {}))
+        assertFalse(evaluator.pendingClarification)
     }
 
     @Test fun preemptionTearsDownBeforeRevocationAndNewStart() = onMain {

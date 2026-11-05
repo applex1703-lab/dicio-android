@@ -41,6 +41,10 @@ interface VoiceDependencies {
     fun voiceInputCoordinator(): VoiceInputCoordinator
 }
 
+internal class VoiceSessionTeardown(private val coordinator: VoiceInputCoordinator, private val owner: Any) {
+    fun close() = coordinator.release(owner)
+}
+
 /** A system voice window, not an Activity and not a SYSTEM_ALERT_WINDOW overlay. */
 @RequiresApi(23)
 class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
@@ -48,6 +52,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private val evaluator = dependencies.evaluator()
     private val input = dependencies.input()
     private val coordinator = dependencies.voiceInputCoordinator()
+    private val teardown = VoiceSessionTeardown(coordinator, this)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var updates: Job? = null
     private lateinit var status: TextView
@@ -144,8 +149,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             answer.text = "Откройте Dicio из списка приложений и разрешите запись звука."
             return
         }
-        evaluator.resetVoicePresentation()
-        if (!coordinator.start(this) {
+        if (!coordinator.startTv(this) {
                 updates?.cancel()
                 updates = null
                 renderChoice(null)
@@ -176,12 +180,18 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         updates?.cancel()
         updates = null
         if (::choiceButtons.isInitialized) renderChoice(null)
-        coordinator.release(this)
+        teardown.close()
     }
 
     override fun onHide() {
         releaseVoiceResources()
         super.onHide()
+    }
+
+    override fun onBackPressed() {
+        // Closing a completed clarification is not the same as cancelling an active request.
+        teardown.close()
+        super.onBackPressed()
     }
 
     override fun onDestroy() {

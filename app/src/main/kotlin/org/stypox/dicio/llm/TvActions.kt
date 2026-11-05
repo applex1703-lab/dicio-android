@@ -25,17 +25,31 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
     private var cachedAt = 0L
     private var cachedLocale = ""
     private val searchCatalog = SearchCatalog(context)
+    private val vpnDispatchStatus = VpnDispatchStatus()
+    val vpnStatus = vpnDispatchStatus.state
+    private val vpnDispatcher = VpnDispatcher(AndroidVpnBackend(context), onDispatched = vpnDispatchStatus::record)
+
+    internal suspend fun beginVpn(userRequest: String): VpnDispatch {
+        vpnDispatchStatus.clear()
+        return vpnDispatcher.begin(userRequest)
+    }
+
+    internal suspend fun chooseVpn(optionId: String): VpnDispatch.Message = vpnDispatcher.choose(optionId)
+
+    fun clearVpnStatus() = vpnDispatchStatus.clear()
+
+    internal suspend fun clearVpn() = vpnDispatcher.clear()
 
     internal suspend fun searchTargets(): List<SearchTarget> = searchCatalog.targets()
 
     internal suspend fun executeSearchTarget(target: SearchTarget, query: String): Execution =
         searchCatalog.execute(target, query)
 
-    internal suspend fun catalog(): List<App> = withContext(Dispatchers.IO) { catalogMutex.withLock {
+    internal suspend fun catalog(forceRefresh: Boolean = false): List<App> = withContext(Dispatchers.IO) { catalogMutex.withLock {
         val now = android.os.SystemClock.elapsedRealtime()
         val locale = androidx.core.os.ConfigurationCompat.getLocales(context.resources.configuration).toLanguageTags()
         cachedApps?.let { apps ->
-            if (now - cachedAt < 30_000 && locale == cachedLocale) return@withLock apps
+            if (!forceRefresh && now - cachedAt < 30_000 && locale == cachedLocale) return@withLock apps
         }
         val pm = context.packageManager
         val apps = listOf(Intent.CATEGORY_LEANBACK_LAUNCHER, Intent.CATEGORY_LAUNCHER)
@@ -68,7 +82,10 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
         coroutineContext.ensureActive()
         return when (decision) {
             AssistantIntent.ConnectHapp -> withContext(Dispatchers.Main) {
-                HappConnect.execute(userRequest, AndroidHappLauncher(context))
+                vpnDispatchStatus.clear()
+                val result = HappConnect.execute(userRequest, AndroidHappLauncher(context))
+                vpnDispatchStatus.record("Последний запрос отправлен в Happ. Подключение не подтверждено; проверьте его в Happ. Другой VPN мог быть прерван.")
+                result
             }
             is AssistantIntent.Media -> mediaActions.execute(decision.command, media)
             is AssistantIntent.Reply -> Execution(decision.text, true)
@@ -101,6 +118,8 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
             is AssistantIntent.OpenApp -> withContext(Dispatchers.Main) {
                 coroutineContext.ensureActive()
                 val app = apps.singleOrNull { it.id == decision.id } ?: error("Неизвестное приложение.")
+                vpnDispatcher.ensureModelMayOpen(app.packageName)
+                coroutineContext.ensureActive()
                 val pm = context.packageManager
                 val info = pm.getApplicationInfo(app.packageName, 0)
                 check(info.enabled && pm.getApplicationEnabledSetting(app.packageName) !in setOf(

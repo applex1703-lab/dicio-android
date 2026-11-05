@@ -111,6 +111,7 @@ fun HomeScreen(
     val interactionsState = viewModel.skillEvaluator.state.collectAsState()
     val presentation = viewModel.skillEvaluator.voicePresentation.collectAsState()
     val currentOutput = viewModel.skillEvaluator.currentOutput.collectAsState()
+    val vpnStatus = viewModel.tvActions.vpnStatus.collectAsState()
     val sttState = viewModel.sttInputDevice.uiState.collectAsState()
     val ownsWork = activity?.voiceInputCoordinator?.ownsWork(activity) == true
 
@@ -118,6 +119,8 @@ fun HomeScreen(
         interactionLog = interactionsState.value,
         presentation = presentation.value,
         currentOutput = currentOutput.value,
+        vpnStatus = vpnStatus.value,
+        onDismissVpnStatus = { viewModel.tvActions.clearVpnStatus() },
         skillContext = viewModel.skillContext,
         ownsWork = ownsWork,
         startError = startError,
@@ -159,6 +162,8 @@ fun HomeScreen(
     navigationIcon: @Composable () -> Unit,
     snackbarHost: @Composable () -> Unit,
     onSelectChoice: (Long, String) -> Unit = { _, _ -> },
+    vpnStatus: String? = null,
+    onDismissVpnStatus: () -> Unit = {},
 ) {
     var searchString by rememberSaveable { mutableStateOf<String?>(null) }
     val isTv = isTelevision()
@@ -189,6 +194,12 @@ fun HomeScreen(
                 CurrentResponse(presentation, if (presentation.choice != null) null else currentOutput, skillContext,
                     starting = ownsWork && (sttState == SttState.Listening || sttState == SttState.WaitingForResult || (sttState is SttState.Loading && sttState.thenStartListening)),
                     error = startError, modifier = Modifier.fillMaxWidth().weight(1f, fill = false).padding(16.dp))
+                vpnStatus?.let { status ->
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                        Text(status)
+                        Button(onClick = onDismissVpnStatus) { Text("Скрыть статус VPN") }
+                    }
+                }
                 if (ownsWork && startError == null) {
                     presentation.choice?.let { choice ->
                         ChoiceButtons(choice, onSelectChoice, Modifier.weight(1f, fill = false))

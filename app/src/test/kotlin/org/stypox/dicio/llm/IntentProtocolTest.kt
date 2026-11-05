@@ -6,6 +6,21 @@ import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.*
 
 class IntentProtocolTest : StringSpec({
+    "only a supplied clarification is serialized as bounded separate data" {
+        fun userPayload(context: ClarificationContext?): JsonObject {
+            val request = Json.parseToJsonElement(IntentProtocol.request("model", "new", mapOf("fresh" to "App"),
+                clarification = context)).jsonObject
+            return Json.parseToJsonElement(request["messages"]!!.jsonArray[1].jsonObject["content"]!!.jsonPrimitive.content).jsonObject
+        }
+        userPayload(null).containsKey("previous_clarification") shouldBe false
+        val payload = userPayload(ClarificationContext("old \"text\"", "which?"))
+        payload["request"]!!.jsonPrimitive.content shouldBe "new"
+        val previous = payload["previous_clarification"]!!.jsonObject
+        previous.keys shouldBe setOf("request", "question")
+        previous["request"]!!.jsonPrimitive.content shouldBe "old \"text\""
+        previous["question"]!!.jsonPrimitive.content shouldBe "which?"
+        payload["installed_apps"]!!.jsonObject.keys shouldBe setOf("fresh")
+    }
     fun decision(action: String, id: String = "", settings: String = "", text: String = "", query: String = "") = buildJsonObject {
         put("action", action); put("app_id", id); put("settings_section", settings); put("text", text); put("search_query", query)
         put("media_id", ""); put("media_operation", ""); put("media_seconds", 0)

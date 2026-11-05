@@ -33,6 +33,23 @@ import org.dicio.skill.standard.util.MatchHelper
 import org.stypox.dicio.llm.AssistantIntent
 import org.stypox.dicio.llm.ContentSearch
 import org.stypox.dicio.llm.SearchTarget
+import org.stypox.dicio.llm.VpnDispatcher
+import org.stypox.dicio.llm.VpnDispatch
+import org.stypox.dicio.llm.HappConnect
+import org.stypox.dicio.llm.VpnOpenBlockedException
+
+internal sealed interface ChoiceTarget {
+    data class Search(val target: SearchTarget) : ChoiceTarget
+    data class Vpn(val optionId: String) : ChoiceTarget
+}
+
+internal enum class LocalVpnRequest { GENERAL, HAPP, AMBIGUOUS, NONE }
+internal fun classifyLocalVpnRequest(text: String): LocalVpnRequest = when {
+    VpnDispatcher.isExplicitRequest(text) -> LocalVpnRequest.GENERAL
+    HappConnect.isExplicitRequest(text) -> LocalVpnRequest.HAPP
+    VpnDispatcher.isAmbiguousCommand(text) -> LocalVpnRequest.AMBIGUOUS
+    else -> LocalVpnRequest.NONE
+}
 
 interface SkillEvaluator {
     val state: StateFlow<InteractionLog>
@@ -45,6 +62,9 @@ interface SkillEvaluator {
     fun processInputEvent(event: InputEvent)
 
     fun cancelPendingInput()
+    /** End a completed UI session without forgetting a pending clarification. */
+    fun finishInputSession() = cancelPendingInput()
+    fun hasPendingClarification(): Boolean = false
     fun resetVoicePresentation()
     fun selectChoice(choiceId: Long, optionId: String) = Unit
 }
@@ -61,7 +81,8 @@ class SkillEvaluatorImpl(
     private val scope = CoroutineScope(Dispatchers.Main.immediate)
     private val requests = LatestInputRequest(scope)
     private val legacyLock = Mutex()
-    private val pendingChoice = PendingChoice<SearchTarget>()
+    private val pendingChoice = PendingChoice<ChoiceTarget>()
+    private val pendingClarification = PendingClarification(scope) { android.os.SystemClock.elapsedRealtime() }
 
     private val _state = MutableStateFlow(
         InteractionLog(
@@ -78,6 +99,7 @@ class SkillEvaluatorImpl(
     override fun resetVoicePresentation() {
         requests.cancel()
         pendingChoice.clear()
+        scope.launch { tvActions.clearVpn() }
         presentation.clear()
     }
 
@@ -86,15 +108,29 @@ class SkillEvaluatorImpl(
 
     override fun processInputEvent(event: InputEvent) {
         scope.launch {
+            requests.cancel()
             pendingChoice.clear()
+            tvActions.clearVpn()
             requests.replace { suspendProcessInputEvent(event) }
         }
     }
 
     override fun cancelPendingInput() {
+        clearInput(preserveClarification = false)
+    }
+
+    override fun finishInputSession() {
+        clearInput(preserveClarification = true)
+    }
+
+    override fun hasPendingClarification(): Boolean = pendingClarification.isAvailable()
+
+    private fun clearInput(preserveClarification: Boolean) {
         scope.launch {
             requests.cancel()
             pendingChoice.clear()
+            tvActions.clearVpn()
+            if (!preserveClarification) pendingClarification.clear()
             outputSlot.clear()
             _state.value = InteractionLog(emptyList(), null)
             presentation.clear()
@@ -111,15 +147,26 @@ class SkillEvaluatorImpl(
             try {
                 // A queued clarification must not play over the selected silent action.
                 skillContext.speechOutputDevice.stopSpeaking()
-                val result = tvActions.executeSearchTarget(target, query)
-                coroutineContext.ensureActive()
-                presentation.answer(result.text, silent = true)
+                when (target) {
+                    is ChoiceTarget.Search -> {
+                        val result = tvActions.executeSearchTarget(target.target, query)
+                        coroutineContext.ensureActive()
+                        presentation.answer(result.text, silent = true)
+                    }
+                    is ChoiceTarget.Vpn -> {
+                        val result = tvActions.chooseVpn(target.optionId)
+                        coroutineContext.ensureActive()
+                        presentation.answer(result.text, silent = true)
+                    }
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 coroutineContext.ensureActive()
                 // Do not log errors from a search: they may contain the query.
-                presentation.error(error.localizedMessage ?: "Не удалось открыть сервис поиска.")
+                val message = error.localizedMessage ?: "Не удалось выполнить выбор."
+                presentation.error(message)
+                skillContext.speechOutputDevice.speak(message)
             }
         }
     }
@@ -134,13 +181,40 @@ class SkillEvaluatorImpl(
                 (skillContext.speechOutputDevice as? org.stypox.dicio.di.SpeechOutputDeviceWrapper)?.beginSession()
             }
             is InputEvent.Error -> {
+                pendingClarification.clear()
                 addErrorInteractionFromPending(event.throwable)
             }
             is InputEvent.Final -> {
                 outputSlot.clear()
                 if (event.utterances.isEmpty()) {
+                    pendingClarification.clear()
                     _state.value = InteractionLog(emptyList(), null)
                     presentation.noInput()
+                    return
+                }
+                val request = event.utterances[0].first
+                // Conservative expiry: even a VPN referred to by an unknown alias cannot leave
+                // a previous dispatch looking current after a new request.
+                tvActions.clearVpnStatus()
+                val localVpn = classifyLocalVpnRequest(request)
+                if (localVpn == LocalVpnRequest.GENERAL || localVpn == LocalVpnRequest.HAPP) {
+                    pendingClarification.clear()
+                    runExplicitVpn(request)
+                    return
+                }
+                if (localVpn == LocalVpnRequest.AMBIGUOUS) {
+                    pendingClarification.clear()
+                    _state.value = InteractionLog(emptyList(), null)
+                    val question = "Скажите явно: подключи VPN или подключи Happ VPN."
+                    presentation.answer(question)
+                    skillContext.speechOutputDevice.stopSpeaking()
+                    skillContext.speechOutputDevice.speak(question)
+                    return
+                }
+                val previousClarification = pendingClarification.consume()
+                if (previousClarification != null && isClarificationCancellation(event.utterances[0].first)) {
+                    _state.value = InteractionLog(emptyList(), null)
+                    presentation.answer("Отменено.")
                     return
                 }
                 presentation.thinking(event.utterances[0].first)
@@ -159,6 +233,7 @@ class SkillEvaluatorImpl(
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
+                    coroutineContext.ensureActive()
                     addErrorInteractionFromPending(IllegalStateException("Не удалось прочитать настройки RouterAI."))
                     return
                 }
@@ -167,20 +242,47 @@ class SkillEvaluatorImpl(
                         _state.value = _state.value.copy(pendingQuestion =
                             _state.value.pendingQuestion?.copy(waitingForLlm = true))
                         val startedAt = android.os.SystemClock.elapsedRealtime()
-                        val apps = tvActions.catalog()
+                        val apps = tvActions.catalog(forceRefresh = previousClarification != null)
                         val media = tvActions.mediaSnapshot()
                         val catalogDone = android.os.SystemClock.elapsedRealtime()
                         Log.i("DicioPolza", "Catalog ready elapsedMs=${catalogDone - startedAt} count=${apps.size}")
+                        val clarificationInput = resolveClarificationInput(previousClarification, request,
+                            apps.map { StandaloneApp(it.id, it.label) })
+                        val standalone = clarificationInput.standalone
+                        val clarification = clarificationInput.context
                         val decision = polzaClient.decide(config, event.utterances[0].first,
-                            apps.associate { it.id to it.label }, media.targets)
+                            apps.associate { it.id to it.label }, media.targets, clarification?.context,
+                            contextIsFresh = { clarification?.isFresh(android.os.SystemClock.elapsedRealtime()) != false })
                         coroutineContext.ensureActive()
+                        if (standalone?.allows(decision) == false) {
+                            _state.value = InteractionLog(emptyList(), null)
+                            val question = "Пожалуйста, повторите команду полностью."
+                            presentation.answer(question)
+                            skillContext.speechOutputDevice.speak(question)
+                            return
+                        }
+                        if (decision is AssistantIntent.ConnectHapp ||
+                            (VpnDispatcher.mentionsVpn(request) && !decision.allowedAfterClarification())) {
+                            _state.value = InteractionLog(emptyList(), null)
+                            val question = "Скажите явно: подключи VPN или подключи Happ VPN."
+                            presentation.answer(question)
+                            skillContext.speechOutputDevice.speak(question)
+                            return
+                        }
+                        if (clarification != null && !decision.allowedAfterClarification()) {
+                            _state.value = InteractionLog(emptyList(), null)
+                            val question = "Пожалуйста, повторите команду полностью."
+                            presentation.answer(question)
+                            skillContext.speechOutputDevice.speak(question)
+                            return
+                        }
                         if (decision is AssistantIntent.ChooseSearch) {
                             try {
                                 val query = ContentSearch.validateQuery(decision.query)
                                 val targets = tvActions.searchTargets()
                                 coroutineContext.ensureActive()
                                 check(targets.isNotEmpty()) { "Нет доступных сервисов поиска." }
-                                val id = pendingChoice.create(query, targets.associateBy { it.id })
+                                val id = pendingChoice.create(query, targets.associate { it.id to ChoiceTarget.Search(it) })
                                 outputSlot.clear()
                                 previousFallback = null
                                 _state.value = InteractionLog(emptyList(), null)
@@ -196,6 +298,7 @@ class SkillEvaluatorImpl(
                                 previousFallback = null
                                 _state.value = InteractionLog(emptyList(), null)
                                 presentation.error(error.localizedMessage ?: "Не удалось получить сервисы поиска.")
+                                skillContext.speechOutputDevice.speak(error.localizedMessage ?: "Не удалось получить сервисы поиска.")
                             }
                             return
                         }
@@ -208,19 +311,25 @@ class SkillEvaluatorImpl(
                         previousFallback = null
                         _state.value = InteractionLog(emptyList(), null)
                         presentation.answer(result.text, silent = !result.speak)
+                        if (decision is AssistantIntent.Clarify && clarification == null) {
+                            pendingClarification.save(event.utterances[0].first, decision.text)
+                        }
                         if (result.speak) {
                             withContext(Dispatchers.Main) { skillContext.speechOutputDevice.speak(result.text) }
                         }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (error: Exception) {
+                        coroutineContext.ensureActive()
                         addErrorInteractionFromPending(error)
+                        skillContext.speechOutputDevice.speak(error.localizedMessage ?: "Не удалось выполнить запрос.")
                     }
                 } else {
                     evaluateMatchingSkill(event.utterances.map { it.first })
                 }
             }
             InputEvent.None -> {
+                pendingClarification.clear()
                 outputSlot.clear()
                 presentation.noInput()
                 _state.value = InteractionLog(emptyList(), null)
@@ -235,6 +344,45 @@ class SkillEvaluatorImpl(
                     )
                 )
             }
+        }
+    }
+
+    /** Complete local commands never inherit a prior clarification or go through the model. */
+    private suspend fun runExplicitVpn(request: String) {
+        outputSlot.clear()
+        previousFallback = null
+        _state.value = InteractionLog(emptyList(), null)
+        presentation.thinking(request)
+        try {
+            skillContext.speechOutputDevice.stopSpeaking()
+            if (HappConnect.isExplicitRequest(request)) {
+                val result = tvActions.execute(AssistantIntent.ConnectHapp, emptyList(), skillContext.locale, userRequest = request)
+                coroutineContext.ensureActive()
+                presentation.answer(result.text, silent = true)
+                return
+            }
+            when (val result = tvActions.beginVpn(request)) {
+                is VpnDispatch.Message -> {
+                    coroutineContext.ensureActive()
+                    presentation.answer(result.text, silent = result.actionSent)
+                    if (!result.actionSent) skillContext.speechOutputDevice.speak(result.text)
+                }
+                is VpnDispatch.Choice -> {
+                    coroutineContext.ensureActive()
+                    val id = pendingChoice.create("", result.options.associate { it.id to ChoiceTarget.Vpn(it.id) })
+                    presentation.choice(id, result.options.map { ChoiceOption(it.id, it.label) }, result.prompt, "Выберите VPN-приложение")
+                    skillContext.speechOutputDevice.speak(result.prompt)
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            coroutineContext.ensureActive()
+            pendingChoice.clear()
+            tvActions.clearVpn()
+            val message = error.localizedMessage ?: "Не удалось открыть VPN-приложение."
+            presentation.error(message)
+            skillContext.speechOutputDevice.speak(message)
         }
     }
 
@@ -345,11 +493,14 @@ class SkillEvaluatorImpl(
         } catch (throwable: Throwable) {
             coroutineContext.ensureActive()
             addErrorInteractionFromPending(throwable)
+            if (throwable is VpnOpenBlockedException) skillContext.speechOutputDevice.speak(throwable.message ?: "Для VPN нужна явная команда.")
             return@withLock
         }
     }
 
     private fun addErrorInteractionFromPending(throwable: Throwable) {
+        if (throwable is VpnOpenBlockedException) tvActions.clearVpnStatus()
+        pendingClarification.clear()
         outputSlot.clear()
         previousFallback = null
         _state.value = InteractionLog(emptyList(), null)
@@ -361,6 +512,9 @@ class SkillEvaluatorImpl(
         val TAG = SkillEvaluator::class.simpleName
     }
 }
+
+internal fun AssistantIntent.allowedAfterClarification(): Boolean =
+    this is AssistantIntent.Reply || this is AssistantIntent.Clarify
 
 @Module
 @InstallIn(SingletonComponent::class)

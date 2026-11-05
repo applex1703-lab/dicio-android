@@ -80,6 +80,27 @@ class MinimalHomeTest {
         compose.onNodeWithText("речевое резюме").assertDoesNotExist()
     }
 
+    @Test fun vpnDispatchStatusSurvivesPresentationResetAndCanBeDismissed() {
+        val status = mutableStateOf<String?>("Последний запрос отправлен. Подключение не подтверждено.")
+        val presentation = mutableStateOf(VoicePresentation(answer = "Выполняю"))
+        compose.setContent {
+            AppTheme {
+                HomeScreen(
+                    interactionLog = InteractionLog(emptyList(), null), presentation = presentation.value,
+                    currentOutput = null, skillContext = SkillContextImpl.newForPreviews(LocalContext.current),
+                    ownsWork = false, startError = null, sttState = null,
+                    onSttClick = {}, onManualUserInput = {}, onCancel = {},
+                    navigationIcon = { Text("Меню") }, snackbarHost = {},
+                    vpnStatus = status.value, onDismissVpnStatus = { status.value = null },
+                )
+            }
+        }
+        compose.runOnIdle { presentation.value = VoicePresentation() }
+        compose.onNodeWithText("Последний запрос отправлен. Подключение не подтверждено.").assertExists()
+        compose.onNodeWithText("Скрыть статус VPN").performClick()
+        compose.onNodeWithText("Последний запрос отправлен. Подключение не подтверждено.").assertDoesNotExist()
+    }
+
     @Test fun startFailureIsVisible() {
         compose.setContent {
             AppTheme {

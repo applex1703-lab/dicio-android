@@ -88,6 +88,27 @@ private fun Socket.headers(length: Int) {
 }
 
 class PolzaClientSocketTest : StringSpec({
+    "clarification expiring after enqueue sends no HTTP bytes" {
+        ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+            TestHttp().use { http ->
+                val checks = AtomicInteger()
+                val client = PolzaClient.forLoopbackTest(http.client, server.localPort, 3000, 1000, 1000)
+                withTimeout(3500) {
+                    shouldThrow<java.io.IOException> {
+                        client.decide(config, "answer", emptyMap(),
+                            clarification = ClarificationContext("old", "question"),
+                            contextIsFresh = { checks.incrementAndGet() == 1 })
+                    }.message shouldBe "Срок уточнения истёк. Повторите запрос полностью."
+                }
+                checks.get() shouldBe 2
+                server.soTimeout = 2000
+                server.accept().use { socket ->
+                    socket.soTimeout = 2000
+                    socket.getInputStream().read() shouldBe -1
+                }
+            }
+        }
+    }
     "incomplete body times out after headers" {
         val release = CountDownLatch(1)
         val bodyStarted = CountDownLatch(1)

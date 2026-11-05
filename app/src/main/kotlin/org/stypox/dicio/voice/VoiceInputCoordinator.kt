@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import javax.inject.Inject
 import javax.inject.Singleton
+import java.lang.ref.WeakReference
 import org.stypox.dicio.di.SttInputDeviceWrapper
 import org.stypox.dicio.eval.SkillEvaluator
 import org.stypox.dicio.io.input.InputEvent
@@ -19,9 +20,12 @@ class VoiceInputCoordinator @Inject constructor(
 ) {
     private val main = Handler(Looper.getMainLooper())
     private class InputLease(val owner: Any, val revoked: () -> Unit)
-    private class EvaluationLease(val owner: Any, val revoked: () -> Unit)
+    private class EvaluationLease(val owner: Any, val scope: Any, val revoked: () -> Unit)
     private var inputLease: InputLease? by mutableStateOf(null)
     private var evaluationLease: EvaluationLease? by mutableStateOf(null)
+    private class Retained(val owner: WeakReference<Any>, val scope: WeakReference<Any>)
+    private val tvScope = Any()
+    private var retainedOwner: Retained? = null
     private var tearingDown = false
     // A throwing wrapper has not provided a trustworthy cleanup result.
     private var inputFaulted = false
@@ -29,6 +33,23 @@ class VoiceInputCoordinator @Inject constructor(
     private val deferredReleases = mutableListOf<Pair<Any, Boolean>>()
 
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
+
+    private fun prepareRetained(owner: Any, scope: Any): Boolean {
+        val retained = retainedOwner ?: return true
+        if (retained.scope.get() === scope) {
+            retainedOwner = Retained(WeakReference(owner), WeakReference(scope))
+            return true
+        }
+        retainedOwner = null
+        return try {
+            evaluator.cancelPendingInput()
+            true
+        } catch (error: Exception) {
+            evaluatorFaulted = true
+            android.util.Log.e("VoiceInputCoordinator", "Evaluator teardown failed", error)
+            false
+        }
+    }
 
     private fun inputCleanupSafe(): Boolean {
         if (inputFaulted) return false
@@ -46,13 +67,21 @@ class VoiceInputCoordinator @Inject constructor(
     }
 
     /** Explicit voice request; preempts prior input and evaluation, but never retries. */
-    fun start(owner: Any, onRevoked: () -> Unit = {}): Boolean {
+    fun start(owner: Any, onRevoked: () -> Unit = {}): Boolean = startScoped(owner, owner, onRevoked)
+
+    /** Only TV session instances use this process-local scope; lease ownership remains per instance. */
+    internal fun startTv(owner: Any, onRevoked: () -> Unit = {}): Boolean = startScoped(owner, tvScope, onRevoked)
+
+    private fun startScoped(owner: Any, scope: Any, onRevoked: () -> Unit): Boolean {
         checkMain()
         if (tearingDown || evaluatorFaulted || !inputCleanupSafe()) return false
         if (inputLease?.owner === owner && evaluationLease?.owner === owner) return true
-        if (!clear(inputLease, evaluationLease, notify = true)) return false
+        if (!prepareRetained(owner, scope)) return false
+        if (!clear(inputLease, evaluationLease, notify = true,
+                preserveClarification = evaluationLease?.scope === scope, retainFor = owner)) return false
         if (inputLease != null || evaluationLease != null) return false
-        val evaluation = EvaluationLease(owner, onRevoked)
+        evaluator.resetVoicePresentation()
+        val evaluation = EvaluationLease(owner, scope, onRevoked)
         evaluationLease = evaluation
         return startInput(owner, {}, evaluator::processInputEvent, evaluation)
     }
@@ -66,6 +95,7 @@ class VoiceInputCoordinator @Inject constructor(
         if (tearingDown || evaluatorFaulted || !inputCleanupSafe()) return false
         if (inputLease?.owner === owner) return true
         if (inputLease != null || evaluationLease?.let { it.owner !== owner } == true) return false
+        if (!prepareRetained(owner, owner)) return false
         return startInput(owner, { onEvent(InputEvent.None) }, onEvent)
     }
 
@@ -73,6 +103,7 @@ class VoiceInputCoordinator @Inject constructor(
         checkMain()
         if (tearingDown || inputLease != null || evaluationLease?.let { it.owner !== owner } == true) return null
         if (evaluatorFaulted || !inputCleanupSafe()) return false
+        if (!prepareRetained(owner, owner)) return false
         return startInput(owner, onRevoked, onEvent)
     }
 
@@ -123,9 +154,11 @@ class VoiceInputCoordinator @Inject constructor(
     fun submitText(owner: Any, text: String) {
         checkMain()
         if (tearingDown) return
-        if (!clear(inputLease, evaluationLease, notify = true)) return
+        if (evaluatorFaulted || !prepareRetained(owner, owner)) return
+        if (!clear(inputLease, evaluationLease, notify = true,
+                preserveClarification = evaluationLease?.scope === owner, retainFor = owner)) return
         if (inputLease != null || evaluationLease != null || evaluatorFaulted || !inputCleanupSafe()) return
-        evaluationLease = EvaluationLease(owner) {}
+        evaluationLease = EvaluationLease(owner, owner) {}
         evaluator.processInputEvent(InputEvent.Final(listOf(text to 1.0f)))
     }
 
@@ -136,7 +169,7 @@ class VoiceInputCoordinator @Inject constructor(
             return
         }
         clear(inputLease?.takeIf { it.owner === owner },
-            evaluationLease?.takeIf { it.owner === owner }, notify = true)
+            evaluationLease?.takeIf { it.owner === owner }, notify = true, preserveClarification = true)
     }
 
     fun cancel(owner: Any) {
@@ -145,14 +178,29 @@ class VoiceInputCoordinator @Inject constructor(
             deferredReleases.add(owner to false)
             return
         }
+        val retained = retainedOwner?.owner?.get() === owner
+        val active = evaluationLease?.owner === owner
         clear(inputLease?.takeIf { it.owner === owner },
             evaluationLease?.takeIf { it.owner === owner }, notify = false)
+        if (retained && !active) {
+            retainedOwner = null
+            try { evaluator.cancelPendingInput() }
+            catch (error: Exception) {
+                evaluatorFaulted = true
+                android.util.Log.e("VoiceInputCoordinator", "Evaluator teardown failed", error)
+            }
+        }
     }
 
-    private fun clear(inputTarget: InputLease?, evaluationTarget: EvaluationLease?, notify: Boolean): Boolean {
+    private fun clear(inputTarget: InputLease?, evaluationTarget: EvaluationLease?, notify: Boolean,
+        preserveClarification: Boolean = false, retainFor: Any? = null): Boolean {
         val oldInput = inputTarget?.takeIf { inputLease === it }
         val oldEvaluation = evaluationTarget?.takeIf { evaluationLease === it }
         if (oldInput == null && oldEvaluation == null) return true
+        val keep = preserveClarification && oldInput == null && oldEvaluation != null &&
+            evaluator.hasPendingClarification()
+        if (oldEvaluation != null) retainedOwner = if (keep)
+            Retained(WeakReference(retainFor ?: oldEvaluation.owner), WeakReference(oldEvaluation.scope)) else null
         if (oldInput != null) inputLease = null
         if (oldEvaluation != null) evaluationLease = null
         tearingDown = true
@@ -169,7 +217,12 @@ class VoiceInputCoordinator @Inject constructor(
             }
             if (oldEvaluation != null) {
                 // This API is synchronous: success does not prove asynchronous work or TTS has stopped.
-                try { evaluator.cancelPendingInput() }
+                try {
+                    if (keep && cleaned) evaluator.finishInputSession() else {
+                        retainedOwner = null
+                        evaluator.cancelPendingInput()
+                    }
+                }
                 catch (error: Exception) {
                     cleaned = false
                     evaluatorFaulted = true
@@ -191,8 +244,7 @@ class VoiceInputCoordinator @Inject constructor(
             tearingDown = false
             while (deferredReleases.isNotEmpty()) {
                 val (owner, notifyRelease) = deferredReleases.removeAt(0)
-                clear(inputLease?.takeIf { it.owner === owner },
-                    evaluationLease?.takeIf { it.owner === owner }, notifyRelease)
+                if (notifyRelease) release(owner) else cancel(owner)
             }
         }
         return cleaned

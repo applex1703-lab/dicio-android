@@ -15,6 +15,22 @@ class PolzaClientTest : StringSpec({
             client.answer(PolzaSettings.Config(true, "test/model", ""), "hello")
         }
     }
+    "expired consumed clarification is not enqueued" {
+        var calls = 0
+        var checked = false
+        val fake = OkHttpClient.Builder().addInterceptor { chain ->
+            calls++
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(500)
+                .message("unexpected").body("".toResponseBody()).build()
+        }.build()
+        shouldThrow<IllegalStateException> {
+            PolzaClient(fake).decide(PolzaSettings.Config(true, "test/model", "fake-key"), "answer",
+                emptyMap(), clarification = ClarificationContext("old", "question"),
+                contextIsFresh = { checked = true; false })
+        }.message shouldBe "Срок уточнения истёк. Повторите запрос полностью."
+        checked shouldBe true
+        calls shouldBe 0
+    }
     "missing model is rejected before sending a request" {
         shouldThrow<IllegalArgumentException> {
             client.answer(PolzaSettings.Config(true, "", "test-key"), "hello")

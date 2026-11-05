@@ -31,8 +31,8 @@ internal class CurrentVoicePresentation {
     fun error(message: String) {
         mutable.value = mutable.value.copy(status = "Не удалось выполнить запрос", answer = message, dismiss = false, choice = null)
     }
-    fun choice(id: Long, options: List<ChoiceOption>, question: String) {
-        mutable.value = mutable.value.copy(status = "Выберите сервис поиска", answer = question,
+    fun choice(id: Long, options: List<ChoiceOption>, question: String, status: String = "Выберите сервис поиска") {
+        mutable.value = mutable.value.copy(status = status, answer = question,
             dismiss = false, choice = ChoicePresentation(id, options.toList()))
     }
     fun choosing() { mutable.value = mutable.value.copy(choice = null, answer = "", status = "Выполняю…") }

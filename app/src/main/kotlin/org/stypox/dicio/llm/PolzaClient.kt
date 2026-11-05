@@ -21,6 +21,10 @@ import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+private class ExpiredClarification : IOException()
+private class FreshnessGuard(val canSend: () -> Boolean)
+private const val EXPIRED_CONTEXT = "Срок уточнения истёк. Повторите запрос полностью."
+
 /** Chat Completions transport adapted from PR #370; no tools or Android actions are exposed. */
 @Singleton
 class PolzaClient private constructor(client: OkHttpClient, private val endpoint: String,
@@ -32,6 +36,12 @@ class PolzaClient private constructor(client: OkHttpClient, private val endpoint
     private val http = client.newBuilder().callTimeout(callTimeoutMs, TimeUnit.MILLISECONDS)
         .connectTimeout(connectTimeoutMs, TimeUnit.MILLISECONDS).readTimeout(readTimeoutMs, TimeUnit.MILLISECONDS)
         .retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
+        .addNetworkInterceptor { chain ->
+            if (chain.request().tag(FreshnessGuard::class.java)?.canSend?.invoke() == false) {
+                throw ExpiredClarification()
+            }
+            chain.proceed(chain.request())
+        }
         .eventListenerFactory { RouterNetworkTiming(callTimeoutMs, connectTimeoutMs, readTimeoutMs, onResponseBodyStart) }.build()
 
     companion object {
@@ -49,22 +59,33 @@ class PolzaClient private constructor(client: OkHttpClient, private val endpoint
     }
 
     internal suspend fun decide(config: PolzaSettings.Config, text: String,
-        apps: Map<String, String>, media: List<MediaTarget> = emptyList()): AssistantIntent {
+        apps: Map<String, String>, media: List<MediaTarget> = emptyList(),
+        clarification: ClarificationContext? = null, contextIsFresh: () -> Boolean = { true }): AssistantIntent {
         PolzaProtocol.validateInput(config, text)
-        return IntentProtocol.parse(complete(config, IntentProtocol.request(config.model, text, apps, media)), apps.keys, media)
+        return IntentProtocol.parse(complete(config, IntentProtocol.request(config.model, text, apps, media, clarification)) {
+            clarification == null || contextIsFresh()
+        }, apps.keys, media)
     }
 
-    private suspend fun complete(config: PolzaSettings.Config, payload: String): String {
+    private suspend fun complete(config: PolzaSettings.Config, payload: String,
+        canSend: () -> Boolean = { true }): String {
         val request = Request.Builder().url(endpoint)
             .header("Authorization", "Bearer ${config.apiKey}")
+            .tag(FreshnessGuard::class.java, FreshnessGuard(canSend))
             .post(payload.toRequestBody("application/json".toMediaType())).build()
         return suspendCancellableCoroutine { continuation ->
             val call = http.newCall(request)
             continuation.invokeOnCancellation { call.cancel() }
+            if (!canSend()) {
+                continuation.resumeWithException(IllegalStateException(EXPIRED_CONTEXT))
+                return@suspendCancellableCoroutine
+            }
+            if (!continuation.isActive) return@suspendCancellableCoroutine
             call.enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
                     if (continuation.isActive) continuation.resumeWithException(
-                        IOException(if (e is java.io.InterruptedIOException)
+                        IOException(if (e is ExpiredClarification) EXPIRED_CONTEXT
+                        else if (e is java.io.InterruptedIOException)
                             "RouterAI: время ожидания истекло."
                         else "Не удалось связаться с RouterAI. Проверьте сеть или повторите позже."))
                 }

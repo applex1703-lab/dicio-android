@@ -12,6 +12,10 @@ import org.dicio.skill.standard.StandardRecognizerData
 import org.dicio.skill.standard.StandardRecognizerSkill
 import org.stypox.dicio.sentences.Sentences.Open
 import org.stypox.dicio.util.StringUtils
+import org.stypox.dicio.llm.AndroidVpnBackend
+import org.stypox.dicio.llm.ensureNotVpnForGenericOpen
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 
 class OpenSkill(correspondingSkillInfo: SkillInfo, data: StandardRecognizerData<Open>)
     : StandardRecognizerSkill<Open>(correspondingSkillInfo, data) {
@@ -24,6 +28,10 @@ class OpenSkill(correspondingSkillInfo: SkillInfo, data: StandardRecognizerData<
         val applicationInfo = userAppName?.let { getMostSimilarApp(packageManager, it) }
 
         if (applicationInfo != null) {
+            // The recognizer supplies only a parsed fragment, not the complete original request.
+            // Do not let fuzzy matching or a negated question launch a VPN from this path.
+            ensureNotVpnForGenericOpen(AndroidVpnBackend(ctx.android), applicationInfo.packageName)
+            coroutineContext.ensureActive()
             val launchIntent: Intent =
                 packageManager.getLaunchIntentForPackage(applicationInfo.packageName)!!
             launchIntent.action = Intent.ACTION_MAIN

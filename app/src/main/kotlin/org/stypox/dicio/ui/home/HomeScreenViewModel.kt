@@ -14,6 +14,7 @@ import org.stypox.dicio.di.SkillContextInternal
 import org.stypox.dicio.di.SpeechOutputDeviceWrapper
 import org.stypox.dicio.di.SttInputDeviceWrapper
 import org.stypox.dicio.eval.SkillEvaluator
+import org.stypox.dicio.llm.TvActions
 import org.stypox.dicio.io.input.SttState
 import org.stypox.dicio.io.speech.SnackbarSpeechDevice
 import org.stypox.dicio.settings.datastore.UserSettings
@@ -27,6 +28,7 @@ class HomeScreenViewModel @Inject constructor(
     val sttInputDevice: SttInputDeviceWrapper,
     val speechOutputDevice: SpeechOutputDeviceWrapper,
     val skillEvaluator: SkillEvaluator,
+    val tvActions: TvActions,
     // this is always instantiated, but will do nothing if
     // it is not the speech device chosen by the user
     snackbarSpeechDevice: SnackbarSpeechDevice,
