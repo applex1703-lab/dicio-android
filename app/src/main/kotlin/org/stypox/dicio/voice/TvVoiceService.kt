@@ -57,7 +57,7 @@ class TvVoiceService : VoiceInteractionService() {
     }
 
     companion object {
-        private val prebindReservation = PrebindReservation()
+        internal val prebindReservation = PrebindReservation()
     }
 }
 
@@ -76,6 +76,7 @@ internal class PrebindTimer(
 /** One outstanding or uncertain binding per process, including across service instances. */
 internal class PrebindReservation {
     private var owner: Any? = null
+    private var connected: Any? = null
     fun acquire(token: Any): Boolean {
         if (owner != null) return false
         owner = token
@@ -83,8 +84,13 @@ internal class PrebindReservation {
     }
     fun release(token: Any) {
         check(owner === token)
+        invalidate(token)
         owner = null
     }
+    fun markConnected(token: Any) { if (owner === token) connected = token }
+    fun invalidate(token: Any) { if (connected === token) connected = null }
+    fun snapshot(): Any? = connected
+    fun isCurrent(token: Any?): Boolean = token != null && connected === token && owner === token
 }
 
 /** Main-thread-only; attempts follow initial readiness or explicit enable, never a timer retry. */
@@ -106,6 +112,7 @@ internal class KatnissPrebind(
     private var enablePending = false
     private var enabled = false
     private var timeout: Runnable? = null
+    private var callbackConnected = false
 
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
 
@@ -134,7 +141,11 @@ internal class KatnissPrebind(
                 if (service == null) {
                     Log.i(TAG, "prebind_refused null_binder")
                     finish()
-                } else Log.i(TAG, "prebind_connected")
+                } else {
+                    callbackConnected = true
+                    if (!binding && enabled && !closed && !finishPending) reservation.markConnected(this)
+                    Log.i(TAG, "prebind_connected")
+                }
             }
             override fun onServiceDisconnected(name: ComponentName?) { checkMain(); if (connection === this) { Log.i(TAG, "prebind_disconnected"); finish() } }
             override fun onBindingDied(name: ComponentName?) { checkMain(); if (connection === this) { Log.i(TAG, "prebind_binding_died"); finish() } }
@@ -165,6 +176,7 @@ internal class KatnissPrebind(
         }
         Log.i(TAG, if (accepted) "prebind_requested" else "prebind_refused bind_failed")
         if (!accepted || finishPending) finish()
+        else if (callbackConnected && enabled && !closed && connection === conn) reservation.markConnected(conn)
     }
 
     fun close() {
@@ -176,6 +188,8 @@ internal class KatnissPrebind(
 
     private fun finish() {
         val conn = connection ?: return
+        reservation.invalidate(conn)
+        callbackConnected = false
         clearTimeout()
         if (binding) {
             finishPending = true

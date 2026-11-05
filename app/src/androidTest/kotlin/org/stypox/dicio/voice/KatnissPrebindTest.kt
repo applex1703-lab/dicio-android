@@ -15,6 +15,49 @@ class KatnissPrebindTest {
     private fun onMain(block: () -> Unit) =
         InstrumentationRegistry.getInstrumentation().runOnMainSync(block)
 
+    @Test fun connectedGenerationInvalidatesOnDisableDisconnectAndStaleCallback() = onMain {
+        val reservation = PrebindReservation()
+        val connections = mutableListOf<ServiceConnection>()
+        val prebind = KatnissPrebind({ _, conn, _ -> connections.add(conn); true }, {}, reservation)
+        assertNull(reservation.snapshot())
+        prebind.setEnabled(true)
+        assertNull(reservation.snapshot())
+        val first = connections.last()
+        first.onServiceConnected(null, Binder())
+        val token = reservation.snapshot()
+        assertTrue(reservation.isCurrent(token))
+        prebind.setEnabled(false)
+        assertFalse(reservation.isCurrent(token))
+        prebind.setEnabled(true)
+        first.onServiceConnected(null, Binder())
+        assertNull(reservation.snapshot())
+        val second = connections.last()
+        second.onServiceConnected(null, Binder())
+        val next = reservation.snapshot()
+        assertTrue(reservation.isCurrent(next))
+        assertFalse(reservation.isCurrent(token))
+        second.onServiceDisconnected(null)
+        assertNull(reservation.snapshot())
+        second.onServiceConnected(null, Binder())
+        assertNull(reservation.snapshot())
+        prebind.close()
+    }
+
+    @Test fun synchronousConnectionIsNotPublishedUntilBindAccepted() = onMain {
+        for (accepted in listOf(false, true)) {
+            val reservation = PrebindReservation()
+            val prebind = KatnissPrebind({ _, conn, _ ->
+                conn.onServiceConnected(null, Binder())
+                assertNull(reservation.snapshot())
+                accepted
+            }, {}, reservation)
+            prebind.setEnabled(true)
+            assertEquals(accepted, reservation.snapshot() != null)
+            prebind.close()
+            assertNull(reservation.snapshot())
+        }
+    }
+
     @Test fun oneAttemptAndShutdownIgnoreLateCallbacks() = onMain {
         var binds = 0
         var unbinds = 0

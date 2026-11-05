@@ -61,6 +61,9 @@ class GoogleSpeechInputDeviceTest {
         var checks = 0
         var checkFailure: Exception? = null
         var onCheck: (() -> Unit)? = null
+        var token: Any? = null
+        override fun prebindToken() = token
+        override fun prebindCurrent(token: Any?) = token != null && token === this.token
         override fun elapsedRealtime() = clock
         override fun requiresAudioOpWait() = mode != null || checkFailure != null
         override fun audioOpMode(): Int? {
@@ -91,6 +94,83 @@ class GoogleSpeechInputDeviceTest {
         val field = GoogleSpeechInputDevice::class.java.getDeclaredField("appOpsPoll")
         field.isAccessible = true
         return field.get(device) as Runnable
+    }
+
+    @Test fun connectedPrebindFastPathRequiresActionAndAllowed() {
+        val platform = FakePlatform().apply { token = Any(); mode = AppOpsManager.MODE_ALLOWED }
+        val device = device(platform)
+        onMain {
+            assertTrue(platform.recognizers.isEmpty())
+            assertTrue(device.tryLoad(null))
+            assertTrue(platform.recognizers.isEmpty())
+            device.onClick { }
+            assertEquals(0, platform.recognizers.single().starts)
+            platform.connections.single().onServiceConnected(null, Binder())
+        }
+        drain()
+        onMain {
+            assertEquals(1, platform.recognizers.single().starts)
+            runBlocking { device.destroy() }
+        }
+    }
+
+    @Test fun fastPathFallsBackWhenGenerationChangesOrArrivesLate() {
+        for (late in listOf(false, true)) {
+            val platform = FakePlatform().apply { token = if (late) null else Any(); mode = AppOpsManager.MODE_ALLOWED }
+            val device = device(platform)
+            onMain {
+                device.onClick { }
+                platform.token = Any()
+                platform.connections.single().onServiceConnected(null, Binder())
+            }
+            drain()
+            onMain {
+                assertEquals(0, platform.recognizers.single().starts)
+                platform.clock = 6000
+                poll(device).run()
+                assertEquals(1, platform.recognizers.single().starts)
+                runBlocking { device.destroy() }
+            }
+        }
+    }
+
+    @Test fun prebindInvalidatedDuringAppOpsCheckFallsBack() {
+        val platform = FakePlatform().apply {
+            token = Any(); mode = AppOpsManager.MODE_ALLOWED
+            onCheck = { token = null }
+        }
+        val device = device(platform)
+        onMain { device.onClick { }; platform.connections.single().onServiceConnected(null, Binder()) }
+        drain()
+        onMain {
+            assertEquals(0, platform.recognizers.single().starts)
+            platform.clock = 6000
+            poll(device).run()
+            assertEquals(1, platform.recognizers.single().starts)
+            runBlocking { device.destroy() }
+        }
+    }
+
+    @Test fun fastPathStillWaitsForAllowedAndDoesNotRetryErrorNine() {
+        val platform = FakePlatform().apply { token = Any(); mode = AppOpsManager.MODE_IGNORED }
+        val device = device(platform)
+        val events = mutableListOf<InputEvent>()
+        onMain { device.onClick { events.add(it) }; platform.connections.single().onServiceConnected(null, Binder()) }
+        drain()
+        onMain {
+            assertEquals(0, platform.recognizers.single().starts)
+            platform.mode = AppOpsManager.MODE_ALLOWED
+            poll(device).run()
+            assertEquals(1, platform.recognizers.single().starts)
+            platform.recognizers.single().callback.onError(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS)
+            assertTrue(events.last() is InputEvent.Error)
+            val message = (events.last() as InputEvent.Error).throwable.message.orEmpty()
+            assertTrue(message.contains("ошибка 9"))
+            assertTrue(message.contains("автоматического повтора нет"))
+            assertEquals(1, platform.recognizers.single().starts)
+            assertEquals(1, platform.unbound.size)
+            runBlocking { device.destroy() }
+        }
     }
 
     @Test fun appOpsDelayedAllowedStartsAtMostOnce() {

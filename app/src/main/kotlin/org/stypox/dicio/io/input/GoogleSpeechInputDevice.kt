@@ -21,6 +21,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.stypox.dicio.di.LocaleManager
+import org.stypox.dicio.voice.TvVoiceService
+import org.stypox.dicio.voice.PREBIND_KEY
+import org.stypox.dicio.voice.prebindPreferences
 import java.io.IOException
 
 internal interface GoogleRecognizer {
@@ -36,6 +39,8 @@ internal interface GoogleSpeechPlatform {
     fun unbind(connection: ServiceConnection)
     fun requiresAudioOpWait(): Boolean = false
     fun audioOpMode(): Int? = null
+    fun prebindToken(): Any? = null
+    fun prebindCurrent(token: Any?): Boolean = false
     fun elapsedRealtime(): Long = SystemClock.elapsedRealtime()
 }
 
@@ -61,6 +66,13 @@ class GoogleSpeechInputDevice(
             context.bindService(intent, connection, flags)
         override fun unbind(connection: ServiceConnection) = context.unbindService(connection)
         override fun requiresAudioOpWait() = Build.VERSION.SDK_INT == 30
+        override fun prebindToken(): Any? = if (Build.VERSION.SDK_INT == 30 &&
+            Build.MANUFACTURER.equals("TCL", ignoreCase = true) &&
+            prebindPreferences(context).getBoolean(PREBIND_KEY, false))
+            TvVoiceService.prebindReservation.snapshot() else null
+        override fun prebindCurrent(token: Any?): Boolean =
+            prebindPreferences(context).getBoolean(PREBIND_KEY, false) &&
+                TvVoiceService.prebindReservation.isCurrent(token)
         override fun audioOpMode(): Int? {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
             val uid = context.packageManager.getPackageUid(SERVICE_COMPONENT.packageName, 0)
@@ -145,6 +157,7 @@ class GoogleSpeechInputDevice(
             }
             listener = eventListener
             val session = ++generation
+            val prebindToken = platform.prebindToken()
             eventListener(InputEvent.Started)
             if (closed || session != generation || listener == null) return@begin
             state.value = SttState.WaitingForResult
@@ -193,7 +206,7 @@ class GoogleSpeechInputDevice(
                             SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
                                 "Речь не поступила. Повторите запрос кнопкой Ассистента."
                             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
-                                "Android запретил Google доступ к записи. Проверьте разрешение микрофона и выбор Google как системного распознавателя речи."
+                                "Google сообщил об отсутствии доступа к микрофону (ошибка 9). Проверьте разрешение микрофона и выбор Google как системного распознавателя речи. Доступ также может зависеть от состояния устройства; автоматического повтора нет."
                             SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
                                 "Ошибка сети Google при распознавании речи. Проверьте подключение и повторите запрос."
                             SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
@@ -290,7 +303,8 @@ class GoogleSpeechInputDevice(
                                         throw IOException("Google microphone AppOps wait timed out")
                                     }
                                     val requiresWait = platform.requiresAudioOpWait()
-                                    if (requiresWait && now - began < APP_OPS_MIN_WAIT_MS) {
+                                    if (requiresWait && now - began < APP_OPS_MIN_WAIT_MS &&
+                                        !platform.prebindCurrent(prebindToken)) {
                                         main.postDelayed(poll, APP_OPS_POLL_MS)
                                         return@Runnable
                                     }
@@ -298,6 +312,12 @@ class GoogleSpeechInputDevice(
                                     if (closed || session != generation || listener == null || binding !== this || appOpsPoll !== poll) return@Runnable
                                     val checkedAt = platform.elapsedRealtime()
                                     if (checkedAt >= limit) throw IOException("Google microphone AppOps wait timed out")
+                                    // AppOps can reenter application code; never use a stale generation.
+                                    if (requiresWait && checkedAt - began < APP_OPS_MIN_WAIT_MS &&
+                                        !platform.prebindCurrent(prebindToken)) {
+                                        main.postDelayed(poll, APP_OPS_POLL_MS)
+                                        return@Runnable
+                                    }
                                     if (!requiresWait || mode == AppOpsManager.MODE_ALLOWED) {
                                         appOpsPoll = null
                                         main.postDelayed(timeout, 30000)
