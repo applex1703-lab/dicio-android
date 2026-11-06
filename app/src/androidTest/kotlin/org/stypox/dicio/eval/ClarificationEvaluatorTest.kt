@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Response
@@ -63,9 +65,11 @@ class ClarificationEvaluatorTest {
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200)
                 .message("OK").body(response.toString().toResponseBody()).build()
         }.build()
+        val vpnLock = Mutex()
+        val actions = TvActions(app, MediaActions(app))
         val evaluator = SkillEvaluatorImpl(SkillContextImpl.newForPreviews(app),
             Provider<SkillHandler> { error("legacy path must not run") }, FakeSttInputDeviceWrapper(),
-            settings, PolzaClient(http), TvActions(app, MediaActions(app)))
+            settings, PolzaClient(http), actions, { vpnLock.withLock { actions.clearVpn() } })
 
         suspend fun say(text: String, expected: String) {
             withContext(Dispatchers.Main) {
@@ -79,8 +83,15 @@ class ClarificationEvaluatorTest {
         try {
             settings.save(PolzaSettings.Config(true, "test/model", "test-key"))
             say("исходная фраза", "Первый вопрос?")
-            withContext(Dispatchers.Main) { evaluator.finishInputSession() }
-            say("короткий ответ", "Второй вопрос?")
+            vpnLock.lock()
+            withContext(Dispatchers.Main) {
+                evaluator.finishInputSession()
+                assertTrue(evaluator.hasPendingClarification())
+                evaluator.processInputEvent(InputEvent.Final(listOf("короткий ответ" to 1f)))
+                vpnLock.unlock()
+            }
+            withTimeout(15_000) { evaluator.voicePresentation.first { it.answer == "Второй вопрос?" } }
+            withContext(Dispatchers.Main) { }
             val first = payload(1).getJSONObject("previous_clarification")
             assertEquals("исходная фраза", first.getString("request"))
             assertEquals("Первый вопрос?", first.getString("question"))

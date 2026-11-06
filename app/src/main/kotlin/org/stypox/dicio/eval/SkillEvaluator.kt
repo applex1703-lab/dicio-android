@@ -1,6 +1,8 @@
 package org.stypox.dicio.eval
 
 import android.util.Log
+import android.os.Looper
+import androidx.annotation.MainThread
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -51,6 +53,7 @@ internal fun classifyLocalVpnRequest(text: String): LocalVpnRequest = when {
     else -> LocalVpnRequest.NONE
 }
 
+/** Synchronous operations below are confined to the Android main thread. */
 interface SkillEvaluator {
     val state: StateFlow<InteractionLog>
     val voicePresentation: StateFlow<VoicePresentation>
@@ -59,14 +62,14 @@ interface SkillEvaluator {
 
     var permissionRequester: suspend (List<Permission>) -> Boolean
 
-    fun processInputEvent(event: InputEvent)
+    @MainThread fun processInputEvent(event: InputEvent)
 
-    fun cancelPendingInput()
+    @MainThread fun cancelPendingInput()
     /** End a completed UI session without forgetting a pending clarification. */
-    fun finishInputSession() = cancelPendingInput()
-    fun hasPendingClarification(): Boolean = false
-    fun resetVoicePresentation()
-    fun selectChoice(choiceId: Long, optionId: String) = Unit
+    @MainThread fun finishInputSession() = cancelPendingInput()
+    @MainThread fun hasPendingClarification(): Boolean = false
+    @MainThread fun resetVoicePresentation()
+    @MainThread fun selectChoice(choiceId: Long, optionId: String) = Unit
 }
 
 class SkillEvaluatorImpl(
@@ -76,10 +79,12 @@ class SkillEvaluatorImpl(
     private val polzaSettings: org.stypox.dicio.llm.PolzaSettings,
     private val polzaClient: org.stypox.dicio.llm.PolzaClient,
     private val tvActions: org.stypox.dicio.llm.TvActions,
+    private val clearVpn: suspend () -> Unit = { tvActions.clearVpn() },
 ) : SkillEvaluator {
 
     private val scope = CoroutineScope(Dispatchers.Main.immediate)
     private val requests = LatestInputRequest(scope)
+    private val sessionBoundary = InputSessionBoundary(scope, clearVpn)
     private val legacyLock = Mutex()
     private val pendingChoice = PendingChoice<ChoiceTarget>()
     private val pendingClarification = PendingClarification(scope) { android.os.SystemClock.elapsedRealtime() }
@@ -96,10 +101,15 @@ class SkillEvaluatorImpl(
     private val outputSlot = CurrentLegacyOutput()
     override val currentOutput: StateFlow<SkillOutput?> = outputSlot.state
     private var previousFallback: TextFallbackOutput? = null
+    private fun checkEntry() {
+        check(Looper.myLooper() === Looper.getMainLooper()) { "SkillEvaluator requires the main thread" }
+        check(!sessionBoundary.isEnding) { "SkillEvaluator teardown is in progress" }
+    }
     override fun resetVoicePresentation() {
+        checkEntry()
         requests.cancel()
         pendingChoice.clear()
-        scope.launch { tvActions.clearVpn() }
+        sessionBoundary.afterVpnClear()
         presentation.clear()
     }
 
@@ -107,39 +117,46 @@ class SkillEvaluatorImpl(
     override var permissionRequester: suspend (List<Permission>) -> Boolean = { false }
 
     override fun processInputEvent(event: InputEvent) {
-        scope.launch {
-            requests.cancel()
-            pendingChoice.clear()
-            tvActions.clearVpn()
+        checkEntry()
+        requests.cancel()
+        pendingChoice.clear()
+        sessionBoundary.afterVpnClear {
             requests.replace { suspendProcessInputEvent(event) }
         }
     }
 
     override fun cancelPendingInput() {
+        checkEntry()
         clearInput(preserveClarification = false)
     }
 
     override fun finishInputSession() {
+        checkEntry()
         clearInput(preserveClarification = true)
     }
 
-    override fun hasPendingClarification(): Boolean = pendingClarification.isAvailable()
+    override fun hasPendingClarification(): Boolean {
+        checkEntry()
+        return pendingClarification.isAvailable()
+    }
 
     private fun clearInput(preserveClarification: Boolean) {
-        scope.launch {
+        sessionBoundary.end {
             requests.cancel()
             pendingChoice.clear()
-            tvActions.clearVpn()
             if (!preserveClarification) pendingClarification.clear()
             outputSlot.clear()
             _state.value = InteractionLog(emptyList(), null)
             presentation.clear()
-            skillContext.speechOutputDevice.stopSpeaking()
-            skillContext.speechOutputDevice.cleanup()
+            stopAndCleanup(
+                skillContext.speechOutputDevice::stopSpeaking,
+                skillContext.speechOutputDevice::cleanup,
+            )
         }
     }
 
     override fun selectChoice(choiceId: Long, optionId: String) {
+        checkEntry()
         // Consume synchronously before starting any coroutine or action.
         val (query, target) = pendingChoice.consume(choiceId, optionId) ?: return
         presentation.choosing()
