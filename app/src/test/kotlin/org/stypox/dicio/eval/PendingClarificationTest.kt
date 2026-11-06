@@ -53,6 +53,46 @@ class PendingClarificationTest : StringSpec({
         pending.consume() shouldBe null
         job.cancel()
     }
+    "availability checks do not consume the last pair or extend its deadline" {
+        val job = Job()
+        var time = 100L
+        val pending = PendingClarification(CoroutineScope(job + Dispatchers.Unconfined)) { time }
+        pending.save("request", "question")
+        time += 59_999
+        pending.isAvailable() shouldBe true
+        pending.isAvailable() shouldBe true
+        time++
+        pending.consume() shouldBe null
+        pending.isAvailable() shouldBe false
+        job.cancel()
+    }
+    "invalid replacement discards the previous pair rather than reviving it" {
+        val job = Job()
+        val pending = PendingClarification(CoroutineScope(job + Dispatchers.Unconfined)) { 0L }
+        for ((request, question) in listOf(
+            " " to "question", "request" to " ",
+            "x".repeat(8001) to "question", "request" to "x".repeat(6001),
+        )) {
+            pending.save("previous", "previous question")
+            pending.save(request, question)
+            pending.isAvailable() shouldBe false
+            pending.consume() shouldBe null
+        }
+        job.cancel()
+    }
+    "clock rollback rejects a stored or consumed snapshot" {
+        val job = Job()
+        var time = 100L
+        val pending = PendingClarification(CoroutineScope(job + Dispatchers.Unconfined)) { time }
+        pending.save("request", "question")
+        val snapshot = checkNotNull(pending.consume())
+        snapshot.isFresh(99L) shouldBe false
+        pending.save("request", "question")
+        time--
+        pending.isAvailable() shouldBe false
+        pending.consume() shouldBe null
+        job.cancel()
+    }
     "each clarification replaces the consumed pair and starts a fresh one-use TTL" {
         val job = Job()
         var time = 100L

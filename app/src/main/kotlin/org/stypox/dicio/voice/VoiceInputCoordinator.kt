@@ -72,15 +72,26 @@ class VoiceInputCoordinator @Inject constructor(
     /** Only TV session instances use this process-local scope; lease ownership remains per instance. */
     internal fun startTv(owner: Any, onRevoked: () -> Unit = {}): Boolean = startScoped(owner, tvScope, onRevoked)
 
-    private fun startScoped(owner: Any, scope: Any, onRevoked: () -> Unit): Boolean {
+    /** Explicit retry from a visible TV session; never tears down another owner's active work. */
+    internal fun startTvIfAvailable(owner: Any, onRevoked: () -> Unit = {}): Boolean =
+        startScoped(owner, tvScope, onRevoked, protectOtherOwners = true)
+
+    private fun startScoped(owner: Any, scope: Any, onRevoked: () -> Unit,
+        protectOtherOwners: Boolean = false): Boolean {
         checkMain()
         if (tearingDown || evaluatorFaulted || !inputCleanupSafe()) return false
+        fun foreignWork() = inputLease?.let { it.owner !== owner } == true ||
+            evaluationLease?.let { it.owner !== owner } == true
+        if (protectOtherOwners && foreignWork()) return false
         if (inputLease?.owner === owner && evaluationLease?.owner === owner) return true
         if (!prepareRetained(owner, scope)) return false
+        if (protectOtherOwners && foreignWork()) return false
         if (!clear(inputLease, evaluationLease, notify = true,
-                preserveClarification = evaluationLease?.scope === scope, retainFor = owner)) return false
+                preserveClarification = evaluationLease?.scope === scope, retainFor = owner,
+                protectLeaseChanges = protectOtherOwners)) return false
         if (inputLease != null || evaluationLease != null) return false
         evaluator.resetVoicePresentation()
+        if (protectOtherOwners && (tearingDown || inputLease != null || evaluationLease != null)) return false
         val evaluation = EvaluationLease(owner, scope, onRevoked)
         evaluationLease = evaluation
         retainedOwner = null // The active lease now owns the retained context.
@@ -195,12 +206,14 @@ class VoiceInputCoordinator @Inject constructor(
     }
 
     private fun clear(inputTarget: InputLease?, evaluationTarget: EvaluationLease?, notify: Boolean,
-        preserveClarification: Boolean = false, retainFor: Any? = null): Boolean {
+        preserveClarification: Boolean = false, retainFor: Any? = null,
+        protectLeaseChanges: Boolean = false): Boolean {
         val oldInput = inputTarget?.takeIf { inputLease === it }
         val oldEvaluation = evaluationTarget?.takeIf { evaluationLease === it }
         if (oldInput == null && oldEvaluation == null) return true
         val keep = preserveClarification && oldInput == null && oldEvaluation != null &&
             evaluator.hasPendingClarification()
+        if (protectLeaseChanges && (inputLease !== inputTarget || evaluationLease !== evaluationTarget)) return false
         if (oldEvaluation != null) retainedOwner = if (keep)
             Retained(WeakReference(retainFor ?: oldEvaluation.owner), WeakReference(oldEvaluation.scope)) else null
         if (oldInput != null) inputLease = null

@@ -55,8 +55,13 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale,
     private val initializationStartedAt = android.os.SystemClock.elapsedRealtime()
 
     private fun stopEngine() {
-        try { textToSpeech?.stop() } catch (error: RuntimeException) {
-            Log.w(TAG, "TTS stop failed", error)
+        try {
+            if (textToSpeech?.stop() == TextToSpeech.ERROR) {
+                Log.w(TAG, "TTS stop returned ERROR")
+            }
+        } catch (_: RuntimeException) {
+            // Engine exception messages may contain user data; log only the failure kind.
+            Log.w(TAG, "TTS stop threw RuntimeException")
         }
     }
 

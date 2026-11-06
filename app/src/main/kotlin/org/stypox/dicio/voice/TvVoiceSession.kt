@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.SystemClock
 import android.service.voice.VoiceInteractionSession
 import android.text.TextUtils
 import android.util.Log
@@ -24,6 +25,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -47,6 +49,25 @@ internal class VoiceSessionTeardown(private val coordinator: VoiceInputCoordinat
     fun close() = coordinator.release(owner)
 }
 
+/** Keeps a no-op start on an existing input from replacing its presentation subscription. */
+internal class TvVoiceRequestAction(
+    private val isVisible: () -> Boolean,
+    private val start: (Boolean, () -> Unit) -> Boolean,
+    private val revoked: () -> Unit,
+    private val ensureUpdates: () -> Unit,
+    private val failed: () -> Unit,
+    private val hasPermission: () -> Boolean = { true },
+    private val permissionDenied: () -> Unit = {},
+) {
+    fun request(initial: Boolean = false) {
+        if (!isVisible()) return
+        if (!hasPermission()) { permissionDenied(); return }
+        val started = start(initial, revoked)
+        if (!isVisible()) return
+        if (started) ensureUpdates() else failed()
+    }
+}
+
 /** A system voice window, not an Activity and not a SYSTEM_ALERT_WINDOW overlay. */
 @RequiresApi(23)
 class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
@@ -64,6 +85,31 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private lateinit var choiceButtons: LinearLayout
     private var renderedChoice: ChoicePresentation? = null
     private var visible = false
+    private val requestAction = TvVoiceRequestAction(
+        isVisible = { visible },
+        start = { initial, revoked ->
+            if (initial) coordinator.startTv(this, revoked)
+            else coordinator.startTvIfAvailable(this, revoked)
+        },
+        revoked = {
+            updates?.cancel()
+            updates = null
+            renderChoice(null)
+            if (visible) status.text = "Голосовой запрос прерван"
+        },
+        ensureUpdates = { ensureVoiceUpdates() },
+        failed = {
+            status.text = "Распознавание речи недоступно"
+            if (updates == null) answer.text = "Откройте настройки Dicio и проверьте голосовой ввод."
+        },
+        hasPermission = {
+            ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        },
+        permissionDenied = {
+            status.text = "Нет разрешения микрофона"
+            answer.text = "Откройте Dicio из списка приложений и разрешите запись звука."
+        },
+    )
 
     private fun dp(value: Int) = (app.resources.displayMetrics.density * value).toInt()
 
@@ -79,6 +125,22 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             gravity = Gravity.TOP
             setPadding(dp(48), dp(24), dp(48), dp(24))
             setBackgroundColor(Color.rgb(22, 24, 29))
+            addView(Button(app).apply {
+                text = "Новый запрос"
+                isAllCaps = false
+                isFocusable = true
+                setTextColor(Color.WHITE)
+                fun updateBackground(focused: Boolean) {
+                    background = GradientDrawable().apply {
+                        setColor(if (focused) Color.rgb(45, 80, 135) else Color.rgb(48, 51, 58))
+                        cornerRadius = dp(8).toFloat()
+                        setStroke(dp(if (focused) 3 else 1), if (focused) Color.WHITE else Color.LTGRAY)
+                    }
+                }
+                updateBackground(false)
+                setOnFocusChangeListener { _, focused -> updateBackground(focused) }
+                setOnClickListener { requestVoiceInput() }
+            })
             status = line(18, Color.rgb(138, 180, 248))
             transcript = line(28, Color.WHITE)
             answer = line(22, Color.rgb(230, 232, 237)).apply { maxLines = 8 }
@@ -90,7 +152,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             }
             addView(choiceScroll, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(240)))
-            line(14, Color.LTGRAY).text = "Назад — закрыть · Новый запрос — кнопка Ассистента"
+            line(14, Color.LTGRAY).text = "Назад — закрыть · Новый запрос — кнопка на экране"
         }
     }
 
@@ -136,7 +198,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     }
 
     override fun onShow(args: Bundle?, showFlags: Int) {
-        Log.i("DicioVoiceRoute", "onShow visible=$visible flags=$showFlags")
+        Log.i("DicioVoiceRoute", "onShow session=${System.identityHashCode(this)} uptime=${SystemClock.uptimeMillis()} visible=$visible flags=$showFlags argsPresent=${args != null}")
         super.onShow(args, showFlags)
         window?.window?.apply {
             setGravity(Gravity.TOP)
@@ -147,23 +209,18 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         status.text = "Подготовка микрофона…"
         transcript.text = ""
         answer.text = ""
-        if (ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            status.text = "Нет разрешения микрофона"
-            answer.text = "Откройте Dicio из списка приложений и разрешите запись звука."
-            return
-        }
-        if (!coordinator.startTv(this) {
-                updates?.cancel()
-                updates = null
-                renderChoice(null)
-                if (visible) status.text = "Голосовой запрос прерван"
-            }) {
-            status.text = "Распознавание речи недоступно"
-            answer.text = "Откройте настройки Dicio и проверьте голосовой ввод."
-            return
-        }
-        updates?.cancel()
-        updates = scope.launch {
+        requestVoiceInput(initial = true)
+    }
+
+    private fun requestVoiceInput(initial: Boolean = false) {
+        if (!visible) return
+        // A displaced session must not preempt another owner's active input.
+        requestAction.request(initial)
+    }
+
+    private fun ensureVoiceUpdates() {
+        if (updates != null) return
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             evaluator.voicePresentation.combine(input.uiState) { presentation, stt -> presentation to stt }
                 .collect { (presentation, stt) ->
                     // Started resets this ephemeral state before the new recording results.
@@ -175,6 +232,8 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                     if (presentation.dismiss) hide()
                 }
         }
+        updates = job
+        job.start()
     }
 
     // The coordinator ignores release from a session that no longer owns the input.
@@ -187,7 +246,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     }
 
     override fun onHide() {
-        Log.i("DicioVoiceRoute", "onHide visible=$visible")
+        Log.i("DicioVoiceRoute", "onHide session=${System.identityHashCode(this)} uptime=${SystemClock.uptimeMillis()} visible=$visible")
         releaseVoiceResources()
         super.onHide()
     }
@@ -201,14 +260,14 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_ASSIST || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
-            Log.i("DicioVoiceRoute", "keyDown code=$keyCode visible=$visible")
+            Log.i("DicioVoiceRoute", "keyDown session=${System.identityHashCode(this)} uptime=${SystemClock.uptimeMillis()} code=$keyCode visible=$visible device=${event?.deviceId} downTime=${event?.downTime} eventTime=${event?.eventTime} repeat=${event?.repeatCount}")
         }
         return super.onKeyDown(keyCode, event)
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_ASSIST || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
-            Log.i("DicioVoiceRoute", "keyUp code=$keyCode visible=$visible")
+            Log.i("DicioVoiceRoute", "keyUp session=${System.identityHashCode(this)} uptime=${SystemClock.uptimeMillis()} code=$keyCode visible=$visible device=${event?.deviceId} downTime=${event?.downTime} eventTime=${event?.eventTime} cancelled=${event?.isCanceled}")
         }
         return super.onKeyUp(keyCode, event)
     }

@@ -928,6 +928,56 @@ class GoogleSpeechInputDeviceTest {
         }
     }
 
+    @Test fun noMatchIsOneTerminalErrorWithCleanupAndOnlyExplicitRetry() {
+        val platform = FakePlatform()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val locale = LocaleManager.newForPreviews(context)
+        val input = SttInputDeviceWrapperImpl(context, UserSettingsModule.newDataStoreForPreviews(), locale) {
+            GoogleSpeechInputDevice(context, locale, platform)
+        }
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val owner = Any()
+        onMain {
+            assertTrue(coordinator.start(owner))
+            platform.connections.single().onServiceConnected(null, Binder())
+        }
+        drain()
+        onMain {
+            val recognizer = platform.recognizers.single()
+            assertEquals(7, SpeechRecognizer.ERROR_NO_MATCH)
+            assertEquals(1, recognizer.starts)
+            recognizer.callback.onError(SpeechRecognizer.ERROR_NO_MATCH)
+            recognizer.callback.onError(SpeechRecognizer.ERROR_NO_MATCH)
+            recognizer.callback.onResults(Bundle().apply {
+                putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("late"))
+            })
+            val terminal = evaluator.events.filter { it is InputEvent.Error || it is InputEvent.Final || it is InputEvent.None }
+            assertEquals(1, terminal.size)
+            assertTrue(terminal.single() is InputEvent.Error)
+            assertTrue((terminal.single() as InputEvent.Error).throwable.message.orEmpty().contains("Речь не распознана"))
+            assertEquals(1, recognizer.destroys)
+            assertEquals(listOf(platform.connections.single()), platform.unbound)
+            assertTrue(input.isCleanupSafe())
+        }
+        drain()
+        onMain {
+            assertEquals(1, platform.recognizers.size)
+            assertEquals(1, platform.recognizers.single().starts)
+            assertTrue(coordinator.start(owner)) // A subsequent user request is allowed.
+            assertEquals(2, platform.recognizers.size)
+            platform.connections.last().onServiceConnected(null, Binder())
+        }
+        drain()
+        onMain {
+            assertEquals(1, platform.recognizers.last().starts)
+            assertEquals(1, evaluator.events.filterIsInstance<InputEvent.Error>().size)
+            coordinator.cancel(owner)
+            assertEquals(1, platform.recognizers.last().destroys)
+            assertEquals(2, platform.unbound.size)
+        }
+    }
+
     @Test fun realCoordinatorAndWrapperDeliverFinalAfterSuccessfulCleanup() {
         val platform = FakePlatform()
         val context = ApplicationProvider.getApplicationContext<Context>()
