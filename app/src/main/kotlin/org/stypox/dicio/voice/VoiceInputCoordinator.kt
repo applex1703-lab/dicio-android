@@ -31,6 +31,8 @@ class VoiceInputCoordinator @Inject constructor(
     private var inputFaulted = false
     private var evaluatorFaulted = false
     private val deferredReleases = mutableListOf<Pair<Any, Boolean>>()
+    // Invalidates an explicit restart if an external callback reenters a mutating operation.
+    private var operationGeneration = 0L
 
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
 
@@ -76,9 +78,32 @@ class VoiceInputCoordinator @Inject constructor(
     internal fun startTvIfAvailable(owner: Any, onRevoked: () -> Unit = {}): Boolean =
         startScoped(owner, tvScope, onRevoked, protectOtherOwners = true)
 
+    /** A new user gesture may replace this owner's input, but never another owner's work. */
+    internal fun restartTvExplicit(owner: Any, onRevoked: () -> Unit = {}): Boolean {
+        checkMain()
+        val generation = ++operationGeneration
+        fun unchanged() = operationGeneration == generation && !tearingDown
+        fun foreignWork() = inputLease?.let { it.owner !== owner } == true ||
+            evaluationLease?.let { it.owner !== owner } == true
+        if (tearingDown || evaluatorFaulted || !inputCleanupSafe() || !unchanged() || foreignWork()) return false
+        if (!prepareRetained(owner, tvScope) || !unchanged() || foreignWork()) return false
+        if (!clear(inputLease, evaluationLease, notify = true,
+                preserveClarification = evaluationLease?.scope === tvScope, retainFor = owner,
+                protectLeaseChanges = true)) return false
+        if (!unchanged() || inputLease != null || evaluationLease != null || evaluatorFaulted ||
+            !inputCleanupSafe() || !unchanged()) return false
+        evaluator.resetVoicePresentation()
+        if (!unchanged() || inputLease != null || evaluationLease != null) return false
+        val evaluation = EvaluationLease(owner, tvScope, onRevoked)
+        evaluationLease = evaluation
+        retainedOwner = null
+        return startInput(owner, {}, evaluator::processInputEvent, evaluation, generation)
+    }
+
     private fun startScoped(owner: Any, scope: Any, onRevoked: () -> Unit,
         protectOtherOwners: Boolean = false): Boolean {
         checkMain()
+        operationGeneration++
         if (tearingDown || evaluatorFaulted || !inputCleanupSafe()) return false
         fun foreignWork() = inputLease?.let { it.owner !== owner } == true ||
             evaluationLease?.let { it.owner !== owner } == true
@@ -104,6 +129,7 @@ class VoiceInputCoordinator @Inject constructor(
      */
     fun startPopup(owner: Any, onEvent: (InputEvent) -> Unit): Boolean {
         checkMain()
+        operationGeneration++
         if (tearingDown || evaluatorFaulted || !inputCleanupSafe()) return false
         if (inputLease?.owner === owner) return true
         if (inputLease != null || evaluationLease?.let { it.owner !== owner } == true) return false
@@ -113,6 +139,7 @@ class VoiceInputCoordinator @Inject constructor(
 
     fun startService(owner: Any, onEvent: (InputEvent) -> Unit, onRevoked: () -> Unit): Boolean? {
         checkMain()
+        operationGeneration++
         if (tearingDown || inputLease != null || evaluationLease?.let { it.owner !== owner } == true) return null
         if (evaluatorFaulted || !inputCleanupSafe()) return false
         if (!prepareRetained(owner, owner)) return false
@@ -129,16 +156,19 @@ class VoiceInputCoordinator @Inject constructor(
         onRevoked: () -> Unit,
         onEvent: (InputEvent) -> Unit,
         evaluation: EvaluationLease? = null,
+        expectedGeneration: Long? = null,
     ): Boolean {
         val lease = InputLease(owner, onRevoked)
         inputLease = lease
         var terminalDelivered = false
+        var terminalCleanupSucceeded = true
         val loaded = input.tryLoad { event ->
             val deliver = deliver@{
                 if (inputLease === lease) {
                     if (event is InputEvent.Final || event is InputEvent.Error || event is InputEvent.None) {
                         terminalDelivered = true
                         val cleaned = clear(lease, null, notify = false)
+                        terminalCleanupSucceeded = cleaned
                         if (!cleaned) {
                             if (evaluation == null || evaluationLease === evaluation) {
                                 onEvent(InputEvent.Error(java.io.IOException("Voice input cleanup did not complete")))
@@ -152,6 +182,15 @@ class VoiceInputCoordinator @Inject constructor(
             if (Looper.myLooper() == Looper.getMainLooper()) deliver() else main.post { deliver() }
         }
         if (!loaded && !terminalDelivered) clear(lease, evaluation, notify = false)
+        if (expectedGeneration != null && (operationGeneration != expectedGeneration ||
+                evaluationLease !== evaluation ||
+                (inputLease !== lease && !(terminalDelivered && inputLease == null)))) {
+            // A reentrant operation may invalidate the request without revoking its leases.
+            // clear() checks lease identity, so it cannot tear down a replacement owner.
+            clear(lease, evaluation, notify = false)
+            return false
+        }
+        if (expectedGeneration != null && !terminalCleanupSucceeded) return false
         return loaded || terminalDelivered
     }
 
@@ -165,6 +204,7 @@ class VoiceInputCoordinator @Inject constructor(
 
     fun submitText(owner: Any, text: String) {
         checkMain()
+        operationGeneration++
         if (tearingDown) return
         if (evaluatorFaulted || !prepareRetained(owner, owner)) return
         if (!clear(inputLease, evaluationLease, notify = true,
@@ -177,6 +217,7 @@ class VoiceInputCoordinator @Inject constructor(
 
     fun release(owner: Any) {
         checkMain()
+        operationGeneration++
         if (tearingDown) {
             deferredReleases.add(owner to true)
             return
@@ -187,6 +228,7 @@ class VoiceInputCoordinator @Inject constructor(
 
     fun cancel(owner: Any) {
         checkMain()
+        operationGeneration++
         if (tearingDown) {
             deferredReleases.add(owner to false)
             return

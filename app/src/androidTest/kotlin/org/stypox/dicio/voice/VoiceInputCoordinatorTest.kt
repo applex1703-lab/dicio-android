@@ -25,6 +25,7 @@ class VoiceInputCoordinatorTest {
         var available = true
         var synchronousEvent: InputEvent? = null
         var returnAfterEvent = true
+        var onLoad: (() -> Unit)? = null
         var onRelease: (() -> Unit)? = null
         var cleanupSucceeds = true
         var cleanupSafe = true
@@ -33,6 +34,7 @@ class VoiceInputCoordinatorTest {
             callback = thenStartListeningEventListener
             starts++
             synchronousEvent?.let { thenStartListeningEventListener?.invoke(it) }
+            onLoad?.invoke()
             return returnAfterEvent
         }
         override fun stopListening() { stops++ }
@@ -67,6 +69,185 @@ class VoiceInputCoordinatorTest {
 
     private fun onMain(block: () -> Unit) =
         InstrumentationRegistry.getInstrumentation().runOnMainSync(block)
+
+    @Test fun explicitTvRestartRejectsReentrantCancelOrReleaseDuringLoad() = onMain {
+        for (release in listOf(false, true)) {
+            val input = Input()
+            val evaluator = Evaluator()
+            val coordinator = VoiceInputCoordinator(input, evaluator)
+            val owner = Any()
+            input.onLoad = {
+                if (release) coordinator.release(owner) else coordinator.cancel(owner)
+            }
+            assertFalse(coordinator.restartTvExplicit(owner))
+            assertFalse(coordinator.ownsWork(owner))
+            assertEquals(1, input.starts)
+            assertEquals(1, input.releases)
+            input.callback!!(InputEvent.Final(listOf("late" to 1f)))
+            assertTrue(evaluator.events.isEmpty())
+        }
+    }
+
+    @Test fun explicitTvRestartAcceptsSynchronousTerminalOnlyWhileLeaseRemainsCurrent() = onMain {
+        for (loaded in listOf(false, true)) {
+            val input = Input().apply {
+                synchronousEvent = InputEvent.Final(listOf("done" to 1f))
+                returnAfterEvent = loaded
+            }
+            val evaluator = Evaluator()
+            val coordinator = VoiceInputCoordinator(input, evaluator)
+            val owner = Any()
+            assertTrue(coordinator.restartTvExplicit(owner))
+            assertEquals(1, evaluator.events.size)
+            assertTrue(coordinator.ownsWork(owner))
+            input.callback!!(InputEvent.Final(listOf("late" to 1f)))
+            assertEquals(1, evaluator.events.size)
+        }
+        val input = Input().apply { synchronousEvent = InputEvent.None }
+        val coordinator = VoiceInputCoordinator(input, Evaluator())
+        val owner = Any()
+        input.onLoad = { coordinator.cancel(owner) }
+        assertFalse(coordinator.restartTvExplicit(owner))
+        assertFalse(coordinator.ownsWork(owner))
+    }
+
+    @Test fun explicitTvRestartReportsSynchronousTerminalCleanupFailure() = onMain {
+        for (loaded in listOf(false, true)) {
+            val input = Input().apply {
+                synchronousEvent = InputEvent.Final(listOf("must not execute" to 1f))
+                returnAfterEvent = loaded
+                cleanupSucceeds = false
+            }
+            val evaluator = Evaluator()
+            val coordinator = VoiceInputCoordinator(input, evaluator)
+            val owner = Any()
+            assertFalse(coordinator.restartTvExplicit(owner))
+            assertEquals(1, evaluator.events.size)
+            assertTrue(evaluator.events.single() is InputEvent.Error)
+            input.callback!!(InputEvent.Final(listOf("late" to 1f)))
+            assertEquals(1, evaluator.events.size)
+            assertFalse(coordinator.restartTvExplicit(owner))
+            assertEquals(1, input.starts)
+            assertEquals(1, input.releases)
+        }
+    }
+
+    @Test fun explicitTvRestartCleansUpAfterReentrantForeignNoOp() = onMain {
+        for (terminal in listOf(false, true)) {
+            for (foreignStart in listOf(false, true)) {
+                val input = Input().apply {
+                    if (terminal) synchronousEvent = InputEvent.None
+                }
+                val evaluator = Evaluator()
+                val coordinator = VoiceInputCoordinator(input, evaluator)
+                val owner = Any()
+                val foreign = Any()
+                input.onLoad = {
+                    if (foreignStart) assertFalse(coordinator.startTvIfAvailable(foreign))
+                    else coordinator.release(foreign)
+                }
+                assertFalse(coordinator.restartTvExplicit(owner))
+                assertFalse(coordinator.ownsWork(owner))
+                assertFalse(coordinator.ownsWork(foreign))
+                assertEquals(1, input.starts)
+                assertEquals(1, input.releases)
+                assertEquals(1, evaluator.cancellations)
+                val events = evaluator.events.toList()
+                input.callback!!(InputEvent.Final(listOf("late" to 1f)))
+                assertEquals(events, evaluator.events)
+            }
+        }
+    }
+
+    @Test fun invalidatedExplicitTvRestartDoesNotCleanUpReplacementLease() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val owner = Any()
+        val replacement = Any()
+        var old: ((InputEvent) -> Unit)? = null
+        input.onLoad = {
+            old = input.callback
+            input.onLoad = null
+            coordinator.cancel(owner)
+            assertTrue(coordinator.startTv(replacement))
+        }
+        assertFalse(coordinator.restartTvExplicit(owner))
+        assertTrue(coordinator.ownsWork(replacement))
+        assertEquals(2, input.starts)
+        assertEquals(1, input.releases)
+        old!!(InputEvent.Final(listOf("late" to 1f)))
+        assertTrue(evaluator.events.isEmpty())
+        input.callback!!(InputEvent.Final(listOf("new" to 1f)))
+        assertEquals(1, evaluator.events.size)
+    }
+
+    @Test fun explicitTvRestartReplacesOnlyOwnActiveInputAndRejectsLateEvents() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val owner = Any()
+        var revoked = 0
+        assertTrue(coordinator.startTv(owner) { revoked++ })
+        val old = input.callback!!
+        evaluator.pendingClarification = true
+        input.onRelease = { assertEquals(1, input.starts) }
+        assertFalse(coordinator.restartTvExplicit(Any()))
+        assertEquals(0, input.releases)
+        assertTrue(coordinator.restartTvExplicit(owner))
+        assertEquals(1, revoked)
+        assertEquals(1, input.releases)
+        assertEquals(2, input.starts)
+        input.onRelease = null
+        assertFalse(evaluator.pendingClarification)
+        assertEquals(0, evaluator.finishes)
+        old(InputEvent.Final(listOf("late" to 1f)))
+        assertTrue(evaluator.events.isEmpty())
+        input.callback!!(InputEvent.Final(listOf("new" to 1f)))
+        assertEquals(listOf(InputEvent.Final(listOf("new" to 1f))), evaluator.events)
+    }
+
+    @Test fun explicitTvRestartPreservesOnlyCompletedClarification() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val owner = Any()
+        assertTrue(coordinator.startTv(owner))
+        input.callback!!(InputEvent.Final(listOf("question" to 1f)))
+        evaluator.pendingClarification = true
+        assertFalse(coordinator.restartTvExplicit(Any())) // foreign evaluation, even without input
+        assertTrue(coordinator.restartTvExplicit(owner))
+        assertTrue(evaluator.pendingClarification)
+        assertEquals(1, evaluator.finishes)
+        assertEquals(2, input.starts)
+    }
+
+    @Test fun explicitTvRestartAbortsOnReentrantReleaseAndFailedCleanup() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val owner = Any()
+        assertTrue(coordinator.startTv(owner))
+        input.onRelease = {
+            assertFalse(coordinator.restartTvExplicit(owner))
+            coordinator.release(owner)
+        }
+        assertFalse(coordinator.restartTvExplicit(owner))
+        assertEquals(1, input.starts)
+        assertEquals(1, input.releases)
+
+        input.onRelease = null
+        assertTrue(coordinator.startTv(owner))
+        val old = input.callback!!
+        input.cleanupSucceeds = false
+        assertFalse(coordinator.restartTvExplicit(owner))
+        old(InputEvent.Final(listOf("late" to 1f)))
+        assertTrue(evaluator.events.isEmpty())
+        assertEquals(2, input.starts)
+        assertEquals(2, input.releases)
+        assertFalse(coordinator.restartTvExplicit(owner))
+        assertEquals(2, input.releases) // no cleanup retry
+    }
 
     @Test fun choiceRequiresCurrentEvaluationOwner() = onMain {
         val input = Input()
