@@ -44,6 +44,28 @@ class HappConnectTest : StringSpec({
         calls shouldBe 1
         result.text.contains("подтвердить не удалось") shouldBe true
     }
+    "handler selection requires one exact accessible non UI match" {
+        val handler = HappHandler("com.happproxy", "com.happproxy.ConnectActivity", true, true, true, true)
+        HappHandlerPolicy.select(listOf(handler)) shouldBe handler
+        for (rejected in listOf(
+            handler.copy(packageName = "other"), handler.copy(className = ""),
+            handler.copy(className = "com.happproxy.MainActivity"),
+            handler.copy(targetClassName = "com.happproxy.MainActivity"),
+            handler.copy(exported = false), handler.copy(enabled = false),
+            handler.copy(permitted = false), handler.copy(exactAuthority = false)
+        )) HappHandlerPolicy.select(listOf(rejected)) shouldBe null
+        HappHandlerPolicy.select(emptyList()) shouldBe null
+        HappHandlerPolicy.select(listOf(handler, handler.copy(className = "com.happproxy.OtherActivity"))) shouldBe null
+    }
+    "launch failure is not retried or reported as success" {
+        var calls = 0
+        val launcher = object : HappLauncher {
+            override fun available() = true
+            override fun launch() { calls++; throw SecurityException() }
+        }
+        shouldThrow<IllegalStateException> { runBlocking { HappConnect.execute(command, launcher) } }
+        calls shouldBe 1
+    }
     "cancellation after capability check prevents dispatch" {
         var calls = 0
         val job = Job()
