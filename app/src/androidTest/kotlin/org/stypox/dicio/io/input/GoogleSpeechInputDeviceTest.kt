@@ -58,10 +58,6 @@ class GoogleSpeechInputDeviceTest {
         var onBind: ((ServiceConnection) -> Unit)? = null
         var mode: Int? = null
         var clock = 0L
-        val diagnostics = mutableListOf<Triple<String, Long, Int?>>()
-        override fun diagnostic(event: String, elapsedMs: Long, chars: Int?) {
-            diagnostics.add(Triple(event, elapsedMs, chars))
-        }
         var checks = 0
         var checkFailure: Exception? = null
         var onCheck: (() -> Unit)? = null
@@ -98,85 +94,6 @@ class GoogleSpeechInputDeviceTest {
         val field = GoogleSpeechInputDevice::class.java.getDeclaredField("appOpsPoll")
         field.isAccessible = true
         return field.get(device) as Runnable
-    }
-
-    @Test fun diagnosticsContainOnlyRelativeTimingAndLengths() {
-        val platform = FakePlatform().apply { clock = 100 }
-        val device = device(platform)
-        onMain { device.onClick { }; platform.connections.single().onServiceConnected(null, Binder()) }
-        drain()
-        onMain {
-            val callback = platform.recognizers.single().callback
-            platform.clock = 110; callback.onReadyForSpeech(Bundle())
-            platform.clock = 120; callback.onBeginningOfSpeech()
-            platform.clock = 130; callback.onPartialResults(Bundle().apply {
-                putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("secret"))
-            })
-            platform.clock = 140; callback.onEndOfSpeech()
-            platform.clock = 150; device.stopListening()
-            platform.clock = 160; callback.onResults(Bundle().apply {
-                putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("private"))
-            })
-            callback.onReadyForSpeech(Bundle()) // stale callbacks are ignored
-            assertEquals(listOf(
-                Triple("ready", 10L, null), Triple("begin", 20L, null),
-                Triple("partial", 30L, 6), Triple("end", 40L, null),
-                Triple("stop", 50L, null), Triple("final", 60L, 7),
-            ), platform.diagnostics)
-            runBlocking { device.destroy() }
-        }
-    }
-
-    @Test fun synchronousCallbacksAreLoggedOnceAtArrival() {
-        val platform = FakePlatform().apply {
-            clock = 100
-            onCreate = { recognizer -> recognizer.onStart = { callback ->
-                clock = 105; callback.onReadyForSpeech(Bundle())
-                clock = 108; callback.onResults(Bundle())
-            } }
-        }
-        val device = device(platform)
-        onMain { device.onClick { }; platform.connections.single().onServiceConnected(null, Binder()) }
-        drain()
-        onMain {
-            assertEquals(listOf(Triple("ready", 5L, null), Triple("final", 8L, 0)), platform.diagnostics)
-            assertEquals(1, platform.recognizers.single().starts)
-            runBlocking { device.destroy() }
-        }
-    }
-
-    @Test fun synchronousCallbacksAfterTerminalAreNotLogged() {
-        for (errorTerminal in listOf(false, true)) {
-            val platform = FakePlatform().apply {
-                clock = 100
-                onCreate = { recognizer -> recognizer.onStart = { callback ->
-                    clock = 105
-                    if (errorTerminal) callback.onError(SpeechRecognizer.ERROR_NO_MATCH)
-                    else callback.onResults(Bundle())
-                    clock = 110
-                    callback.onBeginningOfSpeech()
-                    callback.onReadyForSpeech(Bundle())
-                    callback.onEndOfSpeech()
-                    callback.onPartialResults(Bundle().apply {
-                        putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("discarded"))
-                    })
-                    callback.onResults(Bundle().apply {
-                        putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("discarded"))
-                    })
-                } }
-            }
-            val device = device(platform)
-            val events = mutableListOf<InputEvent>()
-            onMain { device.onClick { events.add(it) }; platform.connections.single().onServiceConnected(null, Binder()) }
-            drain()
-            onMain {
-                assertEquals(if (errorTerminal) emptyList<Triple<String, Long, Int?>>()
-                    else listOf(Triple("final", 5L, 0)), platform.diagnostics)
-                assertEquals(1, events.count { it is InputEvent.Error })
-                assertEquals(1, platform.recognizers.single().starts)
-                runBlocking { device.destroy() }
-            }
-        }
     }
 
     @Test fun connectedPrebindFastPathRequiresActionAndAllowed() {
