@@ -45,8 +45,9 @@ internal sealed interface ChoiceTarget {
     data class Vpn(val optionId: String) : ChoiceTarget
 }
 
-internal enum class LocalVpnRequest { GENERAL, HAPP, AMBIGUOUS, NONE }
+internal enum class LocalVpnRequest { GENERAL, HAPP, DISCONNECT, AMBIGUOUS, NONE }
 internal fun classifyLocalVpnRequest(text: String): LocalVpnRequest = when {
+    VpnDispatcher.isDisconnectRequest(text) -> LocalVpnRequest.DISCONNECT
     VpnDispatcher.isExplicitRequest(text) -> LocalVpnRequest.GENERAL
     HappConnect.isExplicitRequest(text) -> LocalVpnRequest.HAPP
     VpnDispatcher.isAmbiguousCommand(text) -> LocalVpnRequest.AMBIGUOUS
@@ -214,7 +215,7 @@ class SkillEvaluatorImpl(
                 // a previous dispatch looking current after a new request.
                 tvActions.clearVpnStatus()
                 val localVpn = classifyLocalVpnRequest(request)
-                if (localVpn == LocalVpnRequest.GENERAL || localVpn == LocalVpnRequest.HAPP) {
+                if (localVpn == LocalVpnRequest.GENERAL || localVpn == LocalVpnRequest.HAPP || localVpn == LocalVpnRequest.DISCONNECT) {
                     pendingClarification.clear()
                     runExplicitVpn(request)
                     return
@@ -222,7 +223,7 @@ class SkillEvaluatorImpl(
                 if (localVpn == LocalVpnRequest.AMBIGUOUS) {
                     pendingClarification.clear()
                     _state.value = InteractionLog(emptyList(), null)
-                    val question = "Скажите явно: подключи VPN или подключи Happ VPN."
+                    val question = "Скажите явно: подключи VPN, выключи VPN или выключи Happ VPN."
                     presentation.answer(question)
                     skillContext.speechOutputDevice.stopSpeaking()
                     skillContext.speechOutputDevice.speak(question)
@@ -373,6 +374,13 @@ class SkillEvaluatorImpl(
         presentation.thinking(request)
         try {
             skillContext.speechOutputDevice.stopSpeaking()
+            if (VpnDispatcher.isDisconnectRequest(request)) {
+                val result = tvActions.disconnectVpn(request)
+                coroutineContext.ensureActive()
+                presentation.answer(result.text, silent = result.actionSent)
+                if (!result.actionSent) skillContext.speechOutputDevice.speak(result.text)
+                return
+            }
             if (HappConnect.isExplicitRequest(request)) {
                 val result = tvActions.execute(AssistantIntent.ConnectHapp, emptyList(), skillContext.locale, userRequest = request)
                 coroutineContext.ensureActive()

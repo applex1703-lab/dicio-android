@@ -5,6 +5,9 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 
 class VpnDispatcherTest : StringSpec({
@@ -23,11 +26,44 @@ class VpnDispatcherTest : StringSpec({
             if (entries.any { it.packageName == target }) listOf("android.permission.BIND_VPN_SERVICE") else emptyList()
         }
         override fun connectHapp(): Boolean { calls.add("happ"); return available }
+        override fun disconnectHapp(): Boolean { calls.add("disconnect"); return available }
         override fun open(packageName: String): Boolean { calls.add(packageName); return available }
     }
     val happ = VpnCandidate("com.happproxy", "Happ", true, "signer-a")
     val other = VpnCandidate("example.vpn", "Other", false, "signer-b")
     fun dispatcher(fake: Fake) = VpnDispatcher(fake, Dispatchers.Unconfined)
+
+    "disconnect targets only Happ and never opens another VPN" {
+        val fake = Fake().apply { entries = listOf(happ) }
+        val result = runBlocking { dispatcher(fake).disconnect("VPN выключи") }
+        result.actionSent shouldBe true
+        result.text.contains("не подтверждено") shouldBe true
+        fake.calls shouldBe listOf("disconnect")
+        fake.calls.clear()
+        fake.entries = listOf(happ, other)
+        runBlocking { dispatcher(fake).disconnect("выключи VPN") }.actionSent shouldBe false
+        fake.calls shouldBe emptyList()
+        runBlocking { dispatcher(fake).disconnect("выключи Happ VPN") }.actionSent shouldBe true
+        fake.calls shouldBe listOf("disconnect")
+        fake.calls.clear()
+        fake.entries = listOf(other)
+        runBlocking { dispatcher(fake).disconnect("отключи VPN") }.actionSent shouldBe false
+        fake.calls shouldBe emptyList()
+        fake.entries = emptyList()
+        runBlocking { dispatcher(fake).disconnect("отключи Happ") }.actionSent shouldBe false
+        fake.calls shouldBe emptyList()
+    }
+    "disconnect fails closed on unavailable integration and cancellation" {
+        val fake = Fake().apply { entries = listOf(happ); available = false }
+        shouldThrow<IllegalStateException> { runBlocking { dispatcher(fake).disconnect("отключи VPN") } }
+        fake.calls shouldBe listOf("disconnect")
+        fake.calls.clear()
+        val job = Job().apply { cancel() }
+        shouldThrow<CancellationException> { runBlocking { withContext(job) { dispatcher(fake).disconnect("отключи VPN") } } }
+        fake.calls shouldBe emptyList()
+        shouldThrow<IllegalStateException> { runBlocking { dispatcher(fake).disconnect("не выключи VPN") } }
+        fake.calls shouldBe emptyList()
+    }
 
     "only a direct positive general command passes" {
         for (s in listOf("подключи VPN", "включи впн пожалуйста", "connect vpn")) VpnDispatcher.isExplicitRequest(s) shouldBe true

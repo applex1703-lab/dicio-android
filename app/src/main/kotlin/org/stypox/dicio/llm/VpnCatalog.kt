@@ -84,6 +84,7 @@ internal interface VpnBackend {
     fun candidates(): List<VpnCandidate>
     fun isVpnPackage(packageName: String): Boolean
     fun connectHapp(): Boolean
+    fun disconnectHapp(): Boolean = false
     fun open(packageName: String): Boolean
 }
 
@@ -155,6 +156,13 @@ internal class AndroidVpnBackend(private val context: Context) : VpnBackend {
         return true
     }
 
+    override fun disconnectHapp(): Boolean {
+        val launcher = AndroidHappLauncher(context, "disconnect_without_ui")
+        if (!launcher.available()) return false
+        launcher.launch()
+        return true
+    }
+
     override fun open(packageName: String): Boolean {
         val pm = context.packageManager
         val intent = pm.getLeanbackLaunchIntentForPackage(packageName)
@@ -187,9 +195,14 @@ internal class VpnDispatcher(private val backend: VpnBackend, private val main: 
 
     companion object {
         private val request = Regex("^(?:(?:пожалуйста|сейчас)[,]?\\s+){0,2}(?:подключи|включи|connect)\\s+(?:(?:пожалуйста|сейчас)[,]?\\s+){0,2}(?:vpn|впн|ви\\s+пи\\s+эн)(?:[,]?\\s+(?:пожалуйста|сейчас)){0,2}[.!]?${'$'}", RegexOption.IGNORE_CASE)
+        private const val VPN = "(?:vpn|впн|ви\\s+пи\\s+эн)"
+        private const val HAPP = "(?:happ|хэпп)"
+        private val disconnect = Regex("^(?:выключи|отключи)\\s+$VPN[.!]?${'$'}|^$VPN\\s+(?:выключи|отключи)[.!]?${'$'}", RegexOption.IGNORE_CASE)
+        private val disconnectHapp = Regex("^(?:выключи|отключи)\\s+(?:$HAPP(?:\\s+$VPN)?|$VPN\\s+$HAPP)[.!]?${'$'}|^(?:$HAPP(?:\\s+$VPN)?|$VPN\\s+$HAPP)\\s+(?:выключи|отключи)[.!]?${'$'}", RegexOption.IGNORE_CASE)
         private val vpnMention = Regex("vpn|\\bhapp\\b|(?<![а-яё])(?:впн|хэпп|ви\\s+пи\\s+эн)(?![а-яё])", RegexOption.IGNORE_CASE)
         private val commandMention = Regex("(?:подключ|включ|отключ|выключ|переключ|запуст|откр|connect|disconnect|switch|start|open|enable|disable|turn\\s+(?:on|off))", RegexOption.IGNORE_CASE)
         fun isExplicitRequest(text: String) = request.matches(text.trim())
+        fun isDisconnectRequest(text: String) = disconnect.matches(text.trim()) || disconnectHapp.matches(text.trim())
         fun mentionsVpn(text: String) = vpnMention.containsMatchIn(text)
         fun isAmbiguousCommand(text: String) = vpnMention.containsMatchIn(text) && commandMention.containsMatchIn(text)
     }
@@ -226,6 +239,30 @@ internal class VpnDispatcher(private val backend: VpnBackend, private val main: 
             issued = candidates.associateBy { UUID.randomUUID().toString() }
             val labels = VpnLabels.disambiguate(issued.values.map { it.label })
             VpnDispatch.Choice(issued.keys.zip(labels) { id, label -> VpnOption(id, label) })
+        }
+    }
+
+    suspend fun disconnect(userRequest: String): VpnDispatch.Message = withContext(main) {
+        mutex.withLock {
+            issued = emptyMap()
+            coroutineContext.ensureActive()
+            check(isDisconnectRequest(userRequest)) { "Скажите явно: выключи VPN или выключи Happ VPN." }
+            val candidates = snapshot()
+            coroutineContext.ensureActive()
+            val explicitHapp = disconnectHapp.matches(userRequest.trim())
+            if (!explicitHapp && candidates.size > 1)
+                return@withLock VpnDispatch.Message("Видно несколько VPN-приложений. Уточните: выключи Happ VPN.")
+            val target = candidates.singleOrNull { it.packageName == VpnDiscovery.HAPP && it.supported }
+                ?: return@withLock VpnDispatch.Message("Видимый поддерживаемый Happ не найден. Список VPN может быть неполным.")
+            val refreshed = snapshot()
+            check(refreshed.any { it == target } && (explicitHapp || refreshed == listOf(target))) { "Список VPN-приложений изменился. Повторите запрос." }
+            coroutineContext.ensureActive()
+            val sent = try { backend.disconnectHapp() } catch (_: SecurityException) { false }
+                catch (_: android.content.ActivityNotFoundException) { false }
+            check(sent) { "Действие отключения Happ недоступно." }
+            val result = VpnDispatch.Message("Запрос на отключение отправлен в Happ. Состояние VPN не подтверждено; проверьте его в Happ.", actionSent = true)
+            onDispatched(result.text)
+            result
         }
     }
 

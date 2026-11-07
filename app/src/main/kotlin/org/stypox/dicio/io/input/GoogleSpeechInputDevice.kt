@@ -42,6 +42,10 @@ internal interface GoogleSpeechPlatform {
     fun prebindToken(): Any? = null
     fun prebindCurrent(token: Any?): Boolean = false
     fun elapsedRealtime(): Long = SystemClock.elapsedRealtime()
+    fun diagnostic(event: String, elapsedMs: Long, chars: Int?) {
+        Log.i("DicioGoogleSpeech", "recognition_event=$event elapsed_ms=$elapsedMs" +
+            (chars?.let { " chars=$it" } ?: ""))
+    }
 }
 
 /** One-shot Google recognition, returning text to Dicio rather than executing Google actions. */
@@ -96,6 +100,11 @@ class GoogleSpeechInputDevice(
     private var bindCallsInFlight = 0
     private var startCallsInFlight = 0 // main-thread owned
     private var recognitionStarted = false
+    private var recognitionStartAt: Long? = null
+    private fun diagnostic(event: String, chars: Int? = null, at: Long = platform.elapsedRealtime()) {
+        val start = recognitionStartAt ?: return
+        platform.diagnostic(event, (at - start).coerceAtLeast(0), chars)
+    }
     @Volatile private var cleanupFailure: Exception? = null
     private var recognizerDestroyAttempted = false
     private var unbindAttempted = false
@@ -165,12 +174,16 @@ class GoogleSpeechInputDevice(
             var startInFlight = false
             var pendingTerminal: (() -> Unit)? = null
             val pendingCallbacks = mutableListOf<() -> Unit>()
+            var replayingCallbacks = false
             try {
                 val service = prepareRecognizer()
                 service.setRecognitionListener(object : RecognitionListener {
                     private fun current() = !closed && session == generation && listener != null && recognitionStarted
                     override fun onReadyForSpeech(params: Bundle?) {
+                        val replay = replayingCallbacks.also { replayingCallbacks = false }
                         if (current()) {
+                            if (startInFlight && pendingTerminal != null) return
+                            if (!replay) diagnostic("ready")
                             if (startInFlight) {
                                 if (pendingTerminal == null) pendingCallbacks.add { onReadyForSpeech(params) }
                                 return
@@ -180,12 +193,15 @@ class GoogleSpeechInputDevice(
                         }
                     }
                     override fun onBeginningOfSpeech() {
-                        if (current()) Log.i(TAG, "Google speech beginning session=$session")
+                        if (current() && !(startInFlight && pendingTerminal != null)) diagnostic("begin")
                     }
                     override fun onRmsChanged(rmsdB: Float) { }
                     override fun onBufferReceived(buffer: ByteArray?) { }
                     override fun onEndOfSpeech() {
+                        val replay = replayingCallbacks.also { replayingCallbacks = false }
                         if (current()) {
+                            if (startInFlight && pendingTerminal != null) return
+                            if (!replay) diagnostic("end")
                             if (startInFlight) {
                                 if (pendingTerminal == null) pendingCallbacks.add { onEndOfSpeech() }
                                 return
@@ -194,6 +210,7 @@ class GoogleSpeechInputDevice(
                         }
                     }
                     override fun onError(error: Int) {
+                        replayingCallbacks = false
                         if (!current()) return
                         if (startInFlight) {
                             if (pendingTerminal == null) pendingTerminal = { onError(error) }
@@ -224,7 +241,15 @@ class GoogleSpeechInputDevice(
                         complete(InputEvent.Error(IOException(message)))
                     }
                     override fun onResults(results: Bundle?) {
+                        val replay = replayingCallbacks.also { replayingCallbacks = false }
                         if (!current()) return
+                        if (startInFlight && pendingTerminal != null) return
+                        if (!replay) {
+                            val at = platform.elapsedRealtime()
+                            val chars = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                                ?.firstOrNull { it.isNotBlank() }?.length ?: 0
+                            diagnostic("final", chars, at)
+                        }
                         if (startInFlight) {
                             if (pendingTerminal == null) pendingTerminal = { onResults(results) }
                             return
@@ -242,7 +267,15 @@ class GoogleSpeechInputDevice(
                         } else InputEvent.Final(hypotheses))
                     }
                     override fun onPartialResults(partialResults: Bundle?) {
+                        val replay = replayingCallbacks.also { replayingCallbacks = false }
                         if (!current()) return
+                        if (startInFlight && pendingTerminal != null) return
+                        if (!replay) {
+                            val at = platform.elapsedRealtime()
+                            val chars = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                                ?.firstOrNull { it.isNotBlank() }?.length ?: 0
+                            diagnostic("partial", chars, at)
+                        }
                         if (startInFlight) {
                             if (pendingTerminal == null) pendingCallbacks.add { onPartialResults(partialResults) }
                             return
@@ -331,6 +364,7 @@ class GoogleSpeechInputDevice(
                                             }
                                         }
                                         if (!committed) return@Runnable
+                                        recognitionStartAt = platform.elapsedRealtime()
                                         startInFlight = true
                                         try {
                                             try {
@@ -355,8 +389,12 @@ class GoogleSpeechInputDevice(
                                         pendingTerminal = null
                                         val callbacks = pendingCallbacks.toList()
                                         pendingCallbacks.clear()
-                                        callbacks.forEach { it() }
-                                        terminal?.invoke()
+                                        try {
+                                            callbacks.forEach { replayingCallbacks = true; it() }
+                                            terminal?.let { replayingCallbacks = true; it() }
+                                        } finally {
+                                            replayingCallbacks = false
+                                        }
                                         Log.i(TAG, "Google recognition requested after diagnostic bind (AppOps=$mode)")
                                     } else if (mode == AppOpsManager.MODE_IGNORED || mode == AppOpsManager.MODE_FOREGROUND) {
                                         main.postDelayed(poll, APP_OPS_POLL_MS)
@@ -438,6 +476,7 @@ class GoogleSpeechInputDevice(
         val target = listener ?: return
         listener = null
         recognitionStarted = false
+        recognitionStartAt = null
         generation++
         main.removeCallbacks(timeout)
         appOpsPoll?.let { main.removeCallbacks(it) }
@@ -471,6 +510,7 @@ class GoogleSpeechInputDevice(
     override fun stopListening() {
         val stop = {
             if (!closed && listener != null) {
+                diagnostic("stop")
                 if (recognitionStarted) {
                     recognizer?.stopListening()
                 } else {

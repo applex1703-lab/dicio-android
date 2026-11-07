@@ -60,13 +60,13 @@ internal object HappHandlerPolicy {
     }.singleOrNull()
 }
 
-internal class AndroidHappLauncher(private val context: Context) : HappLauncher {
+internal class AndroidHappLauncher(private val context: Context, private val host: String = HappHandlerPolicy.HOST) : HappLauncher {
     private var intent: Intent? = null
 
     override fun available(): Boolean {
         intent = null
         val pm = context.packageManager
-        val candidate = Intent(Intent.ACTION_VIEW, Uri.parse("happ://${HappHandlerPolicy.HOST}"))
+        val candidate = Intent(Intent.ACTION_VIEW, Uri.parse("happ://$host"))
             .setPackage(HappHandlerPolicy.PACKAGE)
             .addCategory(Intent.CATEGORY_DEFAULT)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -77,7 +77,7 @@ internal class AndroidHappLauncher(private val context: Context) : HappLauncher 
             val filter = result.filter
             val exactAuthority = filter != null && (0 until filter.countDataAuthorities()).any { index ->
                 val authority = filter.getDataAuthority(index)
-                authority.host == HappHandlerPolicy.HOST && authority.port == -1
+                authority.host == host && authority.port == -1
             }
             val component = ComponentName(activity.packageName, activity.name)
             HappHandler(activity.packageName, activity.name, activity.exported,

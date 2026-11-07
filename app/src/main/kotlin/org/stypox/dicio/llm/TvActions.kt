@@ -36,6 +36,11 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
 
     internal suspend fun chooseVpn(optionId: String): VpnDispatch.Message = vpnDispatcher.choose(optionId)
 
+    internal suspend fun disconnectVpn(userRequest: String): VpnDispatch.Message {
+        vpnDispatchStatus.clear()
+        return vpnDispatcher.disconnect(userRequest)
+    }
+
     fun clearVpnStatus() = vpnDispatchStatus.clear()
 
     internal suspend fun clearVpn() = vpnDispatcher.clear()
