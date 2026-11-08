@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BookmarkAdded
 import androidx.compose.material.icons.filled.BookmarkRemove
@@ -37,6 +40,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -44,7 +48,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.datasource.LoremIpsum
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import kotlinx.coroutines.job
 import org.stypox.dicio.R
 import kotlin.math.roundToInt
 
@@ -68,14 +71,14 @@ class BooleanSetting(
         onValueChange: (Boolean) -> Unit,
     ) {
         SettingsItem(
-            modifier = Modifier.clickable { onValueChange(!value) },
+            modifier = Modifier.toggleable(value = value, role = Role.Switch, onValueChange = onValueChange),
             title = title,
             icon = icon,
             description = if (value) descriptionOn else descriptionOff,
             content = {
                 Switch(
                     checked = value,
-                    onCheckedChange = onValueChange,
+                    onCheckedChange = null,
                 )
             },
         )
@@ -185,6 +188,7 @@ class ListSetting<T>(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
+                        .selectableGroup()
                 ) {
                     items(possibleValues) {
                         ListSettingChooserDialogItem(
@@ -221,7 +225,8 @@ fun ListSettingChooserDialogItem(
 ) {
     Row(
         modifier = Modifier
-            .clickable(onClick = onClick)
+            .fillMaxWidth()
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -251,7 +256,7 @@ fun ListSettingChooserDialogItem(
         if (icon != null) {
             Icon(
                 imageVector = icon,
-                contentDescription = name,
+                contentDescription = null,
             )
         }
     }
@@ -353,10 +358,8 @@ class StringSetting(
                         textStyle = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.focusRequester(focusRequester),
                     )
-                    LaunchedEffect(null) {
-                        coroutineContext.job.invokeOnCompletion {
-                            focusRequester.requestFocus()
-                        }
+                    LaunchedEffect(focusRequester) {
+                        focusRequester.requestFocus()
                     }
                 }
 

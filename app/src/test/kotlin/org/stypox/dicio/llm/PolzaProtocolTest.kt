@@ -30,6 +30,13 @@ class PolzaProtocolTest : StringSpec({
             PolzaProtocol.answer("""{"choices":[{"finish_reason":"stop","message":{"content":"text","tool_calls":[{}]}}]}""")
         }
     }
+    "refusal is not accepted as an ordinary answer and is not exposed in errors" {
+        val error = shouldThrow<IllegalStateException> {
+            PolzaProtocol.answer("""{"choices":[{"finish_reason":"stop","message":{"content":"partial","refusal":"private provider detail"}}]}""")
+        }
+        error.message!!.contains("private provider detail") shouldBe false
+        PolzaProtocol.answer("""{"choices":[{"finish_reason":"stop","message":{"content":"ok","refusal":null}}]}""") shouldBe "ok"
+    }
     "request escapes text and never embeds credentials" {
         val text = "Русский текст: \"цитата\"\nстрока"
         val json = Json.parseToJsonElement(PolzaProtocol.request("test/model", text)).jsonObject

@@ -6,6 +6,7 @@ import android.widget.Toast
 class ToastSpeechDevice(private var context: Context) : InstantSpeechDevice() {
     private var currentToast: Toast? = null
     override fun speak(speechOutput: String) {
+        currentToast?.cancel()
         currentToast = Toast.makeText(context, speechOutput, Toast.LENGTH_LONG).apply {
             show()
         }
@@ -13,12 +14,10 @@ class ToastSpeechDevice(private var context: Context) : InstantSpeechDevice() {
 
     override fun stopSpeaking() {
         currentToast?.cancel()
+        currentToast = null
     }
 
     override fun cleanup() {
-        currentToast?.apply {
-            cancel()
-            currentToast = null
-        }
+        stopSpeaking()
     }
 }

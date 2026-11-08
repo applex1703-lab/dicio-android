@@ -531,7 +531,8 @@ class SkillEvaluatorImpl(
         previousFallback = null
         _state.value = InteractionLog(emptyList(), null)
         presentation.error(throwable.localizedMessage ?: "Повторите запрос по кнопке Ассистента.")
-        Log.e(TAG, "Error while evaluating skills", throwable)
+        // Exceptions from skills and platform APIs can contain utterances or other private data.
+        Log.e(TAG, "Error while evaluating skills")
     }
 
     companion object {

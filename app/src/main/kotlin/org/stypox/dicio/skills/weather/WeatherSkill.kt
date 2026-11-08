@@ -41,8 +41,7 @@ class WeatherSkill(correspondingSkillInfo: SkillInfo, data: StandardRecognizerDa
         val tempConverted = tempUnit.convert(temp)
         return WeatherOutput.Success(
             city = weatherData.getString("name"),
-            description = weatherObject.getString("description")
-                .apply { this[0].uppercaseChar() + this.substring(1) },
+            description = capitalizeWeatherDescription(weatherObject.getString("description")),
             iconUrl = ICON_BASE_URL + weatherObject.getString("icon") + ICON_FORMAT,
             temp = temp,
             tempMin = mainObject.getDouble("temp_min"),
@@ -83,3 +82,6 @@ class WeatherSkill(correspondingSkillInfo: SkillInfo, data: StandardRecognizerDa
         private const val ICON_FORMAT = "@2x.png"
     }
 }
+
+internal fun capitalizeWeatherDescription(description: String): String =
+    description.replaceFirstChar { it.titlecase() }

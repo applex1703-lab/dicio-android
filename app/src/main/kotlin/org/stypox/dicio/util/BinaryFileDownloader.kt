@@ -44,7 +44,7 @@ data class FileToDownload(
 ) {
     fun needsToBeDownloaded(): Boolean {
         return try {
-            lastDownloadedUrlFile.readText() != url
+            !file.isFile || lastDownloadedUrlFile.readText() != url
         } catch (e: IOException) {
             // lastDownloadedUrlFile file does not exist
             true
@@ -108,21 +108,21 @@ suspend fun downloadBinaryFileWithPartial(
 ) {
     // use a partial file so that the file won't be considered as already downloaded
     // if the download gets interrupted
-    val partialFile = withContext(Dispatchers.IO) {
-        File.createTempFile(file.name, DOT_PART_SUFFIX, cacheDir)
-    }
-    partialFile.outputStream().use {
-        downloadBinaryFile(response, it, progressCallback)
-    }
-
-    // delete the previous file, if any
-    withContext(Dispatchers.IO) {
-        file.delete()
-    }
-
-    // the file has been fully downloaded, so we can rename it
-    if (withContext(Dispatchers.IO) { !partialFile.renameTo(file) }) {
-        throw IOException("Cannot rename partial file $partialFile to actual file $file")
+    response.use {
+        val partialFile = withContext(Dispatchers.IO) {
+            File.createTempFile(file.name.padEnd(3, '_'), DOT_PART_SUFFIX, cacheDir)
+        }
+        try {
+            partialFile.outputStream().use { output ->
+                downloadBinaryFile(response, output, progressCallback)
+            }
+            // Never delete the old file first: a failed rename must leave it intact.
+            if (withContext(Dispatchers.IO) { !partialFile.renameTo(file) }) {
+                throw IOException("Cannot rename partial file $partialFile to actual file $file")
+            }
+        } finally {
+            withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) { partialFile.delete() }
+        }
     }
 }
 
@@ -138,8 +138,10 @@ suspend fun downloadBinaryFile(
     outputStream: OutputStream,
     progressCallback: (currentBytes: Long, totalBytes: Long) -> Unit,
 ) {
+    if (!response.isSuccessful) throw IOException("Download failed with HTTP ${response.code}")
     val responseBody = response.body ?: throw IOException("Response doesn't contain a file")
-    val totalBytes = response.header(CONTENT_LENGTH)?.toLong() ?: 0
+    val expectedBytes = responseBody.contentLength()
+    val totalBytes = expectedBytes.coerceAtLeast(0)
 
     progressCallback(0, totalBytes)
     BufferedInputStream(responseBody.byteStream()).use { input ->
@@ -152,6 +154,9 @@ suspend fun downloadBinaryFile(
             currentBytes += readBytes.toLong()
             outputStream.write(dataBuffer, 0, readBytes)
             progressCallback(currentBytes, totalBytes)
+        }
+        if (expectedBytes >= 0 && currentBytes != expectedBytes) {
+            throw IOException("Incomplete download: expected $expectedBytes bytes, got $currentBytes")
         }
     }
 }

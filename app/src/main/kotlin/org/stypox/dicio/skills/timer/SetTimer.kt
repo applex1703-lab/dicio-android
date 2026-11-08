@@ -18,6 +18,7 @@ class SetTimer(
     private val _lastTickMillis = mutableLongStateOf(duration.toMillis())
     val lastTickMillis: Long get() = _lastTickMillis.longValue
     val lastTickMillisState: LongState get() = _lastTickMillis
+    private var ended = false
 
     private val countDownTimer = object : CountDownTimer(
         duration.toMillis() + RINGTONE_DURATION_MILLIS,
@@ -45,12 +46,20 @@ class SetTimer(
         }
 
         override fun onFinish() {
+            if (ended) return
+            ended = true
+            if (_lastTickMillis.longValue >= 0) {
+                onExpiredCallback(name)
+            }
+            _lastTickMillis.longValue = -RINGTONE_DURATION_MILLIS
             onMillisTickCallback(-RINGTONE_DURATION_MILLIS)
             onCancelCallback(this@SetTimer)
         }
     }.apply { start() }
 
     fun cancel() {
+        if (ended) return
+        ended = true
         countDownTimer.cancel()
         onCancelCallback(this)
     }

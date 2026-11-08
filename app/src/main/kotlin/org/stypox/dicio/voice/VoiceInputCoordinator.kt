@@ -162,7 +162,7 @@ class VoiceInputCoordinator @Inject constructor(
         inputLease = lease
         var terminalDelivered = false
         var terminalCleanupSucceeded = true
-        val loaded = input.tryLoad { event ->
+        val loaded = try { input.tryLoad { event ->
             val deliver = deliver@{
                 if (inputLease === lease) {
                     if (event is InputEvent.Final || event is InputEvent.Error || event is InputEvent.None) {
@@ -180,6 +180,13 @@ class VoiceInputCoordinator @Inject constructor(
                 }
             }
             if (Looper.myLooper() == Looper.getMainLooper()) deliver() else main.post { deliver() }
+        } } catch (error: Exception) {
+            // A throwing start may already have acquired resources. Never start again on
+            // this wrapper, even if the best-effort teardown appears to succeed.
+            inputFaulted = true
+            android.util.Log.e("VoiceInputCoordinator", "Input start outcome is uncertain", error)
+            clear(lease, evaluation, notify = false)
+            return false
         }
         if (!loaded && !terminalDelivered) clear(lease, evaluation, notify = false)
         if (expectedGeneration != null && (operationGeneration != expectedGeneration ||

@@ -8,7 +8,6 @@ import java.io.IOException
 import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
-import java.util.Scanner
 
 object ConnectionUtils {
     @Throws(IOException::class)
@@ -20,8 +19,7 @@ object ConnectionUtils {
         for ((key, value) in headers) {
             connection.setRequestProperty(key, value)
         }
-        val scanner = Scanner(connection.getInputStream())
-        return scanner.useDelimiter("\\A").next()
+        return connection.getInputStream().bufferedReader(Charsets.UTF_8).use { it.readText() }
     }
 
     @Throws(IOException::class)

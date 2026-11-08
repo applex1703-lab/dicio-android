@@ -9,17 +9,29 @@ import java.io.File
 
 @Throws(UnicodeCldrPluginException::class)
 fun ensureGitRepoDownloaded(repo: String, commit: String, directory: File) {
-    val git = try {
-        Git.open(directory)
-    } catch (_: Throwable) {
-        println("Cannot open folder $directory, deleting and recloning...")
-        if (directory.exists()) {
-            directory.deleteRecursively()
+    val git = if (directory.exists()) {
+        try {
+            Git.open(directory).also {
+                if (it.repository.isBare || it.repository.workTree.canonicalFile != directory.canonicalFile) {
+                    it.close()
+                    throw IllegalStateException("Not a Git working tree: $directory")
+                }
+            }
+        } catch (e: Exception) {
+            throw IllegalStateException("Cannot open Git working tree $directory; existing data was left untouched", e)
         }
+    } else {
         Git.init().setDirectory(directory).call()
     }
 
     git.use { git ->
+        if (!git.status().call().isClean) {
+            throw IllegalStateException("Git working tree $directory has uncommitted changes; existing data was left untouched")
+        }
+        val origin = git.remoteList().call().find { it.name == "origin" }
+        if (origin != null && (origin.urIs.size != 1 || origin.urIs.single().toString() != repo)) {
+            throw IllegalStateException("Git working tree $directory has an unexpected origin; existing data was left untouched")
+        }
         try {
             git.remoteAdd()
                 .setName("origin")

@@ -482,6 +482,21 @@ class VoiceInputCoordinatorTest {
         assertEquals(true, coordinator.startService(Any(), {}, {}))
     }
 
+    @Test fun throwingStartReleasesLeaseAndBlocksFurtherInput() = onMain {
+        val input = Input().apply { onLoad = { throw IllegalStateException("start") } }
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val owner = Any()
+        assertFalse(coordinator.start(owner))
+        assertFalse(coordinator.ownsWork(owner))
+        assertEquals(1, input.releases)
+        assertEquals(1, evaluator.cancellations)
+        input.callback!!(InputEvent.Final(listOf("late" to 1f)))
+        assertTrue(evaluator.events.isEmpty())
+        assertFalse(coordinator.start(Any()))
+        assertEquals(1, input.starts)
+    }
+
     @Test fun interruptedInputIsTerminalAndCanBeReplaced() = onMain {
         val input = Input()
         val coordinator = VoiceInputCoordinator(input, Evaluator())

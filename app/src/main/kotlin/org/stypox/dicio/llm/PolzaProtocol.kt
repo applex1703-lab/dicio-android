@@ -49,6 +49,9 @@ internal object PolzaProtocol {
         }
         val message = choice["message"] as? JsonObject
             ?: error("RouterAI: неверный формат сообщения.")
+        check(message["refusal"] == null || message["refusal"] == JsonNull) {
+            "RouterAI: ответ отклонён. Повторите запрос."
+        }
         check(message["tool_calls"] == null || message["tool_calls"] == JsonNull) {
             "Вызовы инструментов пока не поддерживаются."
         }

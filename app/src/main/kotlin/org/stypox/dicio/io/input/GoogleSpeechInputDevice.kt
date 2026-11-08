@@ -157,15 +157,15 @@ class GoogleSpeechInputDevice(
             }
             listener = eventListener
             val session = ++generation
-            val prebindToken = platform.prebindToken()
-            eventListener(InputEvent.Started)
-            if (closed || session != generation || listener == null) return@begin
-            state.value = SttState.WaitingForResult
             var bindInFlight = false
             var startInFlight = false
             var pendingTerminal: (() -> Unit)? = null
             val pendingCallbacks = mutableListOf<() -> Unit>()
             try {
+                val prebindToken = platform.prebindToken()
+                eventListener(InputEvent.Started)
+                if (closed || session != generation || listener == null) return@begin
+                state.value = SttState.WaitingForResult
                 val service = prepareRecognizer()
                 service.setRecognitionListener(object : RecognitionListener {
                     private fun current() = !closed && session == generation && listener != null && recognitionStarted
@@ -472,7 +472,15 @@ class GoogleSpeechInputDevice(
         val stop = {
             if (!closed && listener != null) {
                 if (recognitionStarted) {
-                    recognizer?.stopListening()
+                    try {
+                        recognizer?.stopListening()
+                    } catch (error: Exception) {
+                        // The stop may have taken effect despite throwing. Do not reuse.
+                        recordCleanupFailure(IOException("Google stopListening outcome is uncertain", error))
+                        generation++
+                        releaseRecognizer()
+                        complete(InputEvent.Error(error))
+                    }
                 } else {
                     generation++
                     releaseRecognizer()

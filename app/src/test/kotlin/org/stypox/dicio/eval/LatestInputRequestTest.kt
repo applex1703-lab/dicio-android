@@ -34,4 +34,33 @@ class LatestInputRequestTest : StringSpec({
         requests.cancel() // idempotent lifecycle cancellation
         owner.cancel()
     }
+    "synchronous reentrant replacement remains cancellable" {
+        val owner = Job()
+        val requests = LatestInputRequest(CoroutineScope(owner + Dispatchers.Unconfined))
+        var cancelled = false
+        requests.replace {
+            requests.replace {
+                try { awaitCancellation() } finally { cancelled = true }
+            }
+        }
+        requests.cancel()
+        cancelled shouldBe true
+        owner.cancel()
+    }
+    "replacement from cancellation cleanup remains cancellable" {
+        val owner = Job()
+        val requests = LatestInputRequest(CoroutineScope(owner + Dispatchers.Unconfined))
+        var cancelled = false
+        requests.replace {
+            try { awaitCancellation() } finally {
+                requests.replace {
+                    try { awaitCancellation() } finally { cancelled = true }
+                }
+            }
+        }
+        requests.cancel()
+        requests.cancel()
+        cancelled shouldBe true
+        owner.cancel()
+    }
 })

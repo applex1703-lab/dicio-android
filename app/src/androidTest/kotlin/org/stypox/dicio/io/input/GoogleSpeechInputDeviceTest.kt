@@ -39,11 +39,12 @@ class GoogleSpeechInputDeviceTest {
         var stops = 0
         var destroys = 0
         var failDestroy = false
+        var failStop = false
         var onSetListener: ((RecognitionListener) -> Unit)? = null
         var onStart: ((RecognitionListener) -> Unit)? = null
         override fun setRecognitionListener(listener: RecognitionListener) { callback = listener; onSetListener?.invoke(listener) }
         override fun startListening(intent: Intent) { starts++; onStart?.invoke(callback) }
-        override fun stopListening() { stops++ }
+        override fun stopListening() { stops++; if (failStop) throw IllegalStateException("stop") }
         override fun destroy() { destroys++; if (failDestroy) throw IllegalStateException("destroy") }
     }
 
@@ -62,7 +63,8 @@ class GoogleSpeechInputDeviceTest {
         var checkFailure: Exception? = null
         var onCheck: (() -> Unit)? = null
         var token: Any? = null
-        override fun prebindToken() = token
+        var failToken = false
+        override fun prebindToken(): Any? { if (failToken) throw IllegalStateException("token"); return token }
         override fun prebindCurrent(token: Any?) = token != null && token === this.token
         override fun elapsedRealtime() = clock
         override fun requiresAudioOpWait() = mode != null || checkFailure != null
@@ -94,6 +96,42 @@ class GoogleSpeechInputDeviceTest {
         val field = GoogleSpeechInputDevice::class.java.getDeclaredField("appOpsPoll")
         field.isAccessible = true
         return field.get(device) as Runnable
+    }
+
+    @Test fun tokenFailureTerminatesWithoutCreatingRecognizer() {
+        val platform = FakePlatform().apply { failToken = true }
+        val device = device(platform)
+        val events = mutableListOf<InputEvent>()
+        onMain {
+            device.onClick { events.add(it) }
+            assertEquals(1, events.size)
+            assertTrue(events.single() is InputEvent.Error)
+            assertTrue(platform.recognizers.isEmpty())
+            assertTrue(platform.connections.isEmpty())
+            runBlocking { device.destroy() }
+        }
+    }
+
+    @Test fun throwingStopTerminatesAndDisablesReuse() {
+        val platform = FakePlatform()
+        val device = device(platform)
+        val events = mutableListOf<InputEvent>()
+        onMain { device.onClick { events.add(it) }; platform.connections.single().onServiceConnected(null, Binder()) }
+        drain()
+        onMain {
+            val recognizer = platform.recognizers.single()
+            recognizer.failStop = true
+            device.stopListening()
+            assertTrue(events.last() is InputEvent.Error)
+            assertEquals(1, recognizer.starts)
+            assertEquals(1, recognizer.stops)
+            assertEquals(1, recognizer.destroys)
+            assertFalse(device.tryLoad(null))
+            recognizer.callback.onResults(Bundle())
+            assertEquals(2, events.size)
+            try { runBlocking { device.destroy() }; fail("cleanup failure expected") }
+            catch (_: java.io.IOException) { }
+        }
     }
 
     @Test fun connectedPrebindFastPathRequiresActionAndAllowed() {

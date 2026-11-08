@@ -232,11 +232,12 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale,
                 clearPreparation()
             }
             timings[id] = Timing(android.os.SystemClock.elapsedRealtime())
-            Log.i(TAG, "TTS queued id=$id chars=${speechOutput.length}")
+            Log.i(TAG, "TTS queued id=$id")
             val result = try {
                 textToSpeech?.speak(speechOutput, TextToSpeech.QUEUE_ADD, null, id)
-            } catch (error: RuntimeException) {
-                Log.e(TAG, "TTS submission failed id=$id", error)
+            } catch (_: RuntimeException) {
+                // An engine exception can contain the submitted text.
+                Log.e(TAG, "TTS submission failed id=$id")
                 TextToSpeech.ERROR
             }
             Log.i(TAG, "TTS submitted id=$id result=$result")

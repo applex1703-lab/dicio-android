@@ -11,11 +11,14 @@ internal class LatestInputRequest(private val scope: CoroutineScope) {
 
     fun replace(block: suspend () -> Unit) {
         cancel()
-        active = scope.launch(start = CoroutineStart.LAZY) { block() }.also { it.start() }
+        val job = scope.launch(start = CoroutineStart.LAZY) { block() }
+        active = job
+        job.start()
     }
 
     fun cancel() {
-        active?.cancel()
+        val job = active
         active = null
+        job?.cancel()
     }
 }
