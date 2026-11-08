@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -38,10 +39,11 @@ class SettingAccessibilityTest {
                 )).Render(value.value) { value.value = it }
             }
         }
+        val radio = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
         compose.onNodeWithText("Choice").performClick()
-        compose.onNodeWithText("First").assertIsSelected()
-        compose.onNodeWithText("Second").assertIsNotSelected().performClick()
+        compose.onNode(radio and hasText("First")).assertIsSelected()
+        compose.onNode(radio and hasText("Second")).assertIsNotSelected().performClick()
         compose.onNodeWithText("Choice").performClick()
-        compose.onNodeWithText("Second").assertIsSelected()
+        compose.onNode(radio and hasText("Second")).assertIsSelected()
     }
 }
