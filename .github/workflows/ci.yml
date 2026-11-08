@@ -105,7 +105,14 @@ jobs:
       - name: Summarize failed Android tests
         if: failure()
         run: |
-          python3 -c 'import glob, xml.etree.ElementTree as ET; files = glob.glob("app/build/outputs/androidTest-results/connected/**/*.xml", recursive=True); [(print(case.get("classname"), case.get("name"), (failure.get("message") or "")[:500], (failure.text or "")[:2000])) for path in files for case in ET.parse(path).iter("testcase") for failure in list(case) if failure.tag in ("failure", "error")]; print("Test reports:", len(files))'
+          python3 -c 'import glob, xml.etree.ElementTree as ET; files = glob.glob("app/build/outputs/androidTest-results/connected/**/*.xml", recursive=True); [(print("::error::" + (str(case.get("classname")) + " " + str(case.get("name")) + " " + (failure.get("message") or "")[:500]).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))) for path in files for case in ET.parse(path).iter("testcase") for failure in list(case) if failure.tag in ("failure", "error")]; print("Test reports:", len(files))'
+      - name: Upload Android test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-test-results
+          path: app/build/outputs/androidTest-results/connected/**/*.xml
+          if-no-files-found: warn
 
   sign-tv-apk:
     # Never expose the signing key to pull request code or non-main refs.
