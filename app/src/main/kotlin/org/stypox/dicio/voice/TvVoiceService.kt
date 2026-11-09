@@ -5,7 +5,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.content.SharedPreferences
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -15,11 +14,6 @@ import android.util.Log
 
 /** System assistant endpoint. Dicio does not start recognition while idle. */
 class TvVoiceService : VoiceInteractionService() {
-    private val preferences by lazy { prebindPreferences(this) }
-    private var observing = false
-    private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == PREBIND_KEY || key == null) prebind.setEnabled(preferences.backgroundPrebindEnabled())
-    }
     private val prebind by lazy {
         KatnissPrebind({ intent, connection, flags -> bindService(intent, connection, flags) },
             { connection -> unbindService(connection) }, prebindReservation)
@@ -31,11 +25,7 @@ class TvVoiceService : VoiceInteractionService() {
         if (Build.VERSION.SDK_INT >= 23) {
             setDisabledShowContext(VoiceInteractionSession.SHOW_WITH_ASSIST or VoiceInteractionSession.SHOW_WITH_SCREENSHOT)
         }
-        if (!observing) {
-            preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
-            observing = true
-        }
-        prebind.setEnabled(preferences.backgroundPrebindEnabled())
+        if (supportsBackgroundPreparation(Build.VERSION.SDK_INT, Build.MANUFACTURER)) prebind.setEnabled(true)
     }
 
     override fun onShutdown() {
@@ -49,10 +39,6 @@ class TvVoiceService : VoiceInteractionService() {
     }
 
     private fun stopPrebind() {
-        if (observing) {
-            preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
-            observing = false
-        }
         prebind.close()
     }
 
@@ -61,10 +47,8 @@ class TvVoiceService : VoiceInteractionService() {
     }
 }
 
-internal const val PREBIND_KEY = "background_prebind_enabled"
-internal fun SharedPreferences.backgroundPrebindEnabled(): Boolean = getBoolean(PREBIND_KEY, true)
-internal fun prebindPreferences(context: Context): SharedPreferences =
-    context.getSharedPreferences("tv_voice_prebind", Context.MODE_PRIVATE)
+internal fun supportsBackgroundPreparation(sdk: Int, manufacturer: String?): Boolean =
+    sdk == 30 && manufacturer.equals("TCL", ignoreCase = true)
 
 internal class PrebindTimer(
     private val handler: Handler = Handler(Looper.getMainLooper()),

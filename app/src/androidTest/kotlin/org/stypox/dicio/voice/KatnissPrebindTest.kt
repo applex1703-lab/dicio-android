@@ -2,7 +2,6 @@ package org.stypox.dicio.voice
 
 import android.content.Context
 import android.content.ServiceConnection
-import android.content.SharedPreferences
 import android.os.Binder
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.*
@@ -128,40 +127,12 @@ class KatnissPrebindTest {
         assertEquals(1, unbinds)
     }
 
-    @Test fun preferenceDefaultsOnAndDisableReleasesImmediately() = onMain {
-        // Isolated test APK preferences: never alter the user's setting.
-        val prefs = InstrumentationRegistry.getInstrumentation().context
-            .getSharedPreferences("prebind_test", Context.MODE_PRIVATE)
-        prefs.edit().clear().commit()
-        var binds = 0
-        var unbinds = 0
-        lateinit var conn: ServiceConnection
-        val prebind = KatnissPrebind({ _, connection, _ -> binds++; conn = connection; true },
-            { unbinds++ }, PrebindReservation())
-        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == PREBIND_KEY) prebind.setEnabled(prefs.backgroundPrebindEnabled())
-        }
-        prefs.registerOnSharedPreferenceChangeListener(listener)
-        try {
-            prebind.setEnabled(prefs.backgroundPrebindEnabled())
-            assertEquals(1, binds)
-            prefs.edit().putBoolean(PREBIND_KEY, false).apply()
-            assertEquals(1, unbinds)
-            assertFalse(prefs.backgroundPrebindEnabled())
-            conn.onServiceConnected(null, Binder())
-            conn.onNullBinding(null)
-            assertEquals(1, unbinds)
-            prefs.edit().putBoolean(PREBIND_KEY, true).apply()
-            assertEquals(2, binds)
-            prebind.close()
-            prefs.edit().putBoolean(PREBIND_KEY, false).apply()
-            prefs.edit().putBoolean(PREBIND_KEY, true).apply()
-            assertEquals(2, binds)
-            assertEquals(2, unbinds)
-        } finally {
-            prefs.unregisterOnSharedPreferenceChangeListener(listener)
-            prefs.edit().clear().commit()
-        }
+    @Test fun backgroundPreparationIsLimitedToTheRelevantDeviceClass() {
+        assertTrue(supportsBackgroundPreparation(30, "TCL"))
+        assertTrue(supportsBackgroundPreparation(30, "tcl"))
+        assertFalse(supportsBackgroundPreparation(31, "TCL"))
+        assertFalse(supportsBackgroundPreparation(30, "other"))
+        assertFalse(supportsBackgroundPreparation(30, null))
     }
 
     @Test fun timeoutAndLateCallbacksDoNotRetry() = onMain {

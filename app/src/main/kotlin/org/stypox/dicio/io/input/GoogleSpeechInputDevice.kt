@@ -22,8 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.stypox.dicio.di.LocaleManager
 import org.stypox.dicio.voice.TvVoiceService
-import org.stypox.dicio.voice.prebindPreferences
-import org.stypox.dicio.voice.backgroundPrebindEnabled
+import org.stypox.dicio.voice.supportsBackgroundPreparation
 import java.io.IOException
 
 internal interface GoogleRecognizer {
@@ -66,13 +65,10 @@ class GoogleSpeechInputDevice(
             context.bindService(intent, connection, flags)
         override fun unbind(connection: ServiceConnection) = context.unbindService(connection)
         override fun requiresAudioOpWait() = Build.VERSION.SDK_INT == 30
-        override fun prebindToken(): Any? = if (Build.VERSION.SDK_INT == 30 &&
-            Build.MANUFACTURER.equals("TCL", ignoreCase = true) &&
-            prebindPreferences(context).backgroundPrebindEnabled())
+        override fun prebindToken(): Any? = if (supportsBackgroundPreparation(Build.VERSION.SDK_INT, Build.MANUFACTURER))
             TvVoiceService.prebindReservation.snapshot() else null
         override fun prebindCurrent(token: Any?): Boolean =
-            prebindPreferences(context).backgroundPrebindEnabled() &&
-                TvVoiceService.prebindReservation.isCurrent(token)
+            TvVoiceService.prebindReservation.isCurrent(token)
         override fun audioOpMode(): Int? {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
             val uid = context.packageManager.getPackageUid(SERVICE_COMPONENT.packageName, 0)
