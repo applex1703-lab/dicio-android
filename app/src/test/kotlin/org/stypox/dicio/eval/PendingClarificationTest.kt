@@ -10,6 +10,11 @@ import org.stypox.dicio.llm.ClarificationContext
 import org.stypox.dicio.llm.SettingsSection
 
 class PendingClarificationTest : StringSpec({
+    "history action requires the same decision without history" {
+        historyActionConfirmed(AssistantIntent.OpenApp("app_1"), AssistantIntent.OpenApp("app_1")) shouldBe true
+        historyActionConfirmed(AssistantIntent.OpenApp("app_1"), AssistantIntent.OpenApp("app_2")) shouldBe false
+        historyActionConfirmed(AssistantIntent.ConnectHapp, AssistantIntent.Reply("нет")) shouldBe false
+    }
     "one use, replacement, expiry and cancellation" {
         val job = Job()
         var time = 100L

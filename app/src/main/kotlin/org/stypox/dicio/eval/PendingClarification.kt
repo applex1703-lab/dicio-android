@@ -69,6 +69,10 @@ internal fun StandaloneCommand.allows(decision: AssistantIntent): Boolean =
         is StandaloneCommand.App -> decision is AssistantIntent.OpenApp && decision.id == id
     }
 
+/** A historical context never independently authorizes a device action. */
+internal fun historyActionConfirmed(contextual: AssistantIntent, independent: AssistantIntent): Boolean =
+    contextual == independent
+
 internal data class ClarificationInput(val context: ClarificationSnapshot?, val standalone: StandaloneCommand?)
 
 internal fun resolveClarificationInput(previous: ClarificationSnapshot?, text: String,

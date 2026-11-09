@@ -90,6 +90,7 @@ class SkillEvaluatorImpl(
     private val legacyLock = Mutex()
     private val pendingChoice = PendingChoice<ChoiceTarget>()
     private val pendingClarification = PendingClarification(scope) { android.os.SystemClock.elapsedRealtime() }
+    private val conversationHistory = ConversationHistory(scope) { android.os.SystemClock.elapsedRealtime() }
 
     private val _state = MutableStateFlow(
         InteractionLog(
@@ -232,6 +233,7 @@ class SkillEvaluatorImpl(
                     return
                 }
                 val request = event.utterances[0].first
+                val requestedAt = android.os.SystemClock.elapsedRealtime()
                 // Conservative expiry: even a VPN referred to by an unknown alias cannot leave
                 // a previous dispatch looking current after a new request.
                 tvActions.clearVpnStatus()
@@ -291,10 +293,28 @@ class SkillEvaluatorImpl(
                             apps.map { StandaloneApp(it.id, it.label) })
                         val standalone = clarificationInput.standalone
                         val clarification = clarificationInput.context
+                        // Clarification already carries the previous pair; avoid sending it twice.
+                        val history = if (clarification == null) conversationHistory.snapshot() else null
                         val decision = polzaClient.decide(config, event.utterances[0].first,
                             apps.associate { it.id to it.label }, media.targets, clarification?.context,
-                            contextIsFresh = { clarification?.isFresh(android.os.SystemClock.elapsedRealtime()) != false })
+                            contextIsFresh = {
+                                val now = android.os.SystemClock.elapsedRealtime()
+                                clarification?.isFresh(now) != false && history?.isFresh(now) != false
+                            }, history = history?.messages.orEmpty())
                         coroutineContext.ensureActive()
+                        if (history?.messages?.isNotEmpty() == true && !decision.allowedAfterClarification()) {
+                            // A conversation may inform answers but must not authorize a device action.
+                            // Independently classify the current input without the history before execution.
+                            val independent = polzaClient.decide(config, request,
+                                apps.associate { it.id to it.label }, media.targets)
+                            coroutineContext.ensureActive()
+                            if (!historyActionConfirmed(decision, independent)) {
+                                val question = "Пожалуйста, повторите команду полностью."
+                                presentation.answer(question)
+                                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
+                                return
+                            }
+                        }
                         if (standalone?.allows(decision) == false) {
                             _state.value = InteractionLog(emptyList(), null)
                             val question = "Пожалуйста, повторите команду полностью."
@@ -370,6 +390,10 @@ class SkillEvaluatorImpl(
                         addErrorInteractionFromPending(error)
                         directSpeechRequests.ifCurrent(speechRequest) {
                             skillContext.speechOutputDevice.speak(error.localizedMessage ?: "Не удалось выполнить запрос.")
+                        }
+                        if ((decision is AssistantIntent.Reply || decision is AssistantIntent.Clarify) &&
+                            directSpeechRequests.isCurrent(speechRequest)) {
+                            conversationHistory.addExchange(request, requestedAt, result.text)
                         }
                     }
                 } else {

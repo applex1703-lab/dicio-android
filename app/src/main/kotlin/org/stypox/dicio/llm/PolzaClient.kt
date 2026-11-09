@@ -60,10 +60,11 @@ class PolzaClient private constructor(client: OkHttpClient, private val endpoint
 
     internal suspend fun decide(config: PolzaSettings.Config, text: String,
         apps: Map<String, String>, media: List<MediaTarget> = emptyList(),
-        clarification: ClarificationContext? = null, contextIsFresh: () -> Boolean = { true }): AssistantIntent {
+        clarification: ClarificationContext? = null, contextIsFresh: () -> Boolean = { true },
+        history: List<ConversationMessage> = emptyList()): AssistantIntent {
         PolzaProtocol.validateInput(config, text)
-        return IntentProtocol.parse(complete(config, IntentProtocol.request(config.model, text, apps, media, clarification)) {
-            clarification == null || contextIsFresh()
+        return IntentProtocol.parse(complete(config, IntentProtocol.request(config.model, text, apps, media, clarification, history)) {
+            (clarification == null && history.isEmpty()) || contextIsFresh()
         }, apps.keys, media)
     }
 
