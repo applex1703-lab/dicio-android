@@ -38,8 +38,57 @@ class KatnissPrebindTest {
         second.onServiceDisconnected(null)
         assertNull(reservation.snapshot())
         second.onServiceConnected(null, Binder())
-        assertTrue(reservation.isCurrent(reservation.snapshot()))
+        val reconnected = reservation.snapshot()
+        assertTrue(reservation.isCurrent(reconnected))
+        assertNotSame(next, reconnected)
+        assertFalse(reservation.isCurrent(next))
+        second.onServiceConnected(null, Binder())
+        assertSame(reconnected, reservation.snapshot())
         prebind.close()
+    }
+
+    @Test fun repeatedLossesRecoverOnlyAfterStableConnection() = onMain {
+        var time = 0L
+        var scheduled: Runnable? = null
+        val connections = mutableListOf<ServiceConnection>()
+        var unbinds = 0
+        val prebind = KatnissPrebind({ _, c, _ -> connections.add(c); true }, { unbinds++ },
+            PrebindReservation(), schedule = { scheduled = it }, cancel = { scheduled = null }, now = { time })
+        prebind.setEnabled(true)
+        connections.last().onServiceConnected(null, Binder())
+        connections.last().onBindingDied(null)
+        scheduled!!.run()
+        connections.last().onServiceConnected(null, Binder())
+        time += 60_000
+        connections.last().onBindingDied(null)
+        scheduled!!.run()
+        assertEquals(3, connections.size)
+        connections.last().onServiceConnected(null, Binder())
+        time += 59_999
+        connections.last().onBindingDied(null)
+        assertNull(scheduled)
+        assertEquals(3, unbinds)
+        prebind.close()
+    }
+
+    @Test fun reentrantShutdownDuringRecoveryCleanupDoesNotScheduleRetry() = onMain {
+        var scheduled: Runnable? = null
+        var binds = 0
+        var unbinds = 0
+        lateinit var connection: ServiceConnection
+        lateinit var prebind: KatnissPrebind
+        prebind = KatnissPrebind({ _, c, _ -> binds++; connection = c; true }, {
+            unbinds++
+            connection.onBindingDied(null)
+            prebind.close()
+        }, PrebindReservation(), schedule = { scheduled = it }, cancel = { scheduled = null })
+        prebind.setEnabled(true)
+        connection.onServiceConnected(null, Binder())
+        connection.onBindingDied(null)
+        assertEquals(1, binds)
+        assertEquals(1, unbinds)
+        assertNull(scheduled)
+        assertTrue(prebind.closed)
     }
 
     @Test fun deadBindingGetsOneDelayedRecoveryAfterRelease() = onMain {

@@ -31,7 +31,7 @@ class VoiceInputCoordinator @Inject constructor(
     private var inputFaulted = false
     private var evaluatorFaulted = false
     private val deferredReleases = mutableListOf<Pair<Any, Boolean>>()
-    // Invalidates an explicit restart if an external callback reenters a mutating operation.
+    // Invalidates a start if an external callback reenters a mutating operation.
     private var operationGeneration = 0L
 
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
@@ -103,24 +103,26 @@ class VoiceInputCoordinator @Inject constructor(
     private fun startScoped(owner: Any, scope: Any, onRevoked: () -> Unit,
         protectOtherOwners: Boolean = false): Boolean {
         checkMain()
-        operationGeneration++
-        if (tearingDown || evaluatorFaulted || !inputCleanupSafe()) return false
+        val generation = ++operationGeneration
+        fun unchanged() = operationGeneration == generation && !tearingDown
+        if (tearingDown || evaluatorFaulted || !inputCleanupSafe() || !unchanged()) return false
         fun foreignWork() = inputLease?.let { it.owner !== owner } == true ||
             evaluationLease?.let { it.owner !== owner } == true
         if (protectOtherOwners && foreignWork()) return false
         if (inputLease?.owner === owner && evaluationLease?.owner === owner) return true
-        if (!prepareRetained(owner, scope)) return false
+        if (!prepareRetained(owner, scope) || !unchanged()) return false
         if (protectOtherOwners && foreignWork()) return false
         if (!clear(inputLease, evaluationLease, notify = true,
                 preserveClarification = evaluationLease?.scope === scope, retainFor = owner,
-                protectLeaseChanges = protectOtherOwners)) return false
-        if (inputLease != null || evaluationLease != null) return false
+                protectLeaseChanges = true)) return false
+        if (!unchanged() || inputLease != null || evaluationLease != null || evaluatorFaulted ||
+            !inputCleanupSafe() || !unchanged()) return false
         evaluator.resetVoicePresentation()
-        if (protectOtherOwners && (tearingDown || inputLease != null || evaluationLease != null)) return false
+        if (!unchanged() || inputLease != null || evaluationLease != null) return false
         val evaluation = EvaluationLease(owner, scope, onRevoked)
         evaluationLease = evaluation
         retainedOwner = null // The active lease now owns the retained context.
-        return startInput(owner, {}, evaluator::processInputEvent, evaluation)
+        return startInput(owner, {}, evaluator::processInputEvent, evaluation, generation)
     }
 
     /**

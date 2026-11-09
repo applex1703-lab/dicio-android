@@ -2,6 +2,7 @@ package org.stypox.dicio.eval
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
@@ -28,6 +29,7 @@ internal fun stopAndCleanup(stop: () -> Unit, cleanup: () -> Unit) {
 /** Main-thread confined. A superseded waiter must not clear a newer VPN choice. */
 internal class InputSessionBoundary(
     private val scope: CoroutineScope,
+    private val onClearFailure: () -> Unit = {},
     private val clearVpn: suspend () -> Unit,
 ) {
     private var waiter: Job? = null
@@ -36,12 +38,23 @@ internal class InputSessionBoundary(
     val isEnding: Boolean get() = teardownDepth != 0
 
     fun afterVpnClear(next: () -> Unit = {}) {
-        generation++
-        waiter?.cancel()
+        val currentGeneration = ++generation
+        val previous = waiter
+        waiter = null
+        previous?.cancel()
+        if (generation != currentGeneration) return
         val job = scope.launch(start = CoroutineStart.LAZY) {
-            clearVpn()
+            try {
+                clearVpn()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                coroutineContext.ensureActive()
+                if (generation == currentGeneration) onClearFailure()
+                return@launch
+            }
             coroutineContext.ensureActive()
-            next()
+            if (generation == currentGeneration) next()
         }
         waiter = job
         job.start()
@@ -49,8 +62,9 @@ internal class InputSessionBoundary(
 
     fun end(teardown: () -> Unit) {
         val endingGeneration = ++generation
-        waiter?.cancel()
+        val previous = waiter
         waiter = null
+        previous?.cancel()
         teardownDepth++
         try {
             teardown()

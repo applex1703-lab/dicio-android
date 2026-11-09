@@ -9,6 +9,22 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 
 class LatestInputRequestTest : StringSpec({
+    "reentrant replacement during replace is not orphaned or overwritten" {
+        val owner = Job()
+        val requests = LatestInputRequest(CoroutineScope(owner + Dispatchers.Unconfined))
+        var cancelled = false
+        var staleStarted = false
+        requests.replace {
+            try { awaitCancellation() } finally {
+                requests.replace { try { awaitCancellation() } finally { cancelled = true } }
+            }
+        }
+        requests.replace { staleStarted = true }
+        staleStarted shouldBe false
+        requests.cancel()
+        cancelled shouldBe true
+        owner.cancel()
+    }
     "new input cancels old work before any new speech result" {
         val owner = Job()
         val requests = LatestInputRequest(CoroutineScope(owner + Dispatchers.Unconfined))

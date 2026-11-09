@@ -25,6 +25,35 @@ import org.stypox.dicio.screenshot.FakeSttInputDeviceWrapper
 
 @RunWith(AndroidJUnit4::class)
 class EvaluatorTeardownTest {
+    @Test fun clearFailuresAreVisibleAndSanitizedForInputResetAndEnd() = runBlocking {
+        val speech = Speech()
+        var fail = true
+        var clears = 0
+        val evaluator = evaluator(speech) {
+            clears++
+            if (fail) throw IllegalStateException("private stack and message")
+        }
+        withContext(Dispatchers.Main) {
+            val operations: List<() -> Unit> = listOf(
+                { evaluator.processInputEvent(InputEvent.Started) },
+                { evaluator.resetVoicePresentation() },
+                { evaluator.cancelPendingInput() },
+                { evaluator.finishInputSession() },
+            )
+            operations.forEachIndexed { index, operation ->
+                operation()
+                assertEquals(index + 1, clears)
+                assertEquals("Не удалось выполнить запрос", evaluator.voicePresentation.value.status)
+                assertEquals("Не удалось сбросить состояние VPN. Попробуйте снова.", evaluator.voicePresentation.value.answer)
+            }
+            assertEquals(listOf("stop", "cleanup", "stop", "cleanup"), speech.calls)
+            fail = false
+            evaluator.processInputEvent(InputEvent.Started)
+            assertEquals(5, clears)
+            assertEquals("Подготовка микрофона…", evaluator.voicePresentation.value.status)
+            assertEquals(listOf("stop", "cleanup", "stop", "cleanup", "stop"), speech.calls)
+        }
+    }
     private class Speech : SpeechOutputDevice {
         val calls = mutableListOf<String>()
         var stopError: Exception? = null

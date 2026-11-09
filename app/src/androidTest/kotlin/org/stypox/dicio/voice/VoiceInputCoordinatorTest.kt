@@ -70,6 +70,83 @@ class VoiceInputCoordinatorTest {
     private fun onMain(block: () -> Unit) =
         InstrumentationRegistry.getInstrumentation().runOnMainSync(block)
 
+    @Test fun initialTvStartRejectsReentrantHideAndLateCallback() = onMain {
+        for (terminal in listOf(false, true)) {
+            val input = Input().apply { if (terminal) synchronousEvent = InputEvent.None }
+            val evaluator = Evaluator()
+            val coordinator = VoiceInputCoordinator(input, evaluator)
+            val owner = Any()
+            input.onLoad = { coordinator.release(owner) }
+            assertFalse(coordinator.startTv(owner))
+            assertFalse(coordinator.ownsWork(owner))
+            assertEquals(1, input.starts)
+            assertEquals(1, input.releases)
+            val events = evaluator.events.toList()
+            input.callback!!(InputEvent.Final(listOf("late" to 1f)))
+            assertEquals(events, evaluator.events)
+        }
+    }
+
+    @Test fun initialTvStartReportsSynchronousTerminalCleanupFailure() = onMain {
+        for (loaded in listOf(false, true)) {
+            val input = Input().apply {
+                synchronousEvent = InputEvent.Final(listOf("must not execute" to 1f))
+                returnAfterEvent = loaded
+                cleanupSucceeds = false
+            }
+            val evaluator = Evaluator()
+            val coordinator = VoiceInputCoordinator(input, evaluator)
+            assertFalse(coordinator.startTv(Any()))
+            assertTrue(evaluator.events.single() is InputEvent.Error)
+            assertFalse(coordinator.startTv(Any()))
+            assertEquals(1, input.starts)
+            assertEquals(1, input.releases)
+        }
+    }
+
+    @Test fun initialTvStartAcceptsOneSynchronousTerminalAfterCleanup() = onMain {
+        for (loaded in listOf(false, true)) {
+            val input = Input().apply {
+                synchronousEvent = InputEvent.Final(listOf("done" to 1f))
+                returnAfterEvent = loaded
+            }
+            val evaluator = Evaluator()
+            val coordinator = VoiceInputCoordinator(input, evaluator)
+            val owner = Any()
+            assertTrue(coordinator.startTv(owner))
+            assertEquals(listOf(InputEvent.Final(listOf("done" to 1f))), evaluator.events)
+            assertTrue(coordinator.ownsWork(owner))
+            input.callback!!(InputEvent.Final(listOf("late" to 1f)))
+            assertEquals(1, evaluator.events.size)
+            assertEquals(1, input.releases)
+        }
+    }
+
+    @Test fun rapidTvHideShowDoesNotLetOldStartCleanUpNewOwner() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val oldOwner = Any()
+        val newOwner = Any()
+        var oldCallback: ((InputEvent) -> Unit)? = null
+        input.onLoad = {
+            oldCallback = input.callback
+            input.onLoad = null
+            coordinator.release(oldOwner)
+            assertTrue(coordinator.startTvIfAvailable(newOwner))
+        }
+        assertFalse(coordinator.startTv(oldOwner))
+        assertTrue(coordinator.ownsWork(newOwner))
+        assertEquals(2, input.starts)
+        assertEquals(1, input.releases)
+        oldCallback!!(InputEvent.Final(listOf("old" to 1f)))
+        coordinator.release(oldOwner)
+        assertTrue(evaluator.events.isEmpty())
+        assertTrue(coordinator.ownsWork(newOwner))
+        input.callback!!(InputEvent.Final(listOf("new" to 1f)))
+        assertEquals(listOf(InputEvent.Final(listOf("new" to 1f))), evaluator.events)
+    }
+
     @Test fun explicitTvRestartRejectsReentrantCancelOrReleaseDuringLoad() = onMain {
         for (release in listOf(false, true)) {
             val input = Input()
@@ -447,6 +524,10 @@ class VoiceInputCoordinatorTest {
         assertTrue(coordinator.startTv(old) { coordinator.cancel(old) })
         input.callback!!(InputEvent.Final(listOf("question" to 1f)))
         evaluator.pendingClarification = true
+        // The old owner's reentrant cancellation invalidates this start; only a new
+        // explicit request may acquire input after the handoff.
+        assertFalse(coordinator.startTv(next))
+        assertFalse(coordinator.ownsWork(next))
         assertTrue(coordinator.startTv(next))
         assertTrue(coordinator.ownsWork(next))
         assertTrue(evaluator.pendingClarification)

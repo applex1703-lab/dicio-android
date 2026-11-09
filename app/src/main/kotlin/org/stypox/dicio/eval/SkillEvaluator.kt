@@ -85,7 +85,7 @@ class SkillEvaluatorImpl(
 
     private val scope = CoroutineScope(Dispatchers.Main.immediate)
     private val requests = LatestInputRequest(scope)
-    private val sessionBoundary = InputSessionBoundary(scope, clearVpn)
+    private val sessionBoundary = InputSessionBoundary(scope, onClearFailure = ::reportVpnClearFailure, clearVpn = clearVpn)
     private val legacyLock = Mutex()
     private val pendingChoice = PendingChoice<ChoiceTarget>()
     private val pendingClarification = PendingClarification(scope) { android.os.SystemClock.elapsedRealtime() }
@@ -102,6 +102,11 @@ class SkillEvaluatorImpl(
     private val outputSlot = CurrentLegacyOutput()
     override val currentOutput: StateFlow<SkillOutput?> = outputSlot.state
     private var previousFallback: TextFallbackOutput? = null
+    private fun reportVpnClearFailure() {
+        outputSlot.clear()
+        _state.value = InteractionLog(emptyList(), null)
+        presentation.error("Не удалось сбросить состояние VPN. Попробуйте снова.")
+    }
     private fun checkEntry() {
         check(Looper.myLooper() === Looper.getMainLooper()) { "SkillEvaluator requires the main thread" }
         check(!sessionBoundary.isEnding) { "SkillEvaluator teardown is in progress" }
@@ -110,8 +115,8 @@ class SkillEvaluatorImpl(
         checkEntry()
         requests.cancel()
         pendingChoice.clear()
-        sessionBoundary.afterVpnClear()
         presentation.clear()
+        sessionBoundary.afterVpnClear()
     }
 
     // must be kept up to date even when the activity is recreated, for this reason it is `var`

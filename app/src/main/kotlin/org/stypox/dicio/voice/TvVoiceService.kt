@@ -8,6 +8,7 @@ import android.content.ServiceConnection
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.service.voice.VoiceInteractionService
 import android.service.voice.VoiceInteractionSession
 import android.util.Log
@@ -72,10 +73,10 @@ internal class PrebindReservation {
         invalidate(token)
         owner = null
     }
-    fun markConnected(token: Any) { if (owner === token) connected = token }
-    fun invalidate(token: Any) { if (connected === token) connected = null }
+    fun markConnected(token: Any) { if (owner === token && connected == null) connected = Any() }
+    fun invalidate(token: Any) { if (owner === token) connected = null }
     fun snapshot(): Any? = connected
-    fun isCurrent(token: Any?): Boolean = token != null && connected === token && owner === token
+    fun isCurrent(token: Any?): Boolean = token != null && connected === token && owner != null
 }
 
 /** Main-thread-only; recording is never started by this background binding. */
@@ -86,6 +87,7 @@ internal class KatnissPrebind(
     private val timer: PrebindTimer = PrebindTimer(),
     private val schedule: (Runnable) -> Unit = timer::schedule,
     private val cancel: (Runnable) -> Unit = timer::cancel,
+    private val now: () -> Long = SystemClock::elapsedRealtime,
 ) {
     var closed = false
         private set
@@ -101,6 +103,7 @@ internal class KatnissPrebind(
     private var recoveryUsed = false
     private var recoveryPending = false
     private var recovery: Runnable? = null
+    private var connectedAt: Long? = null
 
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
 
@@ -132,6 +135,7 @@ internal class KatnissPrebind(
                     Log.i(TAG, "prebind_refused null_binder")
                     finish()
                 } else {
+                    if (!callbackConnected) connectedAt = now()
                     callbackConnected = true
                     if (!binding && enabled && !closed && !finishPending) reservation.markConnected(this)
                     Log.i(TAG, "prebind_connected")
@@ -143,12 +147,16 @@ internal class KatnissPrebind(
                 // Android retains this binding and may reconnect after the process restarts.
                 reservation.invalidate(this)
                 callbackConnected = false
+                connectedAt = null
                 Log.i(TAG, "prebind_disconnected_waiting_for_system")
             }
             override fun onBindingDied(name: ComponentName?) {
                 checkMain()
                 if (connection !== this) return
                 Log.i(TAG, "prebind_binding_died")
+                val since = connectedAt
+                // A successful but short-lived reconnect must not create an endless retry loop.
+                if (recoveryUsed && since != null && now() - since >= RECOVERY_STABLE_MILLIS) recoveryUsed = false
                 if (enabled && !closed && !recoveryUsed) {
                     recoveryUsed = true
                     recoveryPending = true
@@ -198,6 +206,7 @@ internal class KatnissPrebind(
         val conn = connection ?: return
         reservation.invalidate(conn)
         callbackConnected = false
+        connectedAt = null
         clearTimeout()
         if (binding) {
             finishPending = true
@@ -242,6 +251,7 @@ internal class KatnissPrebind(
 
     companion object {
         private const val TAG = "DicioPrebind"
+        private const val RECOVERY_STABLE_MILLIS = 60_000L
         private val COMPONENT = ComponentName("com.google.android.katniss", "com.google.android.apps.tvsearch.voice.recognition.KatnissRecognitionService")
     }
 }
