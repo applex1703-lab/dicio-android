@@ -264,6 +264,22 @@ class VoiceInputCoordinatorTest {
         assertEquals(0, input.starts)
     }
 
+    @Test fun choiceWaitsForConfirmedInputCleanup() = onMain {
+        val input = Input().apply { cleanupSucceeds = false }
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val owner = Any()
+        assertTrue(coordinator.start(owner))
+        input.callback!!(InputEvent.Final(listOf("ignored" to 1f)))
+        assertTrue(evaluator.events.single() is InputEvent.Error)
+        coordinator.selectChoice(owner, 1, "a")
+        assertTrue(evaluator.choices.isEmpty())
+        input.cleanupSafe = true
+        coordinator.selectChoice(owner, 1, "a")
+        assertEquals(listOf(1L to "a"), evaluator.choices)
+        assertEquals(1, input.releases)
+    }
+
     @Test fun cancelRejectsLateCallbacksAndForeignRelease() = onMain {
         val input = Input()
         val coordinator = VoiceInputCoordinator(input, Evaluator())

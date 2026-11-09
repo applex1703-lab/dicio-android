@@ -261,7 +261,9 @@ class SkillEvaluatorImpl(
                             _state.value.pendingQuestion?.copy(waitingForLlm = true))
                         val startedAt = android.os.SystemClock.elapsedRealtime()
                         val apps = tvActions.catalog(forceRefresh = previousClarification != null)
-                        val media = tvActions.mediaSnapshot()
+                        val media = optionalSnapshot(org.stypox.dicio.llm.MediaActions.Snapshot(emptyList())) {
+                            tvActions.mediaSnapshot()
+                        }
                         val catalogDone = android.os.SystemClock.elapsedRealtime()
                         Log.i("DicioPolza", "Catalog ready elapsedMs=${catalogDone - startedAt} count=${apps.size}")
                         val clarificationInput = resolveClarificationInput(previousClarification, request,

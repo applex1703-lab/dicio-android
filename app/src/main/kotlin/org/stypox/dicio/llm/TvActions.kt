@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -57,26 +58,37 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
             if (!forceRefresh && now - cachedAt < 30_000 && locale == cachedLocale) return@withLock apps
         }
         val pm = context.packageManager
-        val apps = listOf(Intent.CATEGORY_LEANBACK_LAUNCHER, Intent.CATEGORY_LAUNCHER)
+        val entries = listOf(Intent.CATEGORY_LEANBACK_LAUNCHER, Intent.CATEGORY_LAUNCHER)
             .flatMap { category -> pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(category), 0) }
-            .filter { it.activityInfo.enabled && it.activityInfo.applicationInfo.enabled }
-            .map { it.activityInfo.applicationInfo }.distinctBy { it.packageName }
-            .filter { it.packageName != context.packageName }
-            // Never offer engineering/factory entry points to a remote model.
-            .filterNot { info ->
-                val name = info.packageName.lowercase(Locale.ROOT)
-                listOf("factory", "facmenu", "fac.menu", "engineering", "engineermode", "productiontest")
-                    .any { it in name }
-            }
-            .sortedBy { it.packageName }
-            .also { check(it.size <= 300) { "Слишком большой каталог приложений." } }
-            .mapIndexed { index, info -> App("app_$index", info.packageName,
-                pm.getApplicationLabel(info).toString().take(120)) }
+        val apps = buildCatalog(entries, context.packageName) { entry ->
+            val activity = entry.activityInfo ?: return@buildCatalog null
+            val info = activity.applicationInfo ?: return@buildCatalog null
+            if (!activity.enabled || !info.enabled) return@buildCatalog null
+            val packageName = info.packageName ?: return@buildCatalog null
+            val label = try { pm.getApplicationLabel(info).toString() }
+                catch (e: CancellationException) { throw e }
+                catch (_: RuntimeException) { packageName }
+            packageName to label
+        }
         cachedApps = apps
         cachedAt = now
         cachedLocale = locale
         apps
     } }
+
+    internal companion object {
+        internal fun <T> buildCatalog(entries: List<T>, ownPackage: String,
+            describe: (T) -> Pair<String, String>?): List<App> = entries.mapNotNull { entry ->
+            try { describe(entry) } catch (e: CancellationException) { throw e }
+            catch (_: RuntimeException) { null }
+        }.filter { (name, _) ->
+            name.isNotBlank() && name != ownPackage &&
+                listOf("factory", "facmenu", "fac.menu", "engineering", "engineermode", "productiontest")
+                    .none { it in name.lowercase(Locale.ROOT) }
+        }.distinctBy { it.first }.sortedBy { it.first }
+            .also { check(it.size <= 300) { "Слишком большой каталог приложений." } }
+            .mapIndexed { index, (name, label) -> App("app_$index", name, label.take(120)) }
+    }
 
     internal data class Execution(val text: String, val speak: Boolean)
 

@@ -205,7 +205,7 @@ class VoiceInputCoordinator @Inject constructor(
 
     fun selectChoice(owner: Any, choiceId: Long, optionId: String) {
         checkMain()
-        if (tearingDown || evaluatorFaulted || evaluationLease?.owner !== owner) return
+        if (tearingDown || evaluatorFaulted || evaluationLease?.owner !== owner || !inputCleanupSafe()) return
         evaluator.selectChoice(choiceId, optionId)
     }
 
