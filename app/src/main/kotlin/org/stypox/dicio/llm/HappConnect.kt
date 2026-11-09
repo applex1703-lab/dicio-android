@@ -18,10 +18,15 @@ internal object HappConnect {
     suspend fun execute(userRequest: String, launcher: HappLauncher): TvActions.Execution {
         coroutineContext.ensureActive()
         check(isExplicitRequest(userRequest)) { "Скажите явно: подключи Happ VPN." }
+        return executeDecision(launcher)
+    }
+
+    /** Execute an already selected action, regardless of the wording used to select it. */
+    suspend fun executeDecision(launcher: HappLauncher): TvActions.Execution {
+        coroutineContext.ensureActive()
         val available = try { launcher.available() } catch (_: SecurityException) { false }
         check(available) { "Подключение Happ недоступно: приложение или его действие не найдено." }
         coroutineContext.ensureActive()
-        check(isExplicitRequest(userRequest)) { "Скажите явно: подключи Happ VPN." }
         try {
             launcher.launch()
         } catch (_: android.content.ActivityNotFoundException) {

@@ -312,14 +312,6 @@ class SkillEvaluatorImpl(
                             directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
                             return
                         }
-                        if (decision is AssistantIntent.ConnectHapp ||
-                            (VpnDispatcher.mentionsVpn(request) && !decision.allowedAfterClarification())) {
-                            _state.value = InteractionLog(emptyList(), null)
-                            val question = "Скажите явно: подключи VPN или подключи Happ VPN."
-                            presentation.answer(question)
-                            directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
-                            return
-                        }
                         if (clarification != null && !decision.allowedAfterClarification()) {
                             _state.value = InteractionLog(emptyList(), null)
                             val question = "Пожалуйста, повторите команду полностью."
@@ -357,7 +349,7 @@ class SkillEvaluatorImpl(
                         }
                         val providerDone = android.os.SystemClock.elapsedRealtime()
                         Log.i("DicioPolza", "Decision received elapsedMs=${providerDone - catalogDone} type=${decision.javaClass.simpleName}")
-                        val result = tvActions.execute(decision, apps, skillContext.locale, media, event.utterances[0].first)
+                        val result = tvActions.execute(decision, apps, skillContext.locale, media)
                         Log.i("DicioPolza", "Response received elapsedMs=${android.os.SystemClock.elapsedRealtime() - startedAt} chars=${result.text.length} speak=${result.speak}")
                         coroutineContext.ensureActive()
                         outputSlot.clear()
@@ -426,7 +418,7 @@ class SkillEvaluatorImpl(
                 return
             }
             if (HappConnect.isExplicitRequest(request)) {
-                val result = tvActions.execute(AssistantIntent.ConnectHapp, emptyList(), skillContext.locale, userRequest = request)
+                val result = tvActions.execute(AssistantIntent.ConnectHapp, emptyList(), skillContext.locale)
                 coroutineContext.ensureActive()
                 presentation.answer(result.text, silent = true)
                 return

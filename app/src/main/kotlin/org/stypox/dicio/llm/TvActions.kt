@@ -95,12 +95,12 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
     internal suspend fun mediaSnapshot() = mediaActions.snapshot()
 
     internal suspend fun execute(decision: AssistantIntent, apps: List<App>, locale: Locale,
-        media: MediaActions.Snapshot = MediaActions.Snapshot(emptyList()), userRequest: String = ""): Execution {
+        media: MediaActions.Snapshot = MediaActions.Snapshot(emptyList())): Execution {
         coroutineContext.ensureActive()
         return when (decision) {
             AssistantIntent.ConnectHapp -> withContext(Dispatchers.Main) {
                 vpnDispatchStatus.clear()
-                val result = HappConnect.execute(userRequest, AndroidHappLauncher(context))
+                val result = HappConnect.executeDecision(AndroidHappLauncher(context))
                 vpnDispatchStatus.record("Последний запрос отправлен в Happ. Подключение не подтверждено; проверьте его в Happ. Другой VPN мог быть прерван.")
                 result
             }

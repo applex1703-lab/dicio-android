@@ -44,6 +44,25 @@ class HappConnectTest : StringSpec({
         calls shouldBe 1
         result.text.contains("подтвердить не удалось") shouldBe true
     }
+    "selected action dispatches once without requiring a phrase template" {
+        var calls = 0
+        val launcher = object : HappLauncher {
+            override fun available() = true
+            override fun launch() { calls++ }
+        }
+        val result = runBlocking { HappConnect.executeDecision(launcher) }
+        calls shouldBe 1
+        result.text.contains("подтвердить не удалось") shouldBe true
+    }
+    "selected action still fails when the handler is unavailable" {
+        var calls = 0
+        val launcher = object : HappLauncher {
+            override fun available() = false
+            override fun launch() { calls++ }
+        }
+        shouldThrow<IllegalStateException> { runBlocking { HappConnect.executeDecision(launcher) } }
+        calls shouldBe 0
+    }
     "handler selection requires one exact accessible non UI match" {
         val handler = HappHandler("com.happproxy", "com.happproxy.ConnectActivity", true, true, true, true)
         HappHandlerPolicy.select(listOf(handler)) shouldBe handler
