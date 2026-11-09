@@ -200,11 +200,9 @@ internal class VpnDispatcher(private val backend: VpnBackend, private val main: 
         private val disconnect = Regex("^(?:выключи|отключи)\\s+$VPN[.!]?${'$'}|^$VPN\\s+(?:выключи|отключи)[.!]?${'$'}", RegexOption.IGNORE_CASE)
         private val disconnectHapp = Regex("^(?:выключи|отключи)\\s+(?:$HAPP(?:\\s+$VPN)?|$VPN\\s+$HAPP)[.!]?${'$'}|^(?:$HAPP(?:\\s+$VPN)?|$VPN\\s+$HAPP)\\s+(?:выключи|отключи)[.!]?${'$'}", RegexOption.IGNORE_CASE)
         private val vpnMention = Regex("vpn|\\bhapp\\b|(?<![а-яё])(?:впн|хэпп|ви\\s+пи\\s+эн)(?![а-яё])", RegexOption.IGNORE_CASE)
-        private val commandMention = Regex("(?:подключ|включ|отключ|выключ|переключ|запуст|откр|connect|disconnect|switch|start|open|enable|disable|turn\\s+(?:on|off))", RegexOption.IGNORE_CASE)
         fun isExplicitRequest(text: String) = request.matches(text.trim())
         fun isDisconnectRequest(text: String) = disconnect.matches(text.trim()) || disconnectHapp.matches(text.trim())
         fun mentionsVpn(text: String) = vpnMention.containsMatchIn(text)
-        fun isAmbiguousCommand(text: String) = vpnMention.containsMatchIn(text) && commandMention.containsMatchIn(text)
     }
 
     private fun snapshot(): List<VpnCandidate> {

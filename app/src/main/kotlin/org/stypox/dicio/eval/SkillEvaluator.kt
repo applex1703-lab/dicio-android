@@ -45,12 +45,11 @@ internal sealed interface ChoiceTarget {
     data class Vpn(val optionId: String) : ChoiceTarget
 }
 
-internal enum class LocalVpnRequest { GENERAL, HAPP, DISCONNECT, AMBIGUOUS, NONE }
+internal enum class LocalVpnRequest { GENERAL, HAPP, DISCONNECT, NONE }
 internal fun classifyLocalVpnRequest(text: String): LocalVpnRequest = when {
     VpnDispatcher.isDisconnectRequest(text) -> LocalVpnRequest.DISCONNECT
     VpnDispatcher.isExplicitRequest(text) -> LocalVpnRequest.GENERAL
     HappConnect.isExplicitRequest(text) -> LocalVpnRequest.HAPP
-    VpnDispatcher.isAmbiguousCommand(text) -> LocalVpnRequest.AMBIGUOUS
     else -> LocalVpnRequest.NONE
 }
 
@@ -241,15 +240,6 @@ class SkillEvaluatorImpl(
                 if (localVpn == LocalVpnRequest.GENERAL || localVpn == LocalVpnRequest.HAPP || localVpn == LocalVpnRequest.DISCONNECT) {
                     pendingClarification.clear()
                     runExplicitVpn(request, speechRequest)
-                    return
-                }
-                if (localVpn == LocalVpnRequest.AMBIGUOUS) {
-                    pendingClarification.clear()
-                    _state.value = InteractionLog(emptyList(), null)
-                    val question = "Скажите явно: подключи VPN, выключи VPN или выключи Happ VPN."
-                    presentation.answer(question)
-                    directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.stopSpeaking() }
-                    directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
                     return
                 }
                 val previousClarification = pendingClarification.consume()
