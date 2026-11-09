@@ -1,6 +1,7 @@
 package org.stypox.dicio.skills.navigation
 
 import android.content.Intent
+import android.content.ActivityNotFoundException
 import android.net.Uri
 import org.dicio.numbers.unit.Number
 import org.dicio.skill.context.SkillContext
@@ -9,7 +10,6 @@ import org.dicio.skill.skill.SkillOutput
 import org.dicio.skill.standard.StandardRecognizerData
 import org.dicio.skill.standard.StandardRecognizerSkill
 import org.stypox.dicio.sentences.Sentences.Navigation
-import java.util.Locale
 
 class NavigationSkill(correspondingSkillInfo: SkillInfo, data: StandardRecognizerData<Navigation>)
     : StandardRecognizerSkill<Navigation>(correspondingSkillInfo, data) {
@@ -75,10 +75,14 @@ class NavigationSkill(correspondingSkillInfo: SkillInfo, data: StandardRecognize
             placeToNavigateSB.toString().trim { it <= ' ' }
         }
 
-        val uriGeoSimple = String.format(Locale.ENGLISH, "geo:0,0?q=%s", cleanPlaceToNavigate)
-        val launchIntent = Intent(Intent.ACTION_VIEW, Uri.parse(uriGeoSimple))
+        if (cleanPlaceToNavigate.isBlank()) return NavigationOutput(null)
+        val launchIntent = Intent(Intent.ACTION_VIEW, navigationUri(cleanPlaceToNavigate))
         launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        ctx.android.startActivity(launchIntent)
+        try {
+            ctx.android.startActivity(launchIntent)
+        } catch (_: ActivityNotFoundException) {
+            return NavigationOutput(cleanPlaceToNavigate, noHandler = true)
+        }
 
         return NavigationOutput(cleanPlaceToNavigate)
     }
@@ -95,3 +99,5 @@ class NavigationSkill(correspondingSkillInfo: SkillInfo, data: StandardRecognize
         }
     }
 }
+
+internal fun navigationUri(place: String): Uri = Uri.parse("geo:0,0?q=${Uri.encode(place)}")

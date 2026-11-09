@@ -6,6 +6,13 @@ import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.*
 
 class MediaCommandTest : StringSpec({
+    "unconfirmed media result is spoken without claiming failure or success" {
+        val result = MediaActions.uncertainResult()
+        result.speak shouldBe true
+        result.text.contains("не удалось подтвердить", ignoreCase = true) shouldBe true
+        result.text.contains("могла выполниться") shouldBe true
+        result.text.contains("повтора не было") shouldBe true
+    }
     val target = MediaTarget("media_0", "Player", "paused", setOf(MediaOperation.RESUME,
         MediaOperation.SEEK_RELATIVE, MediaOperation.SEEK_ABSOLUTE))
     fun decision(op: String = "RESUME", seconds: JsonElement = JsonPrimitive(0), id: String = "media_0") = buildJsonObject {

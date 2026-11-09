@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.service.notification.NotificationListenerService
 import androidx.core.app.NotificationManagerCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -92,16 +93,22 @@ class MediaActions @Inject constructor(@ApplicationContext private val context: 
         coroutineContext.ensureActive()
         val sentAt = SystemClock.elapsedRealtime()
         val controls = controller.transportControls
-        when (command.operation) {
-            MediaOperation.PAUSE -> controls.pause()
-            MediaOperation.RESUME -> controls.play()
-            MediaOperation.STOP -> controls.stop()
-            MediaOperation.NEXT -> controls.skipToNext()
-            MediaOperation.PREVIOUS -> controls.skipToPrevious()
-            MediaOperation.SEEK_RELATIVE, MediaOperation.SEEK_ABSOLUTE -> controls.seekTo(destination!!)
+        try {
+            when (command.operation) {
+                MediaOperation.PAUSE -> controls.pause()
+                MediaOperation.RESUME -> controls.play()
+                MediaOperation.STOP -> controls.stop()
+                MediaOperation.NEXT -> controls.skipToNext()
+                MediaOperation.PREVIOUS -> controls.skipToPrevious()
+                MediaOperation.SEEK_RELATIVE, MediaOperation.SEEK_ABSOLUTE -> controls.seekTo(destination!!)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: RuntimeException) {
+            return@withContext uncertainResult()
         }
         // A successful Binder call only means delivery. Require observable player feedback.
-        repeat(25) {
+        try { repeat(25) {
             coroutineContext.ensureActive()
             val after = controller.playbackState
             val confirmed = when (command.operation) {
@@ -119,8 +126,17 @@ class MediaActions @Inject constructor(@ApplicationContext private val context: 
             }
             if (confirmed) return@withContext TvActions.Execution("Медиакоманда выполнена: ${selected.target.label}.", false)
             delay(100)
+        } } catch (e: CancellationException) {
+            throw e
+        } catch (_: RuntimeException) {
+            return@withContext uncertainResult()
         }
-        error("Команда отправлена, но проигрыватель не подтвердил результат. Автоматического повтора не было.")
+        uncertainResult()
+    }
+
+    internal companion object {
+        internal fun uncertainResult() = TvActions.Execution(
+            "Не удалось подтвердить результат медиакоманды. Она могла выполниться; проверьте проигрыватель. Автоматического повтора не было.", true)
     }
 
     private fun position(state: PlaybackState): Long {

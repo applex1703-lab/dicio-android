@@ -1,60 +1,59 @@
 package org.stypox.dicio.unicodeCldrPlugin.data
 
 import org.eclipse.jgit.api.Git
-import org.eclipse.jgit.api.errors.GitAPIException
 import org.eclipse.jgit.transport.RefSpec
 import org.eclipse.jgit.transport.URIish
 import org.stypox.dicio.unicodeCldrPlugin.util.UnicodeCldrPluginException
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 
 @Throws(UnicodeCldrPluginException::class)
 fun ensureGitRepoDownloaded(repo: String, commit: String, directory: File) {
-    val git = if (directory.exists()) {
-        try {
-            Git.open(directory).also {
-                if (it.repository.isBare || it.repository.workTree.canonicalFile != directory.canonicalFile) {
-                    it.close()
-                    throw IllegalStateException("Not a Git working tree: $directory")
-                }
-            }
-        } catch (e: Exception) {
-            throw IllegalStateException("Cannot open Git working tree $directory; existing data was left untouched", e)
-        }
-    } else {
-        Git.init().setDirectory(directory).call()
+    if (!commit.matches(Regex("[0-9a-f]{40}"))) {
+        throw UnicodeCldrPluginException("Expected a full lowercase commit ID, got $commit")
+    }
+    if (Files.exists(directory.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+        validateCheckout(repo, commit, directory)
+        return
     }
 
-    git.use { git ->
-        if (!git.status().call().isClean) {
-            throw IllegalStateException("Git working tree $directory has uncommitted changes; existing data was left untouched")
+    directory.absoluteFile.parentFile.mkdirs()
+    if (!directory.mkdir()) {
+        throw UnicodeCldrPluginException("Cannot create $directory; existing data was left untouched")
+    }
+    try {
+        Git.init().setDirectory(directory).call().use { git ->
+            git.remoteAdd().setName("origin").setUri(URIish(repo)).call()
+            git.fetch().setRemote("origin").setDepth(1).setRefSpecs(RefSpec(commit)).call()
+            git.checkout().setName(commit).call()
         }
-        val origin = git.remoteList().call().find { it.name == "origin" }
-        if (origin != null && (origin.urIs.size != 1 || origin.urIs.single().toString() != repo)) {
-            throw IllegalStateException("Git working tree $directory has an unexpected origin; existing data was left untouched")
-        }
-        try {
-            git.remoteAdd()
-                .setName("origin")
-                .setUri(URIish(repo))
-                .call()
-        } catch (_: GitAPIException) {
-            git.remoteSetUrl()
-                .setRemoteName("origin")
-                .setRemoteUri(URIish(repo))
-                .call()
-        }
+        validateCheckout(repo, commit, directory)
+    } catch (e: Exception) {
+        throw UnicodeCldrPluginException("Cannot create checkout in $directory; data was left untouched", e)
+    }
+}
 
-        git.fetch()
-            .setRemote("origin")
-            // if this doesn't compile, then Gradle is messing with the jgit version used at
-            // runtime; in that case, revert commit "Improve unicode cldr repo cloning"
-            .setDepth(1)
-            .setRefSpecs(RefSpec(commit))
-            .call()
-
-        git.checkout()
-            .setName(commit)
-            .setStartPoint(commit)
-            .call()
+private fun validateCheckout(repo: String, commit: String, directory: File) {
+    try {
+        if (!directory.isDirectory || !File(directory, ".git").exists()) {
+            throw IllegalStateException("not a Git working tree")
+        }
+        Git.open(directory).use { git ->
+            val repository = git.repository
+            check(!repository.isBare && repository.workTree.canonicalFile == directory.canonicalFile) {
+                "not its own Git working tree"
+            }
+            val origin = git.remoteList().call().find { it.name == "origin" }
+            check(origin != null && origin.urIs.size == 1 && origin.urIs.single().toString() == repo) {
+                "unexpected origin (expected $repo)"
+            }
+            val head = repository.resolve("HEAD")?.name
+            check(head == commit && git.status().call().isClean) {
+                "must be clean and at commit $commit (HEAD: ${head ?: "unborn"})"
+            }
+        }
+    } catch (e: Exception) {
+        throw UnicodeCldrPluginException("Cannot use checkout $directory: ${e.message}. Existing data was left untouched", e)
     }
 }

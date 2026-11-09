@@ -54,6 +54,7 @@ dependencies {
     implementation(libs.kotlin.gradle.plugin)
     implementation(libs.kotlinpoet)
     implementation(libs.jgit)
+    testImplementation(kotlin("test"))
 
     // also depending on sentences compiler for nfkdNormalize
     implementation(libs.dicio.sentences.compiler)

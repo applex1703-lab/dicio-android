@@ -40,6 +40,9 @@ class UserSettingsModule {
             return SharedPreferencesMigration(
                 context,
                 context.packageName + "_preferences",
+                keysToMigrate = setOf(
+                    "theme", "language", "input_method", "speech_output_method", "stt_auto_finish",
+                ),
             ) { prefs, userSettings ->
                 userSettings.toBuilder()
                     .setTheme(

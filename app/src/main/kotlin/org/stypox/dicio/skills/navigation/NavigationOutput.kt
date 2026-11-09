@@ -7,9 +7,12 @@ import org.stypox.dicio.util.getString
 
 class NavigationOutput(
     private val where: String?,
+    private val noHandler: Boolean = false,
 ) : HeadlineSpeechSkillOutput {
     override fun getSpeechOutput(ctx: SkillContext): String = if (where.isNullOrBlank()) {
         ctx.getString(R.string.skill_navigation_specify_where)
+    } else if (noHandler) {
+        ctx.getString(R.string.skill_navigation_no_handler)
     } else {
         ctx.getString(R.string.skill_navigation_navigating_to, where)
     }

@@ -1,6 +1,5 @@
 package org.stypox.dicio.skills.search
 
-import androidx.core.net.toUri
 import org.dicio.skill.context.SkillContext
 import org.dicio.skill.skill.SkillInfo
 import org.dicio.skill.skill.SkillOutput
@@ -12,6 +11,7 @@ import org.jsoup.nodes.Document
 import org.stypox.dicio.sentences.Sentences.Search
 import org.stypox.dicio.util.ConnectionUtils
 import org.stypox.dicio.util.LocaleUtils
+import java.net.URI
 
 class SearchSkill(
     correspondingSkillInfo: SkillInfo,
@@ -74,27 +74,7 @@ internal fun searchOnDuckDuckGo(
         return SearchOutput.RecaptchaRequested
     }
 
-    val document: Document = Jsoup.parse(html)
-    val elements = document.select("div[class=links_main links_deep result__body]")
-    val results: MutableList<SearchOutput.Data> = ArrayList()
-    for (element in elements) {
-        try {
-            // the url is under the "uddg" query parameter
-            val ddgUrl = element.select("a[class=result__a]").first()!!.attr("href")
-            val url = ddgUrl.toUri().getQueryParameter("uddg")!!
-
-            results.add(
-                SearchOutput.Data(
-                    title = element.select("a[class=result__a]").first()!!.text(),
-                    thumbnailUrl = "https:" + element.select("img[class=result__icon__img]")
-                        .first()!!.attr("src"),
-                    url = url,
-                    description = element.select("a[class=result__snippet]").first()!!.text(),
-                )
-            )
-        } catch (_: NullPointerException) {
-        }
-    }
+    val results = parseSearchResults(Jsoup.parse(html, "https://duckduckgo.com"))
 
     return if (results.isEmpty()) {
         if (askAgainIfNoResult) {
@@ -105,4 +85,36 @@ internal fun searchOnDuckDuckGo(
     } else {
         SearchOutput.Results(results)
     }
+}
+
+internal fun parseSearchResults(document: Document): List<SearchOutput.Data> {
+    val results = mutableListOf<SearchOutput.Data>()
+    for (element in document.select("div.result__body")) {
+        try {
+            val link = element.selectFirst("a.result__a") ?: continue
+            val href = link.absUrl("href")
+            val uri = URI(href)
+            val redirect = if (uri.host.equals("duckduckgo.com", ignoreCase = true) ||
+                uri.host.equals("html.duckduckgo.com", ignoreCase = true)) {
+                uri.rawQuery?.split('&')?.firstOrNull { it.startsWith("uddg=") }
+                    ?.substringAfter('=')?.let { ConnectionUtils.urlDecode(it) }
+            } else null
+            val url = redirect ?: href
+            val target = URI(url)
+            if (target.scheme?.lowercase(java.util.Locale.ROOT) !in listOf("http", "https") ||
+                target.host.isNullOrEmpty()) continue
+            val image = element.selectFirst("img.result__icon__img")?.absUrl("src").orEmpty()
+            val imageUri = URI(image)
+            val safeImage = if (imageUri.scheme?.lowercase(java.util.Locale.ROOT) in listOf("http", "https") &&
+                !imageUri.host.isNullOrEmpty()) image else ""
+            results.add(SearchOutput.Data(
+                title = link.text(), thumbnailUrl = safeImage, url = url,
+                description = element.selectFirst(".result__snippet")?.text().orEmpty(),
+            ))
+        } catch (_: IllegalArgumentException) {
+            // Ignore malformed links rather than discarding the other results.
+        } catch (_: java.net.URISyntaxException) {
+        }
+    }
+    return results
 }

@@ -49,17 +49,21 @@ object WeatherInfo : SkillInfo("weather") {
         },
         produceMigrations = { context ->
             listOf(
-                SharedPreferencesMigration(
-                    context,
-                    context.packageName + "_preferences",
-                ) { prefs, skillSettingsWeather ->
-                    skillSettingsWeather.toBuilder()
-                        .setDefaultCity(prefs.getString("weather_default_city"))
-                        .build()
-                }
+                getSharedPreferencesMigration(context),
             )
         },
     )
+
+    internal fun getSharedPreferencesMigration(context: Context): SharedPreferencesMigration<SkillSettingsWeather> =
+        SharedPreferencesMigration(
+            context,
+            context.packageName + "_preferences",
+            keysToMigrate = setOf("weather_default_city"),
+        ) { prefs, skillSettingsWeather ->
+            skillSettingsWeather.toBuilder()
+                .setDefaultCity(prefs.getString("weather_default_city"))
+                .build()
+        }
 
     override val renderSettings: @Composable () -> Unit get() = @Composable {
         val dataStore = LocalContext.current.weatherDataStore

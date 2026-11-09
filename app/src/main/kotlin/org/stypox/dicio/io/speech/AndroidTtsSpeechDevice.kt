@@ -43,6 +43,12 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale,
     private var textToSpeech: TextToSpeech? = null
     private var initializedCorrectly = false
     private var initializationFailed = false
+    private val initializationDeadline = Runnable {
+        if (!closed && !initializedCorrectly && !initializationFailed) {
+            Log.w(TAG, "TTS initialization deadline reached")
+            handleInitializationError(R.string.android_tts_error)
+        }
+    }
     private var lastUtteranceId = 0
     private class Timing(val queuedAtMs: Long) {
         val firstAudio = AtomicBoolean(false)
@@ -83,8 +89,12 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale,
     }
 
     init {
+        main.postDelayed(initializationDeadline, 10_000)
+        try {
         textToSpeech = TextToSpeech(context) { status: Int -> main.post {
-            if (closed) return@post
+            if (closed || initializationFailed || initializedCorrectly) return@post
+            if (textToSpeech == null) return@post
+            main.removeCallbacks(initializationDeadline)
             if (status == TextToSpeech.SUCCESS) {
                 textToSpeech?.run {
                     val errorCode = try {
@@ -204,6 +214,10 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale,
                 handleInitializationError(R.string.android_tts_error)
             }
         } }
+        } catch (_: RuntimeException) {
+            Log.e(TAG, "TTS construction failed")
+            handleInitializationError(R.string.android_tts_error)
+        }
     }
 
     override fun speak(speechOutput: String) = onMain {
@@ -272,6 +286,7 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale,
 
     override fun cleanup() = onMain {
         closed = true
+        main.removeCallbacks(initializationDeadline)
         lifecycle.close()
         initializedCorrectly = false
         pendingSpeech.clear()
@@ -283,6 +298,7 @@ class AndroidTtsSpeechDevice(private var context: Context, locale: Locale,
     }
 
     private fun handleInitializationError(@StringRes errorString: Int) {
+        main.removeCallbacks(initializationDeadline)
         initializationFailed = true
         val undelivered = pendingSpeech.toMap()
         try { Toast.makeText(context, errorString, Toast.LENGTH_SHORT).show() }

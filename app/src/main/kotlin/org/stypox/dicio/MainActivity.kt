@@ -88,7 +88,7 @@ class MainActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         isCreated += 1
 
-        if (isAssistIntent(intent)) {
+        if (savedInstanceState == null && isAssistIntent(intent)) {
             onAssistIntentReceived()
         } else {
             // load the input device, without starting to listen

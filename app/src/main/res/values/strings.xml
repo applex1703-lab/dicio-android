@@ -143,6 +143,7 @@
     <string name="skill_sentence_example_navigation">Navigate to Vancouver international airport</string>
     <string name="skill_navigation_specify_where">Specify where you want to navigate to</string>
     <string name="skill_navigation_navigating_to">Navigating to %1$s</string>
+    <string name="skill_navigation_no_handler">No map application is available</string>
     <string name="skill_name_timer">Timer</string>
     <string name="skill_sentence_example_timer">Set a timer for five minutes</string>
     <string name="skill_name_current_time">Current time</string>

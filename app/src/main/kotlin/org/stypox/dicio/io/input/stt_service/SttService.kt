@@ -52,11 +52,11 @@ class SttService : RecognitionService() {
         }
 
         var beginningOfSpeech = true
-        var terminal = false
+        val terminal = TerminalOnce()
         val willStartListening = coordinator.startService(listener, { inputEvent ->
-            if (terminal) return@startService
+            if (terminal.finished) return@startService
             if (inputEvent is InputEvent.Error || inputEvent is InputEvent.Final || inputEvent is InputEvent.None) {
-                terminal = true
+                terminal.finish()
                 if (activeCallback === listener) activeCallback = null
             }
             when (inputEvent) {
@@ -107,18 +107,17 @@ class SttService : RecognitionService() {
             }
         }, {
             if (activeCallback === listener) activeCallback = null
-            if (!terminal) {
-                terminal = true
+            if (terminal.finish()) {
                 logRemoteExceptions { listener.error(SpeechRecognizer.ERROR_CLIENT) }
             }
         })
 
         if (willStartListening == null) {
-            logRemoteExceptions { listener.error(SpeechRecognizer.ERROR_RECOGNIZER_BUSY) }
+            if (terminal.finish()) logRemoteExceptions { listener.error(SpeechRecognizer.ERROR_RECOGNIZER_BUSY) }
         } else if (!willStartListening) {
             Log.w(TAG, "Could not start STT recognizer")
-            logRemoteExceptions { listener.error(ERROR_LANGUAGE_UNAVAILABLE) }
-        } else if (!terminal) {
+            if (terminal.finish()) logRemoteExceptions { listener.error(ERROR_LANGUAGE_UNAVAILABLE) }
+        } else if (!terminal.finished) {
             activeCallback = listener
         }
     }
