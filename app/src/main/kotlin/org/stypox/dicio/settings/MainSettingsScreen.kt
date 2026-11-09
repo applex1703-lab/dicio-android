@@ -51,6 +51,7 @@ import org.stypox.dicio.ui.theme.AppTheme
 import org.stypox.dicio.ui.home.isTelevision
 import org.stypox.dicio.voice.PREBIND_KEY
 import org.stypox.dicio.voice.prebindPreferences
+import org.stypox.dicio.voice.backgroundPrebindEnabled
 
 internal fun displayedInputDevice(inputDevice: InputDevice): InputDevice = when (inputDevice) {
     InputDevice.UNRECOGNIZED,
@@ -195,17 +196,17 @@ private fun MainSettingsScreen(
 private fun BackgroundPrebindSetting() {
     val context = LocalContext.current
     val preferences = remember(context) { prebindPreferences(context) }
-    var enabled by remember(preferences) { mutableStateOf(preferences.getBoolean(PREBIND_KEY, false)) }
+    var enabled by remember(preferences) { mutableStateOf(preferences.backgroundPrebindEnabled()) }
     DisposableEffect(preferences) {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == PREBIND_KEY || key == null) enabled = preferences.getBoolean(PREBIND_KEY, false)
+            if (key == PREBIND_KEY || key == null) enabled = preferences.backgroundPrebindEnabled()
         }
         preferences.registerOnSharedPreferenceChangeListener(listener)
         onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
     }
     SettingsItem(
         title = "Фоновая подготовка Google",
-        description = "По умолчанию выключено. Сервис Google может оставаться в памяти и выполнять собственные фоновые действия, включая использование сети и возможный доступ к микрофону. Dicio не инициирует запись или распознавание при подготовке. После отключения успешное освобождение не гарантировано; неопределённость видна в журнале DicioPrebind.",
+        description = "По умолчанию включено. Сервис Google может оставаться в памяти и выполнять собственные фоновые действия, включая использование сети и возможный доступ к микрофону. Dicio не инициирует запись или распознавание при подготовке. После отключения успешное освобождение не гарантировано; неопределённость видна в журнале DicioPrebind.",
         content = {
             Switch(checked = enabled, onCheckedChange = {
                 preferences.edit().putBoolean(PREBIND_KEY, it).apply()

@@ -22,8 +22,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.stypox.dicio.di.LocaleManager
 import org.stypox.dicio.voice.TvVoiceService
-import org.stypox.dicio.voice.PREBIND_KEY
 import org.stypox.dicio.voice.prebindPreferences
+import org.stypox.dicio.voice.backgroundPrebindEnabled
 import java.io.IOException
 
 internal interface GoogleRecognizer {
@@ -68,10 +68,10 @@ class GoogleSpeechInputDevice(
         override fun requiresAudioOpWait() = Build.VERSION.SDK_INT == 30
         override fun prebindToken(): Any? = if (Build.VERSION.SDK_INT == 30 &&
             Build.MANUFACTURER.equals("TCL", ignoreCase = true) &&
-            prebindPreferences(context).getBoolean(PREBIND_KEY, false))
+            prebindPreferences(context).backgroundPrebindEnabled())
             TvVoiceService.prebindReservation.snapshot() else null
         override fun prebindCurrent(token: Any?): Boolean =
-            prebindPreferences(context).getBoolean(PREBIND_KEY, false) &&
+            prebindPreferences(context).backgroundPrebindEnabled() &&
                 TvVoiceService.prebindReservation.isCurrent(token)
         override fun audioOpMode(): Int? {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null

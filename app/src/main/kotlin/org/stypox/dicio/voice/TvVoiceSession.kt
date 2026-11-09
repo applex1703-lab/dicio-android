@@ -50,6 +50,13 @@ internal class VoiceSessionTeardown(private val coordinator: VoiceInputCoordinat
     fun close() = coordinator.release(owner)
 }
 
+internal fun voiceStatus(presentation: org.stypox.dicio.eval.VoicePresentation, stt: SttState?): String = when {
+    presentation.answer.isNotEmpty() || presentation.status != "Слушаю…" && presentation.request.isNotEmpty() -> presentation.status
+    stt == SttState.WaitingForResult && presentation.status == "Слушаю…" -> "Распознаю…"
+    stt == SttState.Listening && presentation.request.isEmpty() && presentation.answer.isEmpty() -> "Распознаватель готов…"
+    else -> presentation.status
+}
+
 /** Keeps a no-op start on an existing input from replacing its presentation subscription. */
 internal class TvVoiceRequestAction(
     private val isVisible: () -> Boolean,
@@ -221,8 +228,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             evaluator.voicePresentation.combine(input.uiState) { presentation, stt -> presentation to stt }
                 .collect { (presentation, stt) ->
                     // Started resets this ephemeral state before the new recording results.
-                    status.text = if (presentation.request.isEmpty() && presentation.answer.isEmpty() &&
-                        stt == SttState.Listening) "Распознаватель готов…" else presentation.status
+                    status.text = voiceStatus(presentation, stt)
                     transcript.text = presentation.request
                     answer.text = presentation.answer
                     renderChoice(presentation.choice)

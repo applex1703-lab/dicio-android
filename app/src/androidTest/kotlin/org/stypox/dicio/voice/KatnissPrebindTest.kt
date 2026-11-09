@@ -128,7 +128,7 @@ class KatnissPrebindTest {
         assertEquals(1, unbinds)
     }
 
-    @Test fun preferenceDefaultsOffAndDisableReleasesImmediately() = onMain {
+    @Test fun preferenceDefaultsOnAndDisableReleasesImmediately() = onMain {
         // Isolated test APK preferences: never alter the user's setting.
         val prefs = InstrumentationRegistry.getInstrumentation().context
             .getSharedPreferences("prebind_test", Context.MODE_PRIVATE)
@@ -139,16 +139,15 @@ class KatnissPrebindTest {
         val prebind = KatnissPrebind({ _, connection, _ -> binds++; conn = connection; true },
             { unbinds++ }, PrebindReservation())
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == PREBIND_KEY) prebind.setEnabled(prefs.getBoolean(PREBIND_KEY, false))
+            if (key == PREBIND_KEY) prebind.setEnabled(prefs.backgroundPrebindEnabled())
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
         try {
-            prebind.setEnabled(prefs.getBoolean(PREBIND_KEY, false))
-            assertEquals(0, binds)
-            prefs.edit().putBoolean(PREBIND_KEY, true).apply()
+            prebind.setEnabled(prefs.backgroundPrebindEnabled())
             assertEquals(1, binds)
             prefs.edit().putBoolean(PREBIND_KEY, false).apply()
             assertEquals(1, unbinds)
+            assertFalse(prefs.backgroundPrebindEnabled())
             conn.onServiceConnected(null, Binder())
             conn.onNullBinding(null)
             assertEquals(1, unbinds)

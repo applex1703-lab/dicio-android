@@ -18,7 +18,7 @@ class TvVoiceService : VoiceInteractionService() {
     private val preferences by lazy { prebindPreferences(this) }
     private var observing = false
     private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == PREBIND_KEY || key == null) prebind.setEnabled(preferences.getBoolean(PREBIND_KEY, false))
+        if (key == PREBIND_KEY || key == null) prebind.setEnabled(preferences.backgroundPrebindEnabled())
     }
     private val prebind by lazy {
         KatnissPrebind({ intent, connection, flags -> bindService(intent, connection, flags) },
@@ -35,7 +35,7 @@ class TvVoiceService : VoiceInteractionService() {
             preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
             observing = true
         }
-        prebind.setEnabled(preferences.getBoolean(PREBIND_KEY, false))
+        prebind.setEnabled(preferences.backgroundPrebindEnabled())
     }
 
     override fun onShutdown() {
@@ -62,6 +62,7 @@ class TvVoiceService : VoiceInteractionService() {
 }
 
 internal const val PREBIND_KEY = "background_prebind_enabled"
+internal fun SharedPreferences.backgroundPrebindEnabled(): Boolean = getBoolean(PREBIND_KEY, true)
 internal fun prebindPreferences(context: Context): SharedPreferences =
     context.getSharedPreferences("tv_voice_prebind", Context.MODE_PRIVATE)
 
