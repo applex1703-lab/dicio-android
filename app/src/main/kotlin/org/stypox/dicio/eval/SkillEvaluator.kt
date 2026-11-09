@@ -378,6 +378,10 @@ class SkillEvaluatorImpl(
                             // Replace, never extend, the previous one-use context.
                             pendingClarification.save(request, decision.text)
                         }
+                        if ((decision is AssistantIntent.Reply || decision is AssistantIntent.Clarify) &&
+                            directSpeechRequests.isCurrent(speechRequest)) {
+                            conversationHistory.addExchange(request, requestedAt, result.text)
+                        }
                         if (result.speak) {
                             withContext(Dispatchers.Main) {
                                 directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(result.text) }
@@ -390,10 +394,6 @@ class SkillEvaluatorImpl(
                         addErrorInteractionFromPending(error)
                         directSpeechRequests.ifCurrent(speechRequest) {
                             skillContext.speechOutputDevice.speak(error.localizedMessage ?: "Не удалось выполнить запрос.")
-                        }
-                        if ((decision is AssistantIntent.Reply || decision is AssistantIntent.Clarify) &&
-                            directSpeechRequests.isCurrent(speechRequest)) {
-                            conversationHistory.addExchange(request, requestedAt, result.text)
                         }
                     }
                 } else {
