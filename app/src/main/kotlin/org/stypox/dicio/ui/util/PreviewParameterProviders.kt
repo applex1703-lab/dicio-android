@@ -84,7 +84,7 @@ class InteractionLogPreviews : CollectionPreviewParameterProvider<InteractionLog
                 questionsAnswers = listOf(
                     QuestionAnswer(
                         "Set a timer",
-                        TimerOutput.SetAskDuration { TextFallbackOutput(askToRepeat = true) }
+                        TimerOutput.SetAskDuration { _, _ -> TextFallbackOutput(askToRepeat = true) }
                     )
                 )
             )
