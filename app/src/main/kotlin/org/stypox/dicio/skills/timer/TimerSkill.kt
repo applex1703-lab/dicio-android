@@ -8,11 +8,13 @@ import androidx.annotation.StringRes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.dicio.skill.context.SkillContext
+import org.dicio.skill.context.SpeechOutputDevice
 import org.dicio.skill.skill.SkillInfo
 import org.dicio.skill.skill.SkillOutput
 import org.dicio.skill.standard.StandardRecognizerData
 import org.dicio.skill.standard.StandardRecognizerSkill
 import org.stypox.dicio.R
+import org.stypox.dicio.di.NotificationSpeechContext
 import org.stypox.dicio.sentences.Sentences
 import org.stypox.dicio.sentences.Sentences.Timer
 import org.stypox.dicio.util.StringUtils
@@ -31,7 +33,9 @@ class TimerSkill(
             when (inputData) {
                 is Timer.Set -> {
                     if (inputData.duration == null) {
-                        TimerOutput.SetAskDuration { setTimer(ctx, it, inputData.name) }
+                        TimerOutput.SetAskDuration { currentCtx, duration ->
+                            setTimer(currentCtx, duration, inputData.name)
+                        }
                     } else {
                         setTimer(ctx, inputData.duration.toJavaDuration(), inputData.name)
                     }
@@ -41,8 +45,8 @@ class TimerSkill(
                 }
                 is Timer.Cancel -> {
                     if (inputData.name == null && SET_TIMERS.size > 1) {
-                        TimerOutput.ConfirmCancel(yesNoData) {
-                            withContext(Dispatchers.Main) { cancelTimer(ctx, null) }
+                        TimerOutput.ConfirmCancel(yesNoData) { currentCtx ->
+                            withContext(Dispatchers.Main) { cancelTimer(currentCtx, null) }
                         }
                     } else {
                         cancelTimer(ctx, inputData.name)
@@ -57,6 +61,7 @@ class TimerSkill(
         name: String?,
     ): SkillOutput = withContext(Dispatchers.Main) {
         var ringtone: Ringtone? = null
+        val notificationSpeech = notificationSpeechDevice(ctx)
 
         val setTimer = SetTimer(
             duration = duration,
@@ -68,7 +73,7 @@ class TimerSkill(
             },
             onSecondsTickCallback = { seconds ->
                 if (seconds <= 5) {
-                    ctx.speechOutputDevice.speak(
+                    notificationSpeech.speak(
                         ctx.parserFormatter!!
                             .pronounceNumber(seconds.toDouble())
                             .get()
@@ -93,7 +98,7 @@ class TimerSkill(
 
                 if (ringtone == null) {
                     // we could not load a ringtone, so we can announce via speech instead
-                    ctx.speechOutputDevice.speak(
+                    notificationSpeech.speak(
                         formatStringWithName(
                             ctx.android,
                             theName,
@@ -219,3 +224,6 @@ class TimerSkill(
         val TAG: String = TimerSkill::class.simpleName!!
     }
 }
+
+internal fun notificationSpeechDevice(ctx: SkillContext): SpeechOutputDevice =
+    (ctx as? NotificationSpeechContext)?.notificationSpeechOutputDevice ?: ctx.speechOutputDevice

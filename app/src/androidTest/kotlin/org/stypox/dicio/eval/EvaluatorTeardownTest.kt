@@ -142,4 +142,26 @@ class EvaluatorTeardownTest {
             assertEquals(1, clears)
         }
     }
+
+    @Test fun reentrantBoundariesDoNotSpeakAnOldVpnPrompt() = runBlocking {
+        withContext(Dispatchers.Main) {
+            val boundaries: List<Pair<(SkillEvaluatorImpl) -> Unit, List<String>>> = listOf(
+                ({ e: SkillEvaluatorImpl -> e.processInputEvent(InputEvent.Partial("новый")) }) to listOf("stop"),
+                ({ e: SkillEvaluatorImpl -> e.resetVoicePresentation() }) to listOf("stop"),
+                ({ e: SkillEvaluatorImpl -> e.processInputEvent(InputEvent.Started) }) to listOf("stop", "stop"),
+                ({ e: SkillEvaluatorImpl -> e.processInputEvent(InputEvent.Final(listOf("запусти vpn" to 1f))) }) to listOf("stop", "stop", "speak"),
+                ({ e: SkillEvaluatorImpl -> e.finishInputSession() }) to listOf("stop", "stop", "cleanup"),
+            )
+            for ((boundary, expected) in boundaries) {
+                val speech = Speech()
+                val evaluator = evaluator(speech) { }
+                speech.onStop = {
+                    speech.onStop = {}
+                    boundary(evaluator)
+                }
+                evaluator.processInputEvent(InputEvent.Final(listOf("запусти vpn" to 1f)))
+                assertEquals(expected, speech.calls)
+            }
+        }
+    }
 }

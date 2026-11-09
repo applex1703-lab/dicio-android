@@ -47,7 +47,7 @@ sealed interface TimerOutput : SkillOutput {
     }
 
     class SetAskDuration(
-        private val onGotDuration: suspend (Duration) -> SkillOutput,
+        private val onGotDuration: suspend (SkillContext, Duration) -> SkillOutput,
     ) : TimerOutput, HeadlineSpeechSkillOutput {
         override fun getSpeechOutput(ctx: SkillContext): String =
             ctx.getString(R.string.skill_timer_how_much_time)
@@ -77,7 +77,7 @@ sealed interface TimerOutput : SkillOutput {
                         // impossible situation, since AlwaysWorstScore was used above
                         throw RuntimeException("AlwaysWorstScore still triggered generateOutput")
                     } else {
-                        onGotDuration(inputData)
+                        onGotDuration(ctx, inputData)
                     }
                 }
             }
@@ -97,7 +97,7 @@ sealed interface TimerOutput : SkillOutput {
 
     class ConfirmCancel(
         private val yesNoData: StandardRecognizerData<Sentences.UtilYesNo>,
-        private val onConfirm: suspend () -> SkillOutput,
+        private val onConfirm: suspend (SkillContext) -> SkillOutput,
     ) : TimerOutput, HeadlineSpeechSkillOutput {
         override fun getSpeechOutput(ctx: SkillContext): String =
             ctx.getString(R.string.skill_timer_confirm_cancel)
@@ -109,7 +109,7 @@ sealed interface TimerOutput : SkillOutput {
                     inputData: Boolean
                 ): SkillOutput {
                     return if (inputData) {
-                        onConfirm()
+                        onConfirm(ctx)
                     } else {
                         Cancel(ctx.getString(R.string.skill_timer_none_canceled))
                     }

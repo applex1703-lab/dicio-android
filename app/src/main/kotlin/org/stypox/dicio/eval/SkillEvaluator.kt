@@ -85,6 +85,7 @@ class SkillEvaluatorImpl(
 
     private val scope = CoroutineScope(Dispatchers.Main.immediate)
     private val requests = LatestInputRequest(scope)
+    private val directSpeechRequests = DirectSpeechRequests()
     private val sessionBoundary = InputSessionBoundary(scope, onClearFailure = ::reportVpnClearFailure, clearVpn = clearVpn)
     private val legacyLock = Mutex()
     private val pendingChoice = PendingChoice<ChoiceTarget>()
@@ -113,9 +114,12 @@ class SkillEvaluatorImpl(
     }
     override fun resetVoicePresentation() {
         checkEntry()
+        val speechRequest = directSpeechRequests.next()
         requests.cancel()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
         pendingChoice.clear()
         presentation.clear()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
         sessionBoundary.afterVpnClear()
     }
 
@@ -124,10 +128,14 @@ class SkillEvaluatorImpl(
 
     override fun processInputEvent(event: InputEvent) {
         checkEntry()
+        val speechRequest = directSpeechRequests.next()
         requests.cancel()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
         pendingChoice.clear()
         sessionBoundary.afterVpnClear {
-            requests.replace { suspendProcessInputEvent(event) }
+            if (directSpeechRequests.isCurrent(speechRequest)) {
+                requests.replace { suspendProcessInputEvent(event, speechRequest) }
+            }
         }
     }
 
@@ -147,7 +155,10 @@ class SkillEvaluatorImpl(
     }
 
     private fun clearInput(preserveClarification: Boolean) {
+        val speechRequest = directSpeechRequests.next()
         sessionBoundary.end {
+            // Cancelling the previous VPN waiter can synchronously start a newer request.
+            if (!directSpeechRequests.isCurrent(speechRequest)) return@end
             requests.cancel()
             pendingChoice.clear()
             if (!preserveClarification) pendingClarification.clear()
@@ -165,11 +176,14 @@ class SkillEvaluatorImpl(
         checkEntry()
         // Consume synchronously before starting any coroutine or action.
         val (query, target) = pendingChoice.consume(choiceId, optionId) ?: return
+        val speechRequest = directSpeechRequests.next()
         presentation.choosing()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
         requests.replace {
             try {
                 // A queued clarification must not play over the selected silent action.
-                skillContext.speechOutputDevice.stopSpeaking()
+                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.stopSpeaking() }
+                if (!directSpeechRequests.isCurrent(speechRequest)) return@replace
                 when (target) {
                     is ChoiceTarget.Search -> {
                         val result = tvActions.executeSearchTarget(target.target, query)
@@ -189,19 +203,21 @@ class SkillEvaluatorImpl(
                 // Do not log errors from a search: they may contain the query.
                 val message = error.localizedMessage ?: "Не удалось выполнить выбор."
                 presentation.error(message)
-                skillContext.speechOutputDevice.speak(message)
+                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
             }
         }
     }
 
-    private suspend fun suspendProcessInputEvent(event: InputEvent) {
+    private suspend fun suspendProcessInputEvent(event: InputEvent, speechRequest: Any) {
         when (event) {
             InputEvent.Started -> {
                 outputSlot.clear()
                 presentation.clear()
                 _state.value = InteractionLog(emptyList(), null)
-                skillContext.speechOutputDevice.stopSpeaking()
-                (skillContext.speechOutputDevice as? org.stypox.dicio.di.SpeechOutputDeviceWrapper)?.beginSession()
+                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.stopSpeaking() }
+                directSpeechRequests.ifCurrent(speechRequest) {
+                    (skillContext.speechOutputDevice as? org.stypox.dicio.di.SpeechOutputDeviceWrapper)?.beginSession()
+                }
             }
             is InputEvent.Error -> {
                 pendingClarification.clear()
@@ -222,7 +238,7 @@ class SkillEvaluatorImpl(
                 val localVpn = classifyLocalVpnRequest(request)
                 if (localVpn == LocalVpnRequest.GENERAL || localVpn == LocalVpnRequest.HAPP || localVpn == LocalVpnRequest.DISCONNECT) {
                     pendingClarification.clear()
-                    runExplicitVpn(request)
+                    runExplicitVpn(request, speechRequest)
                     return
                 }
                 if (localVpn == LocalVpnRequest.AMBIGUOUS) {
@@ -230,8 +246,8 @@ class SkillEvaluatorImpl(
                     _state.value = InteractionLog(emptyList(), null)
                     val question = "Скажите явно: подключи VPN, выключи VPN или выключи Happ VPN."
                     presentation.answer(question)
-                    skillContext.speechOutputDevice.stopSpeaking()
-                    skillContext.speechOutputDevice.speak(question)
+                    directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.stopSpeaking() }
+                    directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
                     return
                 }
                 val previousClarification = pendingClarification.consume()
@@ -283,7 +299,7 @@ class SkillEvaluatorImpl(
                             _state.value = InteractionLog(emptyList(), null)
                             val question = "Пожалуйста, повторите команду полностью."
                             presentation.answer(question)
-                            skillContext.speechOutputDevice.speak(question)
+                            directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
                             return
                         }
                         if (decision is AssistantIntent.ConnectHapp ||
@@ -291,14 +307,14 @@ class SkillEvaluatorImpl(
                             _state.value = InteractionLog(emptyList(), null)
                             val question = "Скажите явно: подключи VPN или подключи Happ VPN."
                             presentation.answer(question)
-                            skillContext.speechOutputDevice.speak(question)
+                            directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
                             return
                         }
                         if (clarification != null && !decision.allowedAfterClarification()) {
                             _state.value = InteractionLog(emptyList(), null)
                             val question = "Пожалуйста, повторите команду полностью."
                             presentation.answer(question)
-                            skillContext.speechOutputDevice.speak(question)
+                            directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
                             return
                         }
                         if (decision is AssistantIntent.ChooseSearch) {
@@ -313,7 +329,7 @@ class SkillEvaluatorImpl(
                                 _state.value = InteractionLog(emptyList(), null)
                                 val question = "Где искать?"
                                 presentation.choice(id, targets.map { ChoiceOption(it.id, it.label) }, question)
-                                skillContext.speechOutputDevice.speak(question)
+                                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
                             } catch (error: Exception) {
@@ -323,7 +339,9 @@ class SkillEvaluatorImpl(
                                 previousFallback = null
                                 _state.value = InteractionLog(emptyList(), null)
                                 presentation.error(error.localizedMessage ?: "Не удалось получить сервисы поиска.")
-                                skillContext.speechOutputDevice.speak(error.localizedMessage ?: "Не удалось получить сервисы поиска.")
+                                directSpeechRequests.ifCurrent(speechRequest) {
+                                    skillContext.speechOutputDevice.speak(error.localizedMessage ?: "Не удалось получить сервисы поиска.")
+                                }
                             }
                             return
                         }
@@ -341,17 +359,21 @@ class SkillEvaluatorImpl(
                             pendingClarification.save(request, decision.text)
                         }
                         if (result.speak) {
-                            withContext(Dispatchers.Main) { skillContext.speechOutputDevice.speak(result.text) }
+                            withContext(Dispatchers.Main) {
+                                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(result.text) }
+                            }
                         }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (error: Exception) {
                         coroutineContext.ensureActive()
                         addErrorInteractionFromPending(error)
-                        skillContext.speechOutputDevice.speak(error.localizedMessage ?: "Не удалось выполнить запрос.")
+                        directSpeechRequests.ifCurrent(speechRequest) {
+                            skillContext.speechOutputDevice.speak(error.localizedMessage ?: "Не удалось выполнить запрос.")
+                        }
                     }
                 } else {
-                    evaluateMatchingSkill(event.utterances.map { it.first })
+                    evaluateMatchingSkill(event.utterances.map { it.first }, speechRequest)
                 }
             }
             InputEvent.None -> {
@@ -374,18 +396,19 @@ class SkillEvaluatorImpl(
     }
 
     /** Complete local commands never inherit a prior clarification or go through the model. */
-    private suspend fun runExplicitVpn(request: String) {
+    private suspend fun runExplicitVpn(request: String, speechRequest: Any) {
         outputSlot.clear()
         previousFallback = null
         _state.value = InteractionLog(emptyList(), null)
         presentation.thinking(request)
         try {
-            skillContext.speechOutputDevice.stopSpeaking()
+            directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.stopSpeaking() }
+            if (!directSpeechRequests.isCurrent(speechRequest)) return
             if (VpnDispatcher.isDisconnectRequest(request)) {
                 val result = tvActions.disconnectVpn(request)
                 coroutineContext.ensureActive()
                 presentation.answer(result.text, silent = result.actionSent)
-                if (!result.actionSent) skillContext.speechOutputDevice.speak(result.text)
+                if (!result.actionSent) directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(result.text) }
                 return
             }
             if (HappConnect.isExplicitRequest(request)) {
@@ -398,13 +421,13 @@ class SkillEvaluatorImpl(
                 is VpnDispatch.Message -> {
                     coroutineContext.ensureActive()
                     presentation.answer(result.text, silent = result.actionSent)
-                    if (!result.actionSent) skillContext.speechOutputDevice.speak(result.text)
+                    if (!result.actionSent) directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(result.text) }
                 }
                 is VpnDispatch.Choice -> {
                     coroutineContext.ensureActive()
                     val id = pendingChoice.create("", result.options.associate { it.id to ChoiceTarget.Vpn(it.id) })
                     presentation.choice(id, result.options.map { ChoiceOption(it.id, it.label) }, result.prompt, "Выберите VPN-приложение")
-                    skillContext.speechOutputDevice.speak(result.prompt)
+                    directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(result.prompt) }
                 }
             }
         } catch (cancelled: CancellationException) {
@@ -415,11 +438,16 @@ class SkillEvaluatorImpl(
             tvActions.clearVpn()
             val message = error.localizedMessage ?: "Не удалось открыть VPN-приложение."
             presentation.error(message)
-            skillContext.speechOutputDevice.speak(message)
+            directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
         }
     }
 
-    private suspend fun evaluateMatchingSkill(utterances: List<String>) = legacyLock.withLock {
+    private suspend fun evaluateMatchingSkill(utterances: List<String>, speechRequest: Any) = legacyLock.withLock {
+        val requestContext = RequestSkillContext(skillContext, { directSpeechRequests.isCurrent(speechRequest) })
+        fun ensureCurrent() {
+            if (!directSpeechRequests.isCurrent(speechRequest)) throw CancellationException("Superseded request")
+        }
+        ensureCurrent()
         // Capture one ready ranker for the entire request. The next request rechecks the handler,
         // so settings/locale replacements are observed without splitting a dialogue plan across rankers.
         val skillRanker = try {
@@ -432,13 +460,14 @@ class SkillEvaluatorImpl(
             return@withLock
         }
         coroutineContext.ensureActive()
+        ensureCurrent()
         val (chosenInput, chosenSkill) = try {
             withContext(Dispatchers.Default) { utterances.firstNotNullOfOrNull { input: String ->
                 skillContext.standardMatchHelper = MatchHelper(skillContext.parserFormatter, input)
-                skillRanker.getBest(skillContext, input)?.let { skillWithResult ->
+                skillRanker.getBest(requestContext, input)?.let { skillWithResult ->
                     Pair(input, skillWithResult)
                 }
-            } ?: Pair(utterances[0], skillRanker.getFallbackSkill(skillContext, utterances[0])) }
+            } ?: Pair(utterances[0], skillRanker.getFallbackSkill(requestContext, utterances[0])) }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (throwable: Throwable) {
@@ -452,6 +481,7 @@ class SkillEvaluatorImpl(
             skillContext.standardMatchHelper = null
         }
         coroutineContext.ensureActive()
+        ensureCurrent()
         val skillInfo = chosenSkill.skill.correspondingSkillInfo
         presentation.thinking(chosenInput)
 
@@ -473,32 +503,40 @@ class SkillEvaluatorImpl(
                 coroutineContext.ensureActive()
                 previousFallback = null
                 _state.value = InteractionLog(emptyList(), null)
-                presentation.error(MissingPermissionsSkillOutput(skillInfo).getSpeechOutput(skillContext))
+                ensureCurrent()
+                presentation.error(MissingPermissionsSkillOutput(skillInfo).getSpeechOutput(requestContext))
                 return@withLock
             }
 
+            ensureCurrent()
             skillContext.previousOutput = previousFallback
             val output = try {
-                withContext(Dispatchers.Default) { chosenSkill.generateOutput(skillContext) }
+                withContext(Dispatchers.Default) { chosenSkill.generateOutput(requestContext) }
             } finally {
                 skillContext.previousOutput = null
             }
             coroutineContext.ensureActive()
 
-            val interactionPlan = output.getInteractionPlan(skillContext)
+            ensureCurrent()
+            val interactionPlan = output.getInteractionPlan(requestContext)
+            ensureCurrent()
             previousFallback = output as? TextFallbackOutput
             _state.value = InteractionLog(emptyList(), null)
-            val speech = output.getSpeechOutput(skillContext)
+            val speech = output.getSpeechOutput(requestContext)
+            ensureCurrent()
             outputSlot.replace(if (output is ErrorSkillOutput) null else output)
+            ensureCurrent()
             presentation.answer(speech)
+            ensureCurrent()
             speech.let {
                 if (it.isNotBlank()) {
                     withContext (Dispatchers.Main) {
-                        skillContext.speechOutputDevice.speak(it)
+                        requestContext.speechOutputDevice.speak(it)
                     }
                 }
             }
 
+            ensureCurrent()
             when (interactionPlan) {
                 InteractionPlan.FinishInteraction -> {
                     // current conversation has ended, reset to the default batch of skills
@@ -525,8 +563,9 @@ class SkillEvaluatorImpl(
             throw cancelled
         } catch (throwable: Throwable) {
             coroutineContext.ensureActive()
+            ensureCurrent()
             addErrorInteractionFromPending(throwable)
-            if (throwable is VpnOpenBlockedException) skillContext.speechOutputDevice.speak(throwable.message ?: "Для VPN нужна явная команда.")
+            if (throwable is VpnOpenBlockedException) requestContext.speechOutputDevice.speak(throwable.message ?: "Для VPN нужна явная команда.")
             return@withLock
         }
     }
