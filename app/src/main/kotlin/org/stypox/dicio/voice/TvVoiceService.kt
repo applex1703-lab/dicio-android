@@ -78,7 +78,7 @@ internal class PrebindReservation {
     fun isCurrent(token: Any?): Boolean = token != null && connected === token && owner === token
 }
 
-/** Main-thread-only; attempts follow initial readiness or explicit enable, never a timer retry. */
+/** Main-thread-only; recording is never started by this background binding. */
 internal class KatnissPrebind(
     private val bind: (Intent, ServiceConnection, Int) -> Boolean,
     private val unbind: (ServiceConnection) -> Unit,
@@ -98,6 +98,9 @@ internal class KatnissPrebind(
     private var enabled = false
     private var timeout: Runnable? = null
     private var callbackConnected = false
+    private var recoveryUsed = false
+    private var recoveryPending = false
+    private var recovery: Runnable? = null
 
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
 
@@ -108,6 +111,8 @@ internal class KatnissPrebind(
         if (value) {
             if (binding || finishing || connection != null) enablePending = true else start()
         } else {
+            cancelRecovery()
+            recoveryPending = false
             enablePending = false
             attempted = false
             finish()
@@ -132,8 +137,24 @@ internal class KatnissPrebind(
                     Log.i(TAG, "prebind_connected")
                 }
             }
-            override fun onServiceDisconnected(name: ComponentName?) { checkMain(); if (connection === this) { Log.i(TAG, "prebind_disconnected"); finish() } }
-            override fun onBindingDied(name: ComponentName?) { checkMain(); if (connection === this) { Log.i(TAG, "prebind_binding_died"); finish() } }
+            override fun onServiceDisconnected(name: ComponentName?) {
+                checkMain()
+                if (connection !== this) return
+                // Android retains this binding and may reconnect after the process restarts.
+                reservation.invalidate(this)
+                callbackConnected = false
+                Log.i(TAG, "prebind_disconnected_waiting_for_system")
+            }
+            override fun onBindingDied(name: ComponentName?) {
+                checkMain()
+                if (connection !== this) return
+                Log.i(TAG, "prebind_binding_died")
+                if (enabled && !closed && !recoveryUsed) {
+                    recoveryUsed = true
+                    recoveryPending = true
+                }
+                finish()
+            }
             override fun onNullBinding(name: ComponentName?) { checkMain(); if (connection === this) { Log.i(TAG, "prebind_refused null_binding"); finish() } }
         }
         if (!reservation.acquire(conn)) {
@@ -168,6 +189,8 @@ internal class KatnissPrebind(
         checkMain()
         closed = true
         enablePending = false
+        recoveryPending = false
+        cancelRecovery()
         finish()
     }
 
@@ -191,6 +214,25 @@ internal class KatnissPrebind(
         val startRequested = enablePending
         enablePending = false
         if (released && startRequested && enabled && !closed) start()
+        else if (released && recoveryPending && enabled && !closed) {
+            recoveryPending = false
+            lateinit var task: Runnable
+            task = Runnable {
+                if (recovery !== task) return@Runnable
+                recovery = null
+                if (!closed && enabled && connection == null) {
+                    attempted = false
+                    start()
+                }
+            }
+            recovery = task
+            schedule(task)
+        } else recoveryPending = false
+    }
+
+    private fun cancelRecovery() {
+        recovery?.let(cancel)
+        recovery = null
     }
 
     private fun clearTimeout() {

@@ -38,8 +38,52 @@ class KatnissPrebindTest {
         second.onServiceDisconnected(null)
         assertNull(reservation.snapshot())
         second.onServiceConnected(null, Binder())
-        assertNull(reservation.snapshot())
+        assertTrue(reservation.isCurrent(reservation.snapshot()))
         prebind.close()
+    }
+
+    @Test fun deadBindingGetsOneDelayedRecoveryAfterRelease() = onMain {
+        var scheduled: Runnable? = null
+        var binds = 0
+        var unbinds = 0
+        val connections = mutableListOf<ServiceConnection>()
+        val prebind = KatnissPrebind({ _, conn, _ -> binds++; connections.add(conn); true },
+            { unbinds++ }, PrebindReservation(), schedule = { scheduled = it }, cancel = { scheduled = null })
+        prebind.setEnabled(true)
+        connections[0].onServiceConnected(null, Binder())
+        connections[0].onBindingDied(null)
+        assertEquals(1, unbinds)
+        val recovery = scheduled!!
+        recovery.run()
+        assertEquals(2, binds)
+        connections[1].onServiceConnected(null, Binder())
+        connections[1].onBindingDied(null)
+        assertEquals(2, unbinds)
+        assertNull(scheduled)
+        recovery.run()
+        assertEquals(2, binds)
+        prebind.close()
+    }
+
+    @Test fun deadBindingRecoveryIsCancelledOnCloseOrUncertainUnbind() = onMain {
+        for (failUnbind in listOf(false, true)) {
+            var scheduled: Runnable? = null
+            var binds = 0
+            lateinit var conn: ServiceConnection
+            val prebind = KatnissPrebind({ _, c, _ -> binds++; conn = c; true },
+                { if (failUnbind) throw IllegalStateException() }, PrebindReservation(),
+                schedule = { scheduled = it }, cancel = { scheduled = null })
+            prebind.setEnabled(true)
+            conn.onServiceConnected(null, Binder())
+            conn.onBindingDied(null)
+            if (failUnbind) assertNull(scheduled) else {
+                val stale = scheduled!!
+                prebind.close()
+                stale.run()
+            }
+            assertEquals(1, binds)
+            prebind.close()
+        }
     }
 
     @Test fun synchronousConnectionIsNotPublishedUntilBindAccepted() = onMain {
