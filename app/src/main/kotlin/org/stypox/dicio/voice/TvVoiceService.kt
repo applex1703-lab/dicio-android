@@ -63,6 +63,8 @@ internal class PrebindTimer(
 internal class PrebindReservation {
     private var owner: Any? = null
     private var connected: Any? = null
+    private var uncertain = false
+    private val waiters = mutableSetOf<Runnable>()
     fun acquire(token: Any): Boolean {
         if (owner != null) return false
         owner = token
@@ -72,6 +74,16 @@ internal class PrebindReservation {
         check(owner === token)
         invalidate(token)
         owner = null
+        val ready = waiters.toList()
+        waiters.clear()
+        ready.forEach { it.run() }
+    }
+    fun awaitRelease(waiter: Runnable) { if (!uncertain) waiters.add(waiter) }
+    fun cancelWait(waiter: Runnable) { waiters.remove(waiter) }
+    fun markUncertain(token: Any) {
+        check(owner === token)
+        uncertain = true
+        waiters.clear()
     }
     fun markConnected(token: Any) { if (owner === token && connected == null) connected = Any() }
     fun invalidate(token: Any) { if (owner === token) connected = null }
@@ -104,6 +116,7 @@ internal class KatnissPrebind(
     private var recoveryPending = false
     private var recovery: Runnable? = null
     private var connectedAt: Long? = null
+    private var reservationWait: Runnable? = null
 
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
 
@@ -114,6 +127,7 @@ internal class KatnissPrebind(
         if (value) {
             if (binding || finishing || connection != null) enablePending = true else start()
         } else {
+            cancelReservationWait()
             cancelRecovery()
             recoveryPending = false
             enablePending = false
@@ -167,6 +181,20 @@ internal class KatnissPrebind(
         }
         if (!reservation.acquire(conn)) {
             Log.i(TAG, "prebind_skipped reservation_busy")
+            if (enabled && !closed) {
+                lateinit var waiter: Runnable
+                waiter = Runnable {
+                    if (reservationWait === waiter) {
+                        reservationWait = null
+                        if (enabled && !closed) {
+                            attempted = false
+                            start()
+                        }
+                    }
+                }
+                reservationWait = waiter
+                reservation.awaitRelease(waiter)
+            }
             return
         }
         connection = conn
@@ -198,6 +226,7 @@ internal class KatnissPrebind(
         closed = true
         enablePending = false
         recoveryPending = false
+        cancelReservationWait()
         cancelRecovery()
         finish()
     }
@@ -216,7 +245,7 @@ internal class KatnissPrebind(
         finishPending = false
         finishing = true
         val released = try { unbind(conn); true } catch (_: Exception) { false }
-        if (released) reservation.release(conn)
+        if (released) reservation.release(conn) else reservation.markUncertain(conn)
         finishing = false
         // On uncertain cleanup retain the process reservation and never retry.
         Log.i(TAG, if (released) "prebind_unbound" else "prebind_unbind_uncertain; further prebinds blocked until process exit")
@@ -242,6 +271,11 @@ internal class KatnissPrebind(
     private fun cancelRecovery() {
         recovery?.let(cancel)
         recovery = null
+    }
+
+    private fun cancelReservationWait() {
+        reservationWait?.let(reservation::cancelWait)
+        reservationWait = null
     }
 
     private fun clearTimeout() {

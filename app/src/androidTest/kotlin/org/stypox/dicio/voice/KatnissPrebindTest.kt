@@ -14,6 +14,64 @@ class KatnissPrebindTest {
     private fun onMain(block: () -> Unit) =
         InstrumentationRegistry.getInstrumentation().runOnMainSync(block)
 
+    @Test fun busyInstanceStartsOnceAfterConfirmedRelease() = onMain {
+        val reservation = PrebindReservation()
+        var firstUnbinds = 0
+        var secondBinds = 0
+        var secondUnbinds = 0
+        val first = KatnissPrebind({ _, _, _ -> true }, { firstUnbinds++ }, reservation)
+        val second = KatnissPrebind({ _, _, _ ->
+            assertEquals(1, firstUnbinds)
+            secondBinds++
+            true
+        }, { secondUnbinds++ }, reservation)
+        first.setEnabled(true)
+        second.setEnabled(true)
+        second.start()
+        assertEquals(0, secondBinds)
+        first.close()
+        assertEquals(1, secondBinds)
+        first.close()
+        second.setEnabled(true)
+        assertEquals(1, secondBinds)
+        second.close()
+        assertEquals(1, secondUnbinds)
+    }
+
+    @Test fun waitingInstanceDoesNotStartAfterShutdownOrUncertainUnbind() = onMain {
+        for (uncertain in listOf(false, true)) {
+            val reservation = PrebindReservation()
+            var binds = 0
+            val first = KatnissPrebind({ _, _, _ -> true }, {
+                if (uncertain) throw IllegalStateException()
+            }, reservation)
+            val second = KatnissPrebind({ _, _, _ -> binds++; true }, {}, reservation)
+            first.setEnabled(true)
+            second.setEnabled(true)
+            if (!uncertain) second.close()
+            first.close()
+            second.start()
+            assertEquals(0, binds)
+            second.close()
+            val third = KatnissPrebind({ _, _, _ -> binds++; true }, {}, reservation)
+            third.setEnabled(true)
+            assertEquals(if (uncertain) 0 else 1, binds)
+            third.close()
+        }
+    }
+
+    @Test fun releaseNotificationHonoursReentrantShutdown() = onMain {
+        val reservation = PrebindReservation()
+        var secondBinds = 0
+        lateinit var second: KatnissPrebind
+        val first = KatnissPrebind({ _, _, _ -> true }, { second.close() }, reservation)
+        second = KatnissPrebind({ _, _, _ -> secondBinds++; true }, {}, reservation)
+        first.setEnabled(true)
+        second.setEnabled(true)
+        first.close()
+        assertEquals(0, secondBinds)
+    }
+
     @Test fun connectedGenerationInvalidatesOnDisableDisconnectAndStaleCallback() = onMain {
         val reservation = PrebindReservation()
         val connections = mutableListOf<ServiceConnection>()
