@@ -137,7 +137,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         }
         return LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.TOP
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             setPadding(dp(56), dp(72), dp(56), dp(32))
             background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
                 Color.argb(255, 0, 0, 0),
@@ -222,7 +222,8 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
 
     private fun LinearLayout.line(size: Int, colour: Int): TextView = TextView(app).also {
         it.textSize = size.toFloat()
-        it.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+        it.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        it.gravity = Gravity.CENTER_HORIZONTAL
         it.setTextColor(colour)
         it.setPadding(0, dp(4), 0, dp(4))
         val textWidth = minOf((app.resources.displayMetrics.widthPixels * 0.7f).toInt(), dp(720))
