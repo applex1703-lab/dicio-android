@@ -60,6 +60,9 @@ internal fun voiceStatus(presentation: org.stypox.dicio.eval.VoicePresentation, 
     else -> presentation.status
 }
 
+internal fun showVoiceStatus(status: CharSequence?, answer: CharSequence?): Boolean =
+    !status.isNullOrEmpty() && answer.isNullOrEmpty()
+
 /** Keeps a no-op start on an existing input from replacing its presentation subscription. */
 internal class TvVoiceRequestAction(
     private val isVisible: () -> Boolean,
@@ -158,8 +161,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                     override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                         transcript.visibility = if (transcript.text.isNullOrEmpty()) View.GONE else View.VISIBLE
                         answer.visibility = if (answer.text.isNullOrEmpty()) View.GONE else View.VISIBLE
-                        status.visibility = if (transcript.text.isNullOrEmpty() && answer.text.isNullOrEmpty() &&
-                            !status.text.isNullOrEmpty()) View.VISIBLE else View.GONE
+                        status.visibility = if (showVoiceStatus(status.text, answer.text)) View.VISIBLE else View.GONE
                     }
                     override fun afterTextChanged(s: Editable?) = Unit
                 })

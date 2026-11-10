@@ -19,4 +19,13 @@ class VoiceStatusTest : StringSpec({
         voiceStatus(VoicePresentation(request = "текст", status = "Думаю…"), SttState.WaitingForResult) shouldBe "Думаю…"
         voiceStatus(VoicePresentation(request = "текст", status = "Ответ", answer = "да"), SttState.Listening) shouldBe "Ответ"
     }
+    "status remains visible alongside a transcript until an answer appears" {
+        showVoiceStatus("Слушаю…", "") shouldBe true
+        showVoiceStatus("Распознаю…", "") shouldBe true
+        showVoiceStatus("Думаю…", "") shouldBe true
+        showVoiceStatus("Выполняю…", "") shouldBe true
+        showVoiceStatus("Ответ", "да") shouldBe false
+        showVoiceStatus("Не удалось выполнить запрос", "Ошибка") shouldBe false
+        showVoiceStatus("", "") shouldBe false
+    }
 })
