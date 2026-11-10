@@ -139,13 +139,16 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             gravity = Gravity.TOP
             setPadding(dp(48), dp(32), dp(48), dp(32))
             background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
-                Color.argb(240, 0, 0, 0),
-                Color.argb(200, 0, 0, 0),
-                Color.argb(150, 0, 0, 0),
+                Color.argb(250, 0, 0, 0),
+                Color.argb(225, 0, 0, 0),
+                Color.argb(195, 0, 0, 0),
             ))
             status = line(20, Color.rgb(230, 232, 237))
-            transcript = line(28, Color.WHITE)
-            answer = line(22, Color.rgb(230, 232, 237)).apply { maxLines = 8 }
+            transcript = line(26, Color.rgb(190, 194, 202))
+            answer = line(22, Color.WHITE).apply {
+                maxLines = 8
+                setPadding(0, dp(16), 0, dp(4))
+            }
             listOf(status, transcript, answer).forEach { view ->
                 view.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
                 view.addTextChangedListener(object : TextWatcher {
