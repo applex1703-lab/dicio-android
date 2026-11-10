@@ -25,6 +25,7 @@ class CurrentVoicePresentationTest : StringSpec({
         current.state.value.dismiss shouldBe true
         current.noInput()
         current.state.value.request shouldBe ""
+        current.state.value.answer shouldBe "Речь не распознана."
         current.state.value.dismiss shouldBe false
         current.clear()
         current.state.value shouldBe VoicePresentation()

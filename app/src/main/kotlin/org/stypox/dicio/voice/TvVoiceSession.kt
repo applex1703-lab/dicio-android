@@ -9,6 +9,8 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.service.voice.VoiceInteractionSession
 import android.text.TextUtils
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
@@ -108,48 +110,70 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             updates?.cancel()
             updates = null
             renderChoice(null)
-            if (visible) status.text = "Голосовой запрос прерван"
+            if (visible) answer.text = "Голосовой запрос прерван."
         },
         ensureUpdates = { ensureVoiceUpdates() },
         failed = {
-            status.text = "Распознавание речи недоступно"
-            if (updates == null) answer.text = "Откройте настройки Dicio и проверьте голосовой ввод."
+            answer.text = "Распознавание речи недоступно. Проверьте настройки голосового ввода."
         },
         hasPermission = {
             ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         },
         permissionDenied = {
             status.text = "Нет разрешения микрофона"
-            answer.text = "Откройте Dicio из списка приложений и разрешите запись звука."
+            answer.text = "Разрешите доступ к микрофону в настройках приложения."
         },
     )
 
     private fun dp(value: Int) = (app.resources.displayMetrics.density * value).toInt()
 
     override fun onCreateContentView(): View {
-        // The window itself is transparent; only the compact top panel and dim layer are drawn.
+        // Text sits directly over a dimmed TV image, without a separate rectangular panel.
         window?.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            attributes = attributes.apply { dimAmount = 0.35f }
+            attributes = attributes.apply { dimAmount = 0.55f }
         }
         return LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.TOP
-            setPadding(dp(48), dp(24), dp(48), dp(24))
-            setBackgroundColor(Color.rgb(22, 24, 29))
-            status = line(18, Color.rgb(138, 180, 248))
+            setPadding(dp(48), dp(32), dp(48), dp(32))
+            setBackgroundColor(Color.TRANSPARENT)
+            status = line(20, Color.rgb(230, 232, 237))
             transcript = line(28, Color.WHITE)
             answer = line(22, Color.rgb(230, 232, 237)).apply { maxLines = 8 }
-            choiceScroll = ScrollView(app).apply {
+            listOf(status, transcript, answer).forEach { view ->
+                view.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+                view.addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                        transcript.visibility = if (transcript.text.isNullOrEmpty()) View.GONE else View.VISIBLE
+                        answer.visibility = if (answer.text.isNullOrEmpty()) View.GONE else View.VISIBLE
+                        status.visibility = if (transcript.text.isNullOrEmpty() && answer.text.isNullOrEmpty() &&
+                            !status.text.isNullOrEmpty()) View.VISIBLE else View.GONE
+                    }
+                    override fun afterTextChanged(s: Editable?) = Unit
+                })
+            }
+            transcript.visibility = View.GONE
+            answer.visibility = View.GONE
+            status.visibility = View.GONE
+            choiceScroll = object : ScrollView(app) {
+                override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                    val limit = dp(240)
+                    val size = View.MeasureSpec.getSize(heightMeasureSpec)
+                    val mode = View.MeasureSpec.getMode(heightMeasureSpec)
+                    val height = if (mode == View.MeasureSpec.UNSPECIFIED) limit else minOf(size, limit)
+                    super.onMeasure(widthMeasureSpec, View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.AT_MOST))
+                }
+            }.apply {
                 visibility = View.GONE
                 isFillViewport = false
                 choiceButtons = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
                 addView(choiceButtons)
             }
             addView(choiceScroll, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(240)))
-            line(14, Color.LTGRAY).text = "Назад — закрыть · Новый запрос — кнопка Ассистента"
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
     }
 
@@ -289,13 +313,13 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                         updates?.cancel()
                         updates = null
                         renderChoice(null)
-                        if (visible) status.text = "Голосовой запрос прерван"
+                        if (visible) answer.text = "Голосовой запрос прерван."
                     }
                     if (started && visible) ensureVoiceUpdates()
-                    else if (visible) status.text = "Распознавание речи недоступно"
+                    else if (visible) answer.text = "Распознавание речи недоступно."
                 } else if (visible) {
                     status.text = "Нет разрешения микрофона"
-                    answer.text = "Откройте Dicio из списка приложений и разрешите запись звука."
+                    answer.text = "Разрешите доступ к микрофону в настройках приложения."
                 }
                 return true
             }

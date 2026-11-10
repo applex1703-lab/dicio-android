@@ -38,7 +38,7 @@ internal class CurrentVoicePresentation {
     fun choosing() { mutable.value = mutable.value.copy(choice = null, answer = "", status = "Выполняю…") }
     fun noInput() {
         mutable.value = VoicePresentation(status = "Речь не распознана",
-            answer = "Нажмите кнопку Ассистента, чтобы попробовать снова.")
+            answer = "Речь не распознана.")
     }
 }
 
