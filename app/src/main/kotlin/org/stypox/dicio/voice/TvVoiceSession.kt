@@ -26,6 +26,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
+import android.widget.FrameLayout
+import android.view.animation.DecelerateInterpolator
 import coil.ImageLoader
 import coil.request.ImageRequest
 import coil.request.Disposable
@@ -109,6 +111,8 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private lateinit var choiceButtons: LinearLayout
     private lateinit var videoContainer: LinearLayout
     private lateinit var videoCards: LinearLayout
+    private lateinit var videoDetails: TextView
+    private lateinit var contentRoot: LinearLayout
     private var renderedVideos: VideoRow? = null
     private val imageRequests = mutableListOf<Disposable>()
     private val imageLoader by lazy {
@@ -159,6 +163,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             attributes = attributes.apply { dimAmount = 0.35f }
         }
         return LinearLayout(app).apply {
+            contentRoot = this
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             setPadding(dp(56), dp(72), dp(56), dp(32))
@@ -258,15 +263,33 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                 visibility = View.GONE
                 addView(TextView(app).apply {
                     text = "Rutube"
-                    textSize = 20f
-                    setTextColor(Color.WHITE)
-                    setPadding(0, dp(12), 0, dp(8))
+                    textSize = 17f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    setTextColor(Color.rgb(226, 233, 244))
+                    setPadding(dp(4), dp(6), 0, dp(4))
                 })
                 addView(HorizontalScrollView(app).apply {
                     isHorizontalScrollBarEnabled = false
-                    videoCards = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
+                    clipChildren = false
+                    clipToPadding = false
+                    videoCards = LinearLayout(app).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        clipChildren = false
+                        clipToPadding = false
+                        setPadding(dp(4), dp(5), dp(8), dp(4))
+                    }
                     addView(videoCards)
                 })
+                videoDetails = TextView(app).apply {
+                    visibility = View.GONE
+                    textSize = 14f
+                    setTextColor(Color.rgb(220, 229, 241))
+                    maxLines = 3
+                    ellipsize = TextUtils.TruncateAt.END
+                    setPadding(dp(4), dp(8), dp(4), 0)
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }
+                addView(videoDetails)
             }
             addView(videoContainer, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -275,62 +298,110 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
 
     private fun renderVideos(row: VideoRow?) {
         if (!::videoContainer.isInitialized || renderedVideos == row) return
+        val previousFocus = if (renderedVideos?.id == row?.id) videoCards.findFocus()?.tag as? String else null
         imageRequests.forEach { it.dispose() }
         imageRequests.clear()
         renderedVideos = row
+        contentRoot.setPadding(dp(56), dp(if (row != null && row.cards.isNotEmpty()) 24 else 72), dp(56), dp(32))
         val compact = row != null || renderedChoice != null
         transcript.maxLines = if (compact) 2 else Int.MAX_VALUE
         transcript.ellipsize = if (compact) TextUtils.TruncateAt.END else null
         videoCards.removeAllViews()
+        videoDetails.visibility = View.GONE
+        videoDetails.text = ""
         videoContainer.visibility = if (row == null || row.cards.isEmpty()) View.GONE else View.VISIBLE
         row?.cards?.forEach { card ->
             val item = LinearLayout(app).apply {
                 orientation = LinearLayout.VERTICAL
                 isFocusable = true
                 isClickable = true
+                clipChildren = false
+                clipToPadding = false
+                tag = card.id
                 contentDescription = listOf(card.title, card.author).filter { it.isNotBlank() }.joinToString(", ")
-                setPadding(dp(4), dp(4), dp(4), dp(4))
-                fun updateFocus(focused: Boolean) {
-                    background = GradientDrawable().apply {
-                        setColor(if (focused) Color.rgb(46, 67, 105) else Color.TRANSPARENT)
-                        cornerRadius = dp(8).toFloat()
-                        if (focused) setStroke(dp(3), Color.WHITE)
-                    }
-                }
-                updateFocus(false)
-                setOnFocusChangeListener { _, focused -> updateFocus(focused) }
                 setOnClickListener { coordinator.selectVideo(this@TvVoiceSession, row.id, card.id) }
+            }
+            val poster = FrameLayout(app).apply {
+                background = GradientDrawable().apply {
+                    setColor(Color.rgb(38, 48, 64))
+                    cornerRadius = dp(9).toFloat()
+                }
+                clipToOutline = true
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
             val image = ImageView(app).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
-                setBackgroundColor(Color.rgb(38, 48, 64))
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
-            item.addView(image, LinearLayout.LayoutParams(dp(220), dp(124)))
-            item.addView(TextView(app).apply {
+            poster.addView(image, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT))
+            val focusBorder = View(app).apply {
+                background = GradientDrawable().apply {
+                    setColor(Color.TRANSPARENT)
+                    cornerRadius = dp(9).toFloat()
+                    setStroke(maxOf(1, dp(2)), Color.WHITE)
+                }
+                alpha = 0f
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+            poster.addView(focusBorder, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT))
+            item.addView(poster, LinearLayout.LayoutParams(dp(150), dp(84)))
+            val titleView = TextView(app).apply {
                 text = card.title
-                setTextColor(Color.WHITE)
-                textSize = 16f
+                setTextColor(Color.rgb(242, 246, 252))
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                textSize = 15f
+                minLines = 2
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
-            }, LinearLayout.LayoutParams(dp(220), LinearLayout.LayoutParams.WRAP_CONTENT))
-            item.addView(TextView(app).apply {
+                setPadding(0, dp(5), 0, 0)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+            item.addView(titleView, LinearLayout.LayoutParams(dp(150), LinearLayout.LayoutParams.WRAP_CONTENT))
+            val authorView = TextView(app).apply {
                 text = card.author
-                setTextColor(Color.LTGRAY)
-                textSize = 13f
+                setTextColor(Color.rgb(174, 188, 207))
+                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                textSize = 12f
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
-            }, LinearLayout.LayoutParams(dp(220), LinearLayout.LayoutParams.WRAP_CONTENT))
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+            item.addView(authorView, LinearLayout.LayoutParams(dp(150), LinearLayout.LayoutParams.WRAP_CONTENT))
+            item.setOnFocusChangeListener { _, focused ->
+                poster.animate().cancel()
+                focusBorder.animate().cancel()
+                poster.animate().scaleX(if (focused) 1.025f else 1f).scaleY(if (focused) 1.025f else 1f)
+                    .translationY(if (focused) -dp(3).toFloat() else 0f)
+                    .setDuration(160).setInterpolator(DecelerateInterpolator()).start()
+                focusBorder.animate().alpha(if (focused) 1f else 0f).setDuration(120).start()
+                if (focused) item.post {
+                    if (item.hasFocus() && renderedVideos == row) {
+                        fun truncated(view: TextView): Boolean = view.layout?.let { layout ->
+                            (0 until layout.lineCount).any { layout.getEllipsisCount(it) > 0 }
+                        } == true
+                        val needsDetails = truncated(titleView) || truncated(authorView)
+                        videoDetails.text = if (needsDetails) listOf(card.title, card.author)
+                            .filter { it.isNotBlank() }.joinToString(" · ") else ""
+                        videoDetails.visibility = if (needsDetails) View.VISIBLE else View.GONE
+                    }
+                } else videoDetails.visibility = View.GONE
+            }
             videoCards.addView(item, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(12) })
             card.thumbnail?.let { url ->
-                val request = ImageRequest.Builder(app).data(url).target(image).size(dp(220), dp(124))
+                val request = ImageRequest.Builder(app).data(url).target(image).size(dp(150), dp(84))
                     .diskCachePolicy(CachePolicy.DISABLED).memoryCachePolicy(CachePolicy.DISABLED).build()
                 imageRequests.add(imageLoader.enqueue(request))
             }
         }
         if (row != null && row.cards.isNotEmpty()) videoCards.post {
-            if (visible && renderedVideos?.id == row.id) videoCards.getChildAt(0)?.requestFocus()
+            if (visible && renderedVideos == row && renderedChoice == null) {
+                val restored = (0 until videoCards.childCount).map { videoCards.getChildAt(it) }
+                    .firstOrNull { it.tag == previousFocus }
+                (restored ?: videoCards.getChildAt(0))?.requestFocus()
+            }
         }
     }
 
