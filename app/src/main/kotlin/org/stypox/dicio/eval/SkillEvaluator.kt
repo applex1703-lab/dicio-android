@@ -39,6 +39,9 @@ import org.stypox.dicio.llm.VpnDispatcher
 import org.stypox.dicio.llm.VpnDispatch
 import org.stypox.dicio.llm.HappConnect
 import org.stypox.dicio.llm.VpnOpenBlockedException
+import org.stypox.dicio.llm.LocalMediaRequest
+import org.stypox.dicio.llm.LocalOpenAppRequest
+import org.stypox.dicio.llm.MediaCommand
 
 internal sealed interface ChoiceTarget {
     data class Search(val target: SearchTarget) : ChoiceTarget
@@ -242,6 +245,47 @@ class SkillEvaluatorImpl(
                     runExplicitVpn(request, speechRequest)
                     return
                 }
+                val localMedia = LocalMediaRequest.parse(request)
+                if (localMedia != null) {
+                    val media = optionalSnapshot(org.stypox.dicio.llm.MediaActions.Snapshot(emptyList())) {
+                        tvActions.mediaSnapshot()
+                    }
+                    coroutineContext.ensureActive()
+                    val candidates = media.targets.filter { localMedia.operation in it.operations }
+                    if (candidates.isEmpty()) {
+                        pendingClarification.clear()
+                        val message = "Не найден доступный проигрыватель для этой команды. Проверьте доступ Dicio к уведомлениям и возможности проигрывателя."
+                        presentation.error(message)
+                        directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
+                        return
+                    }
+                    val target = candidates.singleOrNull()
+                    if (target != null) {
+                        pendingClarification.clear()
+                        executeLocalAction(request, AssistantIntent.Media(
+                            MediaCommand(target.id, localMedia.operation, localMedia.seconds)),
+                            emptyList(), media, speechRequest)
+                        return
+                    }
+                    pendingClarification.clear()
+                    val message = "Найдено несколько проигрывателей. Скажите, каким управлять."
+                    presentation.answer(message)
+                    directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
+                    return
+                }
+                if (LocalOpenAppRequest.isCandidate(request)) {
+                    val apps = try { tvActions.catalog() } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) { emptyList() }
+                    coroutineContext.ensureActive()
+                    val id = LocalOpenAppRequest.parse(request, apps.map { LocalOpenAppRequest.Entry(it.id, it.label) })
+                    if (id != null) {
+                        pendingClarification.clear()
+                        executeLocalAction(request, AssistantIntent.OpenApp(id), apps,
+                            org.stypox.dicio.llm.MediaActions.Snapshot(emptyList()), speechRequest)
+                        return
+                    }
+                }
                 val previousClarification = pendingClarification.consume()
                 if (previousClarification != null && isClarificationCancellation(event.utterances[0].first)) {
                     _state.value = InteractionLog(emptyList(), null)
@@ -378,6 +422,38 @@ class SkillEvaluatorImpl(
                     )
                 )
             }
+        }
+    }
+
+    private suspend fun executeLocalAction(request: String, action: AssistantIntent, apps: List<org.stypox.dicio.llm.TvActions.App>,
+        media: org.stypox.dicio.llm.MediaActions.Snapshot, speechRequest: Any) {
+        coroutineContext.ensureActive()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
+        directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.stopSpeaking() }
+        coroutineContext.ensureActive()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
+        outputSlot.clear()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
+        previousFallback = null
+        _state.value = InteractionLog(emptyList(), null)
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
+        presentation.thinking(request)
+        try {
+            coroutineContext.ensureActive()
+            if (!directSpeechRequests.isCurrent(speechRequest)) return
+            val result = tvActions.execute(action, apps, skillContext.locale, media)
+            coroutineContext.ensureActive()
+            if (!directSpeechRequests.isCurrent(speechRequest)) return
+            presentation.answer(result.text, silent = !result.speak)
+            if (result.speak) directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(result.text) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            coroutineContext.ensureActive()
+            if (!directSpeechRequests.isCurrent(speechRequest)) return
+            val message = error.localizedMessage ?: "Не удалось выполнить команду."
+            presentation.error(message)
+            directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
         }
     }
 

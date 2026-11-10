@@ -11,9 +11,7 @@ import kotlin.coroutines.coroutineContext
 
 /** The observed Happ 4.8.0 deep link is not a documented compatibility guarantee. */
 internal object HappConnect {
-    private val request = Regex("^(?:(?:пожалуйста|сейчас)[,]?\\s+){0,2}(?:подключи|включи|connect)\\s+(?:(?:пожалуйста|сейчас)[,]?\\s+){0,2}(?:(?:vpn|впн)\\s+)?(?:happ|хэпп)(?:\\s+(?:vpn|впн))?(?:[,]?\\s+(?:пожалуйста|сейчас)){0,2}[.!]?$", RegexOption.IGNORE_CASE)
-
-    fun isExplicitRequest(text: String): Boolean = request.matches(text.trim())
+    fun isExplicitRequest(text: String): Boolean = LocalVpnCommands.classify(text) == LocalVpnCommands.Command.CONNECT_HAPP
 
     suspend fun execute(userRequest: String, launcher: HappLauncher): TvActions.Execution {
         coroutineContext.ensureActive()

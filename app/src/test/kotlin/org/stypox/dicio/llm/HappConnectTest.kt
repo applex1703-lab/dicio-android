@@ -44,6 +44,23 @@ class HappConnectTest : StringSpec({
         calls shouldBe 1
         result.text.contains("подтвердить не удалось") shouldBe true
     }
+    "new Happ commands use the same gate as execution" {
+        var calls = 0
+        val launcher = object : HappLauncher {
+            override fun available() = true
+            override fun launch() { calls++ }
+        }
+        for (text in listOf("вруби happ", "запусти VPN Happ", "запусти хэпп ви пи эн")) {
+            HappConnect.isExplicitRequest(text) shouldBe true
+            runBlocking { HappConnect.execute(text, launcher) }
+        }
+        calls shouldBe 3
+        for (text in listOf("запусти vpn", "открой happ", "не вруби happ", "запусти happ?", "запусти happ и музыку", "найди запусти happ")) {
+            HappConnect.isExplicitRequest(text) shouldBe false
+            shouldThrow<IllegalStateException> { runBlocking { HappConnect.execute(text, launcher) } }
+        }
+        calls shouldBe 3
+    }
     "selected action dispatches once without requiring a phrase template" {
         var calls = 0
         val launcher = object : HappLauncher {

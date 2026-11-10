@@ -72,6 +72,33 @@ class VpnDispatcherTest : StringSpec({
         shouldThrow<IllegalStateException> { runBlocking { dispatcher(fake).begin("не подключи vpn") } }
         fake.calls.size shouldBe 0
     }
+    "synonyms pass the same execution gates without confusing Happ and general targets" {
+        val fake = Fake().apply { entries = listOf(happ, other) }
+        val dispatcher = dispatcher(fake)
+        for (text in listOf("вруби vpn", "запусти впн", "пожалуйста, запусти сейчас ви пи эн")) {
+            VpnDispatcher.isExplicitRequest(text) shouldBe true
+            (runBlocking { dispatcher.begin(text) } is VpnDispatch.Choice) shouldBe true
+        }
+        for (text in listOf("выруби vpn", "останови впн")) {
+            VpnDispatcher.isDisconnectRequest(text) shouldBe true
+            runBlocking { dispatcher.disconnect(text) }.actionSent shouldBe false
+        }
+        for (text in listOf("выруби happ", "happ vpn останови")) {
+            VpnDispatcher.isDisconnectRequest(text) shouldBe true
+            runBlocking { dispatcher.disconnect(text) }.actionSent shouldBe true
+        }
+        fake.calls shouldBe listOf("disconnect", "disconnect")
+        fake.calls.clear()
+        for (text in listOf("открой vpn", "не вруби vpn", "запусти vpn?", "запусти vpn и музыку", "найди запусти vpn")) {
+            VpnDispatcher.isExplicitRequest(text) shouldBe false
+            shouldThrow<IllegalStateException> { runBlocking { dispatcher.begin(text) } }
+        }
+        for (text in listOf("не выруби vpn", "останови vpn?", "останови vpn и свет", "найди останови vpn")) {
+            VpnDispatcher.isDisconnectRequest(text) shouldBe false
+            shouldThrow<IllegalStateException> { runBlocking { dispatcher.disconnect(text) } }
+        }
+        fake.calls shouldBe emptyList()
+    }
     "zero candidates reports incomplete visibility" {
         val fake = Fake()
         val result = runBlocking { dispatcher(fake).begin("подключи vpn") } as VpnDispatch.Message

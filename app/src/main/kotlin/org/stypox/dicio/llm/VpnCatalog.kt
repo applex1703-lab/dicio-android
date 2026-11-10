@@ -187,6 +187,35 @@ internal sealed interface VpnDispatch {
     data class Message(val text: String, val actionSent: Boolean = false) : VpnDispatch
 }
 
+/** Full-phrase local commands only. The same classification gates execution and routing. */
+internal object LocalVpnCommands {
+    enum class Command { CONNECT_GENERAL, CONNECT_HAPP, DISCONNECT_GENERAL, DISCONNECT_HAPP }
+
+    private const val VPN = "(?:vpn|впн|ви\\s+пи\\s+эн)"
+    private const val HAPP = "(?:happ|хэпп)"
+    private const val HAPP_TARGET = "(?:$HAPP(?:\\s+$VPN)?|$VPN\\s+$HAPP)"
+    private const val CONNECT = "(?:подключи|включи|вруби|запусти|connect)"
+    private const val DISCONNECT = "(?:выключи|отключи|выруби|останови|disconnect)"
+    private const val PREFIX = "(?:(?:пожалуйста|сейчас)[,]?\\s+){0,2}"
+    private const val SUFFIX = "(?:[,]?\\s+(?:пожалуйста|сейчас)){0,2}[.!]?"
+    private fun pattern(body: String) = Regex("^$PREFIX$body$SUFFIX${'$'}", RegexOption.IGNORE_CASE)
+    private val connectGeneral = pattern("$CONNECT\\s+$PREFIX$VPN")
+    private val connectHapp = pattern("$CONNECT\\s+$PREFIX$HAPP_TARGET")
+    private val disconnectGeneral = pattern("(?:$DISCONNECT\\s+$VPN|$VPN\\s+$DISCONNECT)")
+    private val disconnectHapp = pattern("(?:$DISCONNECT\\s+$HAPP_TARGET|$HAPP_TARGET\\s+$DISCONNECT)")
+
+    fun classify(text: String): Command? {
+        val trimmed = text.trim()
+        return when {
+            connectGeneral.matches(trimmed) -> Command.CONNECT_GENERAL
+            connectHapp.matches(trimmed) -> Command.CONNECT_HAPP
+            disconnectGeneral.matches(trimmed) -> Command.DISCONNECT_GENERAL
+            disconnectHapp.matches(trimmed) -> Command.DISCONNECT_HAPP
+            else -> null
+        }
+    }
+}
+
 /** One dispatcher instance per UI owner. Model output never supplies packages or URIs. */
 internal class VpnDispatcher(private val backend: VpnBackend, private val main: CoroutineDispatcher = Dispatchers.Main,
     private val onDispatched: (String) -> Unit = {}) {
@@ -194,14 +223,9 @@ internal class VpnDispatcher(private val backend: VpnBackend, private val main: 
     private var issued: Map<String, VpnCandidate> = emptyMap()
 
     companion object {
-        private val request = Regex("^(?:(?:пожалуйста|сейчас)[,]?\\s+){0,2}(?:подключи|включи|connect)\\s+(?:(?:пожалуйста|сейчас)[,]?\\s+){0,2}(?:vpn|впн|ви\\s+пи\\s+эн)(?:[,]?\\s+(?:пожалуйста|сейчас)){0,2}[.!]?${'$'}", RegexOption.IGNORE_CASE)
-        private const val VPN = "(?:vpn|впн|ви\\s+пи\\s+эн)"
-        private const val HAPP = "(?:happ|хэпп)"
-        private val disconnect = Regex("^(?:выключи|отключи)\\s+$VPN[.!]?${'$'}|^$VPN\\s+(?:выключи|отключи)[.!]?${'$'}", RegexOption.IGNORE_CASE)
-        private val disconnectHapp = Regex("^(?:выключи|отключи)\\s+(?:$HAPP(?:\\s+$VPN)?|$VPN\\s+$HAPP)[.!]?${'$'}|^(?:$HAPP(?:\\s+$VPN)?|$VPN\\s+$HAPP)\\s+(?:выключи|отключи)[.!]?${'$'}", RegexOption.IGNORE_CASE)
         private val vpnMention = Regex("vpn|\\bhapp\\b|(?<![а-яё])(?:впн|хэпп|ви\\s+пи\\s+эн)(?![а-яё])", RegexOption.IGNORE_CASE)
-        fun isExplicitRequest(text: String) = request.matches(text.trim())
-        fun isDisconnectRequest(text: String) = disconnect.matches(text.trim()) || disconnectHapp.matches(text.trim())
+        fun isExplicitRequest(text: String) = LocalVpnCommands.classify(text) == LocalVpnCommands.Command.CONNECT_GENERAL
+        fun isDisconnectRequest(text: String) = LocalVpnCommands.classify(text) in setOf(LocalVpnCommands.Command.DISCONNECT_GENERAL, LocalVpnCommands.Command.DISCONNECT_HAPP)
         fun mentionsVpn(text: String) = vpnMention.containsMatchIn(text)
     }
 
@@ -247,7 +271,7 @@ internal class VpnDispatcher(private val backend: VpnBackend, private val main: 
             check(isDisconnectRequest(userRequest)) { "Скажите явно: выключи VPN или выключи Happ VPN." }
             val candidates = snapshot()
             coroutineContext.ensureActive()
-            val explicitHapp = disconnectHapp.matches(userRequest.trim())
+            val explicitHapp = LocalVpnCommands.classify(userRequest) == LocalVpnCommands.Command.DISCONNECT_HAPP
             if (!explicitHapp && candidates.size > 1)
                 return@withLock VpnDispatch.Message("Видно несколько VPN-приложений. Уточните: выключи Happ VPN.")
             val target = candidates.singleOrNull { it.packageName == VpnDiscovery.HAPP && it.supported }
