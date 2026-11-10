@@ -4,6 +4,19 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
 class CurrentVoicePresentationTest : StringSpec({
+    "video rows and choices do not share state and are cleared on new input" {
+        val current = CurrentVoicePresentation()
+        current.thinking("test")
+        current.videos(1, listOf(VideoCard("id", "title", "author", null)))
+        current.state.value.videoRow?.cards?.size shouldBe 1
+        current.state.value.choice shouldBe null
+        current.choice(2, listOf(ChoiceOption("vpn", "VPN")), "choose")
+        current.state.value.videoRow shouldBe null
+        current.state.value.choice?.id shouldBe 2L
+        current.thinking("next")
+        current.state.value.videoRow shouldBe null
+        current.state.value.choice shouldBe null
+    }
     "repeated results retain only the current request and answer" {
         val current = CurrentVoicePresentation()
         repeat(1000) { index ->

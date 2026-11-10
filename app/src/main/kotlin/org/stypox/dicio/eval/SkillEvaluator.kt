@@ -33,7 +33,6 @@ import javax.inject.Singleton
 import javax.inject.Provider
 import org.dicio.skill.standard.util.MatchHelper
 import org.stypox.dicio.llm.AssistantIntent
-import org.stypox.dicio.llm.ContentSearch
 import org.stypox.dicio.llm.SearchTarget
 import org.stypox.dicio.llm.VpnDispatcher
 import org.stypox.dicio.llm.VpnDispatch
@@ -42,6 +41,7 @@ import org.stypox.dicio.llm.VpnOpenBlockedException
 import org.stypox.dicio.llm.LocalMediaRequest
 import org.stypox.dicio.llm.LocalOpenAppRequest
 import org.stypox.dicio.llm.MediaCommand
+import org.stypox.dicio.llm.RutubeResults
 
 internal sealed interface ChoiceTarget {
     data class Search(val target: SearchTarget) : ChoiceTarget
@@ -73,6 +73,7 @@ interface SkillEvaluator {
     @MainThread fun hasPendingClarification(): Boolean = false
     @MainThread fun resetVoicePresentation()
     @MainThread fun selectChoice(choiceId: Long, optionId: String) = Unit
+    @MainThread fun selectVideo(rowId: Long, videoId: String) = Unit
 }
 
 class SkillEvaluatorImpl(
@@ -91,6 +92,8 @@ class SkillEvaluatorImpl(
     private val sessionBoundary = InputSessionBoundary(scope, onClearFailure = ::reportVpnClearFailure, clearVpn = clearVpn)
     private val legacyLock = Mutex()
     private val pendingChoice = PendingChoice<ChoiceTarget>()
+    private val pendingVideo = PendingChoice<String>()
+    private val rutubeResults = RutubeResults()
     private val pendingClarification = PendingClarification(scope) { android.os.SystemClock.elapsedRealtime() }
     private val conversationHistory = ConversationHistory(scope) { android.os.SystemClock.elapsedRealtime() }
 
@@ -121,6 +124,7 @@ class SkillEvaluatorImpl(
         requests.cancel()
         if (!directSpeechRequests.isCurrent(speechRequest)) return
         pendingChoice.clear()
+        pendingVideo.clear()
         presentation.clear()
         if (!directSpeechRequests.isCurrent(speechRequest)) return
         sessionBoundary.afterVpnClear()
@@ -135,6 +139,7 @@ class SkillEvaluatorImpl(
         requests.cancel()
         if (!directSpeechRequests.isCurrent(speechRequest)) return
         pendingChoice.clear()
+        pendingVideo.clear()
         sessionBoundary.afterVpnClear {
             if (directSpeechRequests.isCurrent(speechRequest)) {
                 requests.replace { suspendProcessInputEvent(event, speechRequest) }
@@ -164,6 +169,7 @@ class SkillEvaluatorImpl(
             if (!directSpeechRequests.isCurrent(speechRequest)) return@end
             requests.cancel()
             pendingChoice.clear()
+            pendingVideo.clear()
             if (!preserveClarification) pendingClarification.clear()
             outputSlot.clear()
             _state.value = InteractionLog(emptyList(), null)
@@ -209,6 +215,44 @@ class SkillEvaluatorImpl(
                 directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
             }
         }
+    }
+
+    override fun selectVideo(rowId: Long, videoId: String) {
+        checkEntry()
+        val (_, id) = pendingVideo.consume(rowId, videoId) ?: return
+        val speechRequest = directSpeechRequests.next()
+        presentation.openingVideo()
+        requests.replace {
+            try {
+                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.stopSpeaking() }
+                coroutineContext.ensureActive()
+                tvActions.openRutubeVideo(id)
+                coroutineContext.ensureActive()
+                presentation.answer("", silent = true)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                coroutineContext.ensureActive()
+                val message = "Не удалось открыть видео в Rutube."
+                presentation.error(message)
+                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
+            }
+        }
+    }
+
+    private suspend fun showRutubeResults(query: String, speechRequest: Any) {
+        val videos = rutubeResults.search(query)
+        coroutineContext.ensureActive()
+        outputSlot.clear()
+        previousFallback = null
+        _state.value = InteractionLog(emptyList(), null)
+        if (videos.isEmpty()) {
+            val message = "В Rutube ничего не найдено."
+            presentation.answer(message)
+            directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
+            return
+        }
+        val id = pendingVideo.create(query, videos.associate { it.id to it.id })
+        presentation.videos(id, videos.map { VideoCard(it.id, it.title, it.author, it.thumbnail) })
     }
 
     private suspend fun suspendProcessInputEvent(event: InputEvent, speechRequest: Any) {
@@ -343,31 +387,19 @@ class SkillEvaluatorImpl(
                             directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
                             return
                         }
-                        if (decision is AssistantIntent.ChooseSearch) {
-                            try {
-                                val query = ContentSearch.validateQuery(decision.query)
-                                val targets = tvActions.searchTargets()
+                        if (decision is AssistantIntent.SearchRutube || decision is AssistantIntent.ChooseSearch) {
+                            val query = when (decision) {
+                                is AssistantIntent.SearchRutube -> decision.query
+                                is AssistantIntent.ChooseSearch -> decision.query
+                                else -> error("Unexpected search")
+                            }
+                            try { showRutubeResults(query, speechRequest) }
+                            catch (cancelled: CancellationException) { throw cancelled }
+                            catch (_: Exception) {
                                 coroutineContext.ensureActive()
-                                check(targets.isNotEmpty()) { "Нет доступных сервисов поиска." }
-                                val id = pendingChoice.create(query, targets.associate { it.id to ChoiceTarget.Search(it) })
-                                outputSlot.clear()
-                                previousFallback = null
-                                _state.value = InteractionLog(emptyList(), null)
-                                val question = "Где искать?"
-                                presentation.choice(id, targets.map { ChoiceOption(it.id, it.label) }, question)
-                                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (error: Exception) {
-                                coroutineContext.ensureActive()
-                                pendingChoice.clear()
-                                outputSlot.clear()
-                                previousFallback = null
-                                _state.value = InteractionLog(emptyList(), null)
-                                presentation.error(error.localizedMessage ?: "Не удалось получить сервисы поиска.")
-                                directSpeechRequests.ifCurrent(speechRequest) {
-                                    skillContext.speechOutputDevice.speak(error.localizedMessage ?: "Не удалось получить сервисы поиска.")
-                                }
+                                val message = "Не удалось загрузить результаты Rutube. Проверьте сеть и попробуйте снова."
+                                presentation.error(message)
+                                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
                             }
                             return
                         }

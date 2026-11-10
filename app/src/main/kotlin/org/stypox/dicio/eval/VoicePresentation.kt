@@ -6,6 +6,8 @@ import org.dicio.skill.skill.SkillOutput
 
 data class ChoiceOption(val id: String, val label: String)
 data class ChoicePresentation(val id: Long, val options: List<ChoiceOption>)
+data class VideoCard(val id: String, val title: String, val author: String, val thumbnail: String?)
+data class VideoRow(val id: Long, val cards: List<VideoCard>)
 
 /** Ephemeral presentation, independent of the history/settings Activity. No persisted transcript. */
 data class VoicePresentation(
@@ -14,6 +16,7 @@ data class VoicePresentation(
     val answer: String = "",
     val dismiss: Boolean = false,
     val choice: ChoicePresentation? = null,
+    val videoRow: VideoRow? = null,
 )
 
 /** Only the current request is retained; replacing or clearing it discards earlier text. */
@@ -26,16 +29,21 @@ internal class CurrentVoicePresentation {
     fun thinking(text: String) { mutable.value = VoicePresentation(request = text, status = "Думаю…") }
     fun answer(text: String, silent: Boolean = false) {
         mutable.value = mutable.value.copy(status = if (silent) "Выполнено" else "Ответ",
-            answer = if (silent) "" else text, dismiss = silent, choice = null)
+            answer = if (silent) "" else text, dismiss = silent, choice = null, videoRow = null)
     }
     fun error(message: String) {
-        mutable.value = mutable.value.copy(status = "Не удалось выполнить запрос", answer = message, dismiss = false, choice = null)
+        mutable.value = mutable.value.copy(status = "Не удалось выполнить запрос", answer = message, dismiss = false, choice = null, videoRow = null)
     }
     fun choice(id: Long, options: List<ChoiceOption>, question: String, status: String = "Выберите сервис поиска") {
         mutable.value = mutable.value.copy(status = status, answer = question,
-            dismiss = false, choice = ChoicePresentation(id, options.toList()))
+            dismiss = false, choice = ChoicePresentation(id, options.toList()), videoRow = null)
     }
     fun choosing() { mutable.value = mutable.value.copy(choice = null, answer = "", status = "Выполняю…") }
+    fun videos(id: Long, cards: List<VideoCard>) {
+        mutable.value = mutable.value.copy(status = "", answer = "", dismiss = false, choice = null,
+            videoRow = VideoRow(id, cards.toList()))
+    }
+    fun openingVideo() { mutable.value = mutable.value.copy(videoRow = null, status = "Открываю…", answer = "") }
     fun noInput() {
         mutable.value = VoicePresentation(status = "Речь не распознана",
             answer = "Речь не распознана.")

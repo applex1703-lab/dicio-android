@@ -51,6 +51,18 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
     internal suspend fun executeSearchTarget(target: SearchTarget, query: String): Execution =
         searchCatalog.execute(target, query)
 
+    internal suspend fun openRutubeVideo(id: String) = withContext(Dispatchers.Main) {
+        require(Regex("[a-f0-9]{32}").matches(id))
+        val uri = android.net.Uri.Builder().scheme("rutube").authority("rutube.ru").appendPath("video").appendPath(id).build()
+        val pm = context.packageManager
+        val intent = listOf("rtb.mobile.android", "ru.rutube.app").asSequence().map { pkg ->
+            Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
+                .setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }.firstOrNull { it.resolveActivity(pm) != null } ?: error("Приложение Rutube недоступно.")
+        coroutineContext.ensureActive()
+        context.startActivity(intent)
+    }
+
     internal suspend fun catalog(forceRefresh: Boolean = false): List<App> = withContext(Dispatchers.IO) { catalogMutex.withLock {
         val now = android.os.SystemClock.elapsedRealtime()
         val locale = androidx.core.os.ConfigurationCompat.getLocales(context.resources.configuration).toLanguageTags()

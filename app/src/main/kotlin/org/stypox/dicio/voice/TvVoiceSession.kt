@@ -24,6 +24,12 @@ import android.widget.LinearLayout
 import android.widget.Button
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.HorizontalScrollView
+import android.widget.ImageView
+import coil.ImageLoader
+import coil.request.ImageRequest
+import coil.request.Disposable
+import coil.request.CachePolicy
 import androidx.core.content.ContextCompat
 import androidx.annotation.RequiresApi
 import dagger.hilt.EntryPoint
@@ -41,6 +47,7 @@ import kotlinx.coroutines.launch
 import org.stypox.dicio.di.SttInputDeviceWrapper
 import org.stypox.dicio.eval.SkillEvaluator
 import org.stypox.dicio.eval.ChoicePresentation
+import org.stypox.dicio.eval.VideoRow
 import org.stypox.dicio.io.input.SttState
 
 @EntryPoint
@@ -100,6 +107,15 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private lateinit var answer: TextView
     private lateinit var choiceScroll: ScrollView
     private lateinit var choiceButtons: LinearLayout
+    private lateinit var videoContainer: LinearLayout
+    private lateinit var videoCards: LinearLayout
+    private var renderedVideos: VideoRow? = null
+    private val imageRequests = mutableListOf<Disposable>()
+    private val imageLoader by lazy {
+        val dispatcher = okhttp3.Dispatcher().apply { maxRequests = 3; maxRequestsPerHost = 3 }
+        ImageLoader.Builder(app).okHttpClient(okhttp3.OkHttpClient.Builder().dispatcher(dispatcher)
+            .followRedirects(false).followSslRedirects(false).build()).build()
+    }
     private var renderedChoice: ChoicePresentation? = null
     private var visible = false
     private val assistGesture = ExplicitAssistGesture()
@@ -117,6 +133,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             updates?.cancel()
             updates = null
             renderChoice(null)
+            renderVideos(null)
             if (visible) answer.text = "Голосовой запрос прерван."
         },
         ensureUpdates = { ensureVoiceUpdates() },
@@ -236,6 +253,81 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             }
             addView(choiceScroll, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            videoContainer = LinearLayout(app).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = View.GONE
+                addView(TextView(app).apply {
+                    text = "Rutube"
+                    textSize = 20f
+                    setTextColor(Color.WHITE)
+                    setPadding(0, dp(12), 0, dp(8))
+                })
+                addView(HorizontalScrollView(app).apply {
+                    isHorizontalScrollBarEnabled = false
+                    videoCards = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
+                    addView(videoCards)
+                })
+            }
+            addView(videoContainer, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+    }
+
+    private fun renderVideos(row: VideoRow?) {
+        if (!::videoContainer.isInitialized || renderedVideos == row) return
+        imageRequests.forEach { it.dispose() }
+        imageRequests.clear()
+        renderedVideos = row
+        videoCards.removeAllViews()
+        videoContainer.visibility = if (row == null || row.cards.isEmpty()) View.GONE else View.VISIBLE
+        row?.cards?.forEach { card ->
+            val item = LinearLayout(app).apply {
+                orientation = LinearLayout.VERTICAL
+                isFocusable = true
+                isClickable = true
+                contentDescription = listOf(card.title, card.author).filter { it.isNotBlank() }.joinToString(", ")
+                setPadding(dp(4), dp(4), dp(4), dp(4))
+                fun updateFocus(focused: Boolean) {
+                    background = GradientDrawable().apply {
+                        setColor(if (focused) Color.rgb(46, 67, 105) else Color.TRANSPARENT)
+                        cornerRadius = dp(8).toFloat()
+                        if (focused) setStroke(dp(3), Color.WHITE)
+                    }
+                }
+                updateFocus(false)
+                setOnFocusChangeListener { _, focused -> updateFocus(focused) }
+                setOnClickListener { coordinator.selectVideo(this@TvVoiceSession, row.id, card.id) }
+            }
+            val image = ImageView(app).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(Color.rgb(38, 48, 64))
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+            item.addView(image, LinearLayout.LayoutParams(dp(220), dp(124)))
+            item.addView(TextView(app).apply {
+                text = card.title
+                setTextColor(Color.WHITE)
+                textSize = 16f
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(dp(220), LinearLayout.LayoutParams.WRAP_CONTENT))
+            item.addView(TextView(app).apply {
+                text = card.author
+                setTextColor(Color.LTGRAY)
+                textSize = 13f
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(dp(220), LinearLayout.LayoutParams.WRAP_CONTENT))
+            videoCards.addView(item, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(12) })
+            card.thumbnail?.let { url ->
+                val request = ImageRequest.Builder(app).data(url).target(image).size(dp(220), dp(124))
+                    .diskCachePolicy(CachePolicy.DISABLED).memoryCachePolicy(CachePolicy.DISABLED).build()
+                imageRequests.add(imageLoader.enqueue(request))
+            }
+        }
+        if (row != null && row.cards.isNotEmpty()) videoCards.post {
+            if (visible && renderedVideos?.id == row.id) videoCards.getChildAt(0)?.requestFocus()
         }
     }
 
@@ -320,7 +412,8 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                     status.text = voiceStatus(presentation, stt)
                     transcript.text = presentation.request
                     answer.text = presentation.answer
-                    renderChoice(presentation.choice)
+                     renderChoice(presentation.choice)
+                    renderVideos(presentation.videoRow)
                     if (presentation.dismiss) hide()
                 }
         }
@@ -335,6 +428,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         updates?.cancel()
         updates = null
         if (::choiceButtons.isInitialized) renderChoice(null)
+        renderVideos(null)
         teardown.close()
     }
 
@@ -378,6 +472,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                         updates?.cancel()
                         updates = null
                         renderChoice(null)
+                        renderVideos(null)
                         if (visible) answer.text = "Голосовой запрос прерван."
                     }
                     if (started && visible) ensureVoiceUpdates()
