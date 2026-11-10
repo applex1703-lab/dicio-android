@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.os.Build
 import android.os.SystemClock
@@ -143,26 +144,54 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             setPadding(dp(56), dp(72), dp(56), dp(32))
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
-                Color.argb(255, 0, 0, 0),
-                Color.argb(242, 0, 0, 0),
-                Color.argb(165, 0, 0, 0),
+            background = LayerDrawable(arrayOf(
+                GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
+                    Color.argb(250, 11, 17, 31), Color.argb(230, 12, 17, 27),
+                    Color.argb(189, 13, 19, 30))),
+                GradientDrawable().apply {
+                    gradientType = GradientDrawable.RADIAL_GRADIENT
+                    setGradientCenter(0.5f, 0f)
+                    gradientRadius = app.resources.displayMetrics.widthPixels * 0.55f
+                    colors = intArrayOf(Color.argb(120, 69, 91, 148), Color.TRANSPARENT)
+                },
             ))
-            transcript = line(26, Color.rgb(195, 200, 210))
+            transcript = line(26, Color.rgb(196, 211, 231))
             val divider = View(app).apply {
-                setBackgroundColor(Color.argb(205, 166, 186, 212))
+                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(
+                    Color.TRANSPARENT, Color.rgb(148, 183, 255), Color.rgb(212, 200, 255),
+                    Color.rgb(148, 183, 255), Color.TRANSPARENT))
                 visibility = View.GONE
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
-            addView(divider, LinearLayout.LayoutParams(dp(48), maxOf(1, dp(1))).apply {
+            addView(divider, LinearLayout.LayoutParams(dp(48), maxOf(1, dp(2))).apply {
                 topMargin = dp(12)
             })
-            status = line(22, Color.rgb(230, 232, 237)).apply {
-                setPadding(0, dp(12), 0, dp(4))
+            fun updateDividerWidth() {
+                val layout = transcript.layout ?: return
+                val width = (0 until layout.lineCount).maxOfOrNull { layout.getLineWidth(it) } ?: return
+                val params = divider.layoutParams
+                val desired = width.toInt().coerceIn(1, transcript.width.coerceAtLeast(1))
+                if (params.width != desired) { params.width = desired; divider.layoutParams = params }
             }
-            answer = line(20, Color.rgb(242, 244, 248)).apply {
+            transcript.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateDividerWidth() }
+            fun TextView.responseStyle() {
+                val maxTextWidth = minOf((app.resources.displayMetrics.widthPixels * 0.7f).toInt(), dp(720))
+                maxWidth = maxTextWidth
+                layoutParams = (layoutParams as LinearLayout.LayoutParams).apply {
+                    width = LinearLayout.LayoutParams.WRAP_CONTENT
+                    topMargin = dp(16)
+                }
+                setPadding(dp(20), dp(12), dp(20), dp(12))
+                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(
+                    Color.argb(64, 84, 123, 177), Color.argb(41, 112, 90, 158))).apply {
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(maxOf(1, dp(1)), Color.argb(43, 163, 190, 230))
+                }
+            }
+            status = line(22, Color.rgb(184, 199, 220)).apply { responseStyle() }
+            answer = line(22, Color.rgb(236, 241, 249)).apply {
                 maxLines = 8
-                setPadding(0, dp(12), 0, dp(4))
+                responseStyle()
                 setLineSpacing(dp(3).toFloat(), 1f)
             }
             listOf(status, transcript, answer).forEach { view ->
@@ -179,6 +208,13 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                     override fun afterTextChanged(s: Editable?) = Unit
                 })
             }
+            transcript.addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    transcript.post { updateDividerWidth() }
+                }
+                override fun afterTextChanged(s: Editable?) = Unit
+            })
             transcript.visibility = View.GONE
             answer.visibility = View.GONE
             status.visibility = View.GONE
