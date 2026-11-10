@@ -149,7 +149,7 @@ class EvaluatorTeardownTest {
                 ({ e: SkillEvaluatorImpl -> e.processInputEvent(InputEvent.Partial("новый")) }) to listOf("stop"),
                 ({ e: SkillEvaluatorImpl -> e.resetVoicePresentation() }) to listOf("stop"),
                 ({ e: SkillEvaluatorImpl -> e.processInputEvent(InputEvent.Started) }) to listOf("stop", "stop"),
-                ({ e: SkillEvaluatorImpl -> e.processInputEvent(InputEvent.Final(listOf("запусти vpn" to 1f))) }) to listOf("stop"),
+                ({ e: SkillEvaluatorImpl -> e.processInputEvent(InputEvent.Final(listOf("запусти vpn" to 1f))) }) to listOf("stop", "stop"),
                 ({ e: SkillEvaluatorImpl -> e.finishInputSession() }) to listOf("stop", "stop", "cleanup"),
             )
             for ((boundary, expected) in boundaries) {
