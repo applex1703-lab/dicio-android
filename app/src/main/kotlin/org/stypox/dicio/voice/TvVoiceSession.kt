@@ -147,8 +147,10 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                 Color.argb(242, 0, 0, 0),
                 Color.argb(165, 0, 0, 0),
             ))
-            status = line(22, Color.rgb(230, 232, 237))
             transcript = line(26, Color.rgb(195, 200, 210))
+            status = line(22, Color.rgb(230, 232, 237)).apply {
+                setPadding(0, dp(12), 0, dp(4))
+            }
             answer = line(20, Color.rgb(242, 244, 248)).apply {
                 maxLines = 8
                 setPadding(0, dp(12), 0, dp(4))
