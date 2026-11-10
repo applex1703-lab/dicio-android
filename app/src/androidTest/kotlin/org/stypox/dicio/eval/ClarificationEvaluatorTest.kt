@@ -35,7 +35,7 @@ import org.stypox.dicio.screenshot.FakeSttInputDeviceWrapper
 /** Real evaluator and protocol; only the provider HTTP responses are simulated. */
 @RunWith(AndroidJUnit4::class)
 class ClarificationEvaluatorTest {
-    @Test fun repeatedClarificationReplacesContextAndStillFailsClosed() = runBlocking {
+    @Test fun repeatedClarificationReplacesContextAndAllowsModelAction() = runBlocking {
         val app = ApplicationProvider.getApplicationContext<Context>()
         val directory = File(app.cacheDir, "clarification-test-${UUID.randomUUID()}").apply { check(mkdir()) }
         val alias = "clarification-test-${UUID.randomUUID()}"
@@ -96,7 +96,11 @@ class ClarificationEvaluatorTest {
             assertEquals("исходная фраза", first.getString("request"))
             assertEquals("Первый вопрос?", first.getString("question"))
             withContext(Dispatchers.Main) { evaluator.finishInputSession() }
-            say("следующий ответ", "Пожалуйста, повторите команду полностью.")
+            withContext(Dispatchers.Main) {
+                evaluator.processInputEvent(InputEvent.Final(listOf("следующий ответ" to 1f)))
+            }
+            withTimeout(15_000) { evaluator.voicePresentation.first { it.answer.startsWith("Сейчас ") } }
+            withContext(Dispatchers.Main) { }
             val second = payload(2).getJSONObject("previous_clarification")
             assertEquals(setOf("request", "question"), second.keys().asSequence().toSet())
             assertEquals("короткий ответ", second.getString("request"))
