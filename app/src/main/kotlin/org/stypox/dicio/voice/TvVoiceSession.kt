@@ -128,17 +128,21 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private fun dp(value: Int) = (app.resources.displayMetrics.density * value).toInt()
 
     override fun onCreateContentView(): View {
-        // Text sits directly over a dimmed TV image, without a separate rectangular panel.
+        // Full-screen gradient keeps the TV visible but provides contrast behind the text.
         window?.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            attributes = attributes.apply { dimAmount = 0.55f }
+            attributes = attributes.apply { dimAmount = 0.35f }
         }
         return LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.TOP
             setPadding(dp(48), dp(32), dp(48), dp(32))
-            setBackgroundColor(Color.TRANSPARENT)
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
+                Color.argb(240, 0, 0, 0),
+                Color.argb(200, 0, 0, 0),
+                Color.argb(150, 0, 0, 0),
+            ))
             status = line(20, Color.rgb(230, 232, 237))
             transcript = line(28, Color.WHITE)
             answer = line(22, Color.rgb(230, 232, 237)).apply { maxLines = 8 }
@@ -229,7 +233,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         }
         window?.window?.apply {
             setGravity(Gravity.TOP)
-            setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+            setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
         }
         if (visible) return // duplicate show must not create a second recording/request
         visible = true
