@@ -144,9 +144,9 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                 Color.argb(242, 0, 0, 0),
                 Color.argb(195, 0, 0, 0),
             ))
-            status = line(20, Color.rgb(230, 232, 237))
-            transcript = line(24, Color.rgb(242, 244, 248))
-            answer = line(18, Color.rgb(230, 232, 237)).apply {
+            status = line(22, Color.rgb(230, 232, 237))
+            transcript = line(26, Color.rgb(242, 244, 248))
+            answer = line(20, Color.rgb(230, 232, 237)).apply {
                 maxLines = 8
                 setPadding(0, dp(12), 0, dp(4))
                 setLineSpacing(dp(3).toFloat(), 1f)
@@ -222,7 +222,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
 
     private fun LinearLayout.line(size: Int, colour: Int): TextView = TextView(app).also {
         it.textSize = size.toFloat()
-        it.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        it.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
         it.gravity = Gravity.CENTER_HORIZONTAL
         it.setTextColor(colour)
         it.setPadding(0, dp(4), 0, dp(4))
