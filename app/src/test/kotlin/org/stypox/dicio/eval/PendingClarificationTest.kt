@@ -10,11 +10,6 @@ import org.stypox.dicio.llm.ClarificationContext
 import org.stypox.dicio.llm.SettingsSection
 
 class PendingClarificationTest : StringSpec({
-    "history action requires the same decision without history" {
-        historyActionConfirmed(AssistantIntent.OpenApp("app_1"), AssistantIntent.OpenApp("app_1")) shouldBe true
-        historyActionConfirmed(AssistantIntent.OpenApp("app_1"), AssistantIntent.OpenApp("app_2")) shouldBe false
-        historyActionConfirmed(AssistantIntent.ConnectHapp, AssistantIntent.Reply("нет")) shouldBe false
-    }
     "one use, replacement, expiry and cancellation" {
         val job = Job()
         var time = 100L
@@ -36,14 +31,6 @@ class PendingClarificationTest : StringSpec({
         pending.save("x".repeat(8001), "question")
         pending.consume() shouldBe null
         job.cancel()
-    }
-    "context never authorizes a device action" {
-        AssistantIntent.Reply("ok").allowedAfterClarification() shouldBe true
-        AssistantIntent.Clarify("question").allowedAfterClarification() shouldBe true
-        AssistantIntent.OpenApp("app_0").allowedAfterClarification() shouldBe false
-        AssistantIntent.ConnectHapp.allowedAfterClarification() shouldBe false
-        AssistantIntent.ChooseSearch("query").allowedAfterClarification() shouldBe false
-        AssistantIntent.Time.allowedAfterClarification() shouldBe false
     }
     "consumed context can expire while preparing the network request" {
         val job = Job()

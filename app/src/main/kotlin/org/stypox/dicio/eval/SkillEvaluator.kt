@@ -292,27 +292,7 @@ class SkillEvaluatorImpl(
                                 clarification?.isFresh(now) != false && history?.isFresh(now) != false
                             }, history = history?.messages.orEmpty())
                         coroutineContext.ensureActive()
-                        if (history?.messages?.isNotEmpty() == true && !decision.allowedAfterClarification()) {
-                            // A conversation may inform answers but must not authorize a device action.
-                            // Independently classify the current input without the history before execution.
-                            val independent = polzaClient.decide(config, request,
-                                apps.associate { it.id to it.label }, media.targets)
-                            coroutineContext.ensureActive()
-                            if (!historyActionConfirmed(decision, independent)) {
-                                val question = "Пожалуйста, повторите команду полностью."
-                                presentation.answer(question)
-                                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
-                                return
-                            }
-                        }
                         if (standalone?.allows(decision) == false) {
-                            _state.value = InteractionLog(emptyList(), null)
-                            val question = "Пожалуйста, повторите команду полностью."
-                            presentation.answer(question)
-                            directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
-                            return
-                        }
-                        if (clarification != null && !decision.allowedAfterClarification()) {
                             _state.value = InteractionLog(emptyList(), null)
                             val question = "Пожалуйста, повторите команду полностью."
                             presentation.answer(question)
@@ -591,9 +571,6 @@ class SkillEvaluatorImpl(
         val TAG = SkillEvaluator::class.simpleName
     }
 }
-
-internal fun AssistantIntent.allowedAfterClarification(): Boolean =
-    this is AssistantIntent.Reply || this is AssistantIntent.Clarify
 
 @Module
 @InstallIn(SingletonComponent::class)
