@@ -278,6 +278,9 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         imageRequests.forEach { it.dispose() }
         imageRequests.clear()
         renderedVideos = row
+        val compact = row != null || renderedChoice != null
+        transcript.maxLines = if (compact) 2 else Int.MAX_VALUE
+        transcript.ellipsize = if (compact) TextUtils.TruncateAt.END else null
         videoCards.removeAllViews()
         videoContainer.visibility = if (row == null || row.cards.isEmpty()) View.GONE else View.VISIBLE
         row?.cards?.forEach { card ->
@@ -334,8 +337,9 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private fun renderChoice(choice: ChoicePresentation?) {
         if (renderedChoice == choice) return
         renderedChoice = choice
-        transcript.maxLines = if (choice == null) Int.MAX_VALUE else 2
-        transcript.ellipsize = if (choice == null) null else TextUtils.TruncateAt.END
+        val compact = choice != null || renderedVideos != null
+        transcript.maxLines = if (compact) 2 else Int.MAX_VALUE
+        transcript.ellipsize = if (compact) TextUtils.TruncateAt.END else null
         answer.maxLines = if (choice == null) 8 else 2
         choiceButtons.removeAllViews()
         choiceScroll.scrollTo(0, 0)

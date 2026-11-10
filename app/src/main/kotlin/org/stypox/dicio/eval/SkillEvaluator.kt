@@ -387,17 +387,40 @@ class SkillEvaluatorImpl(
                             directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
                             return
                         }
-                        if (decision is AssistantIntent.SearchRutube || decision is AssistantIntent.ChooseSearch) {
-                            val query = when (decision) {
-                                is AssistantIntent.SearchRutube -> decision.query
-                                is AssistantIntent.ChooseSearch -> decision.query
-                                else -> error("Unexpected search")
-                            }
-                            try { showRutubeResults(query, speechRequest) }
+                        if (decision is AssistantIntent.SearchRutube) {
+                            try { showRutubeResults(decision.query, speechRequest) }
                             catch (cancelled: CancellationException) { throw cancelled }
                             catch (_: Exception) {
                                 coroutineContext.ensureActive()
+                                outputSlot.clear()
+                                _state.value = InteractionLog(emptyList(), null)
                                 val message = "Не удалось загрузить результаты Rutube. Проверьте сеть и попробуйте снова."
+                                presentation.error(message)
+                                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
+                            }
+                            return
+                        }
+                        if (decision is AssistantIntent.ChooseSearch) {
+                            try {
+                                val query = org.stypox.dicio.llm.ContentSearch.validateQuery(decision.query)
+                                val targets = tvActions.searchTargets()
+                                coroutineContext.ensureActive()
+                                check(targets.isNotEmpty()) { "Нет доступных сервисов поиска." }
+                                val id = pendingChoice.create(query, targets.associate { it.id to ChoiceTarget.Search(it) })
+                                outputSlot.clear()
+                                previousFallback = null
+                                _state.value = InteractionLog(emptyList(), null)
+                                val question = "Где искать?"
+                                presentation.choice(id, targets.map { ChoiceOption(it.id, it.label) }, question)
+                                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(question) }
+                            } catch (cancelled: CancellationException) { throw cancelled }
+                            catch (error: Exception) {
+                                coroutineContext.ensureActive()
+                                pendingChoice.clear()
+                                outputSlot.clear()
+                                previousFallback = null
+                                _state.value = InteractionLog(emptyList(), null)
+                                val message = error.localizedMessage ?: "Не удалось получить сервисы поиска."
                                 presentation.error(message)
                                 directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
                             }

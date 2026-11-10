@@ -139,6 +139,9 @@ fun HomeScreen(
         onSelectChoice = { choiceId, optionId ->
             activity?.let { it.voiceInputCoordinator.selectChoice(it, choiceId, optionId) }
         },
+        onSelectVideo = { rowId, videoId ->
+            activity?.let { it.voiceInputCoordinator.selectVideo(it, rowId, videoId) }
+        },
         navigationIcon = navigationIcon,
         snackbarHost = {
             SnackbarHost(hostState = viewModel.snackbarHostState)
@@ -162,12 +165,13 @@ fun HomeScreen(
     navigationIcon: @Composable () -> Unit,
     snackbarHost: @Composable () -> Unit,
     onSelectChoice: (Long, String) -> Unit = { _, _ -> },
+    onSelectVideo: (Long, String) -> Unit = { _, _ -> },
     vpnStatus: String? = null,
     onDismissVpnStatus: () -> Unit = {},
 ) {
     var searchString by rememberSaveable { mutableStateOf<String?>(null) }
     val isTv = isTelevision()
-    BackHandler(enabled = searchString == null && ownsWork && (presentation.choice != null || interactionLog.pendingQuestion != null || sttState == SttState.Listening || sttState == SttState.WaitingForResult || (sttState is SttState.Loading && sttState.thenStartListening))) { onCancel() }
+    BackHandler(enabled = searchString == null && ownsWork && (presentation.choice != null || presentation.videoRow != null || interactionLog.pendingQuestion != null || sttState == SttState.Listening || sttState == SttState.WaitingForResult || (sttState is SttState.Loading && sttState.thenStartListening))) { onCancel() }
 
     Scaffold(
         topBar = {
@@ -203,6 +207,11 @@ fun HomeScreen(
                 if (ownsWork && startError == null) {
                     presentation.choice?.let { choice ->
                         ChoiceButtons(choice, onSelectChoice, Modifier.weight(1f, fill = false))
+                    }
+                    presentation.videoRow?.let { row ->
+                        ChoiceButtons(ChoicePresentation(row.id, row.cards.map {
+                            org.stypox.dicio.eval.ChoiceOption(it.id, it.title)
+                        }), onSelectVideo, Modifier.weight(1f, fill = false))
                     }
                 }
             }
