@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Build
 import android.os.SystemClock
 import android.service.voice.VoiceInteractionSession
 import android.text.TextUtils
@@ -148,6 +149,14 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                 Color.argb(165, 0, 0, 0),
             ))
             transcript = line(26, Color.rgb(195, 200, 210))
+            val divider = View(app).apply {
+                setBackgroundColor(Color.argb(205, 166, 186, 212))
+                visibility = View.GONE
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+            addView(divider, LinearLayout.LayoutParams(dp(48), maxOf(1, dp(1))).apply {
+                topMargin = dp(12)
+            })
             status = line(22, Color.rgb(230, 232, 237)).apply {
                 setPadding(0, dp(12), 0, dp(4))
             }
@@ -164,6 +173,8 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                         transcript.visibility = if (transcript.text.isNullOrEmpty()) View.GONE else View.VISIBLE
                         answer.visibility = if (answer.text.isNullOrEmpty()) View.GONE else View.VISIBLE
                         status.visibility = if (showVoiceStatus(status.text, answer.text)) View.VISIBLE else View.GONE
+                        divider.visibility = if (!transcript.text.isNullOrEmpty() &&
+                            (!answer.text.isNullOrEmpty() || !status.text.isNullOrEmpty())) View.VISIBLE else View.GONE
                     }
                     override fun afterTextChanged(s: Editable?) = Unit
                 })
@@ -226,7 +237,9 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
 
     private fun LinearLayout.line(size: Int, colour: Int): TextView = TextView(app).also {
         it.textSize = size.toFloat()
-        it.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+        it.typeface = if (Build.VERSION.SDK_INT >= 28) {
+            Typeface.create(Typeface.create("sans-serif", Typeface.NORMAL), 350, false)
+        } else Typeface.create("sans-serif-light", Typeface.NORMAL)
         it.gravity = Gravity.CENTER_HORIZONTAL
         it.setTextColor(colour)
         it.setPadding(0, dp(4), 0, dp(4))
