@@ -93,6 +93,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private val coordinator = dependencies.voiceInputCoordinator()
     private val teardown = VoiceSessionTeardown(coordinator, this)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val voiceTypeface by lazy { Typeface.createFromAsset(app.assets, "fonts/sofia_sans_condensed.ttf") }
     private var updates: Job? = null
     private lateinit var status: TextView
     private lateinit var transcript: TextView
@@ -146,8 +147,8 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             setPadding(dp(56), dp(72), dp(56), dp(32))
             background = LayerDrawable(arrayOf(
                 GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
-                    Color.argb(250, 11, 17, 31), Color.argb(230, 12, 17, 27),
-                    Color.argb(189, 13, 19, 30))),
+                    Color.argb(252, 11, 17, 31), Color.argb(245, 12, 17, 27),
+                    Color.argb(230, 13, 19, 30))),
                 GradientDrawable().apply {
                     gradientType = GradientDrawable.RADIAL_GRADIENT
                     setGradientCenter(0.5f, 0f)
@@ -156,6 +157,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                 },
             ))
             transcript = line(26, Color.rgb(196, 211, 231))
+            if (Build.VERSION.SDK_INT >= 28) transcript.typeface = Typeface.create(voiceTypeface, 500, false)
             val divider = View(app).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(
                     Color.TRANSPARENT, Color.rgb(148, 183, 255), Color.rgb(212, 200, 255),
@@ -273,9 +275,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
 
     private fun LinearLayout.line(size: Int, colour: Int): TextView = TextView(app).also {
         it.textSize = size.toFloat()
-        it.typeface = if (Build.VERSION.SDK_INT >= 28) {
-            Typeface.create(Typeface.create("sans-serif", Typeface.NORMAL), 350, false)
-        } else Typeface.create("sans-serif-light", Typeface.NORMAL)
+        it.typeface = voiceTypeface
         it.gravity = Gravity.CENTER_HORIZONTAL
         it.setTextColor(colour)
         it.setPadding(0, dp(4), 0, dp(4))
