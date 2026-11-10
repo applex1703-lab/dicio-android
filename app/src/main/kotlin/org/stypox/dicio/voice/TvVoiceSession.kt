@@ -145,11 +145,11 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
                 Color.argb(255, 0, 0, 0),
                 Color.argb(242, 0, 0, 0),
-                Color.argb(195, 0, 0, 0),
+                Color.argb(165, 0, 0, 0),
             ))
             status = line(22, Color.rgb(230, 232, 237))
-            transcript = line(26, Color.rgb(242, 244, 248))
-            answer = line(20, Color.rgb(230, 232, 237)).apply {
+            transcript = line(26, Color.rgb(195, 200, 210))
+            answer = line(20, Color.rgb(242, 244, 248)).apply {
                 maxLines = 8
                 setPadding(0, dp(12), 0, dp(4))
                 setLineSpacing(dp(3).toFloat(), 1f)
