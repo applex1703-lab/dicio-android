@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.SystemClock
@@ -137,17 +138,18 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         return LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.TOP
-            setPadding(dp(48), dp(32), dp(48), dp(32))
+            setPadding(dp(56), dp(72), dp(56), dp(32))
             background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
-                Color.argb(250, 0, 0, 0),
-                Color.argb(225, 0, 0, 0),
+                Color.argb(255, 0, 0, 0),
+                Color.argb(242, 0, 0, 0),
                 Color.argb(195, 0, 0, 0),
             ))
             status = line(20, Color.rgb(230, 232, 237))
-            transcript = line(26, Color.rgb(190, 194, 202))
-            answer = line(22, Color.WHITE).apply {
+            transcript = line(24, Color.rgb(242, 244, 248))
+            answer = line(18, Color.rgb(230, 232, 237)).apply {
                 maxLines = 8
-                setPadding(0, dp(16), 0, dp(4))
+                setPadding(0, dp(12), 0, dp(4))
+                setLineSpacing(dp(3).toFloat(), 1f)
             }
             listOf(status, transcript, answer).forEach { view ->
                 view.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
@@ -220,9 +222,11 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
 
     private fun LinearLayout.line(size: Int, colour: Int): TextView = TextView(app).also {
         it.textSize = size.toFloat()
+        it.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
         it.setTextColor(colour)
         it.setPadding(0, dp(4), 0, dp(4))
-        addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        val textWidth = minOf((app.resources.displayMetrics.widthPixels * 0.7f).toInt(), dp(720))
+        addView(it, LinearLayout.LayoutParams(textWidth, LinearLayout.LayoutParams.WRAP_CONTENT))
     }
 
     override fun onShow(args: Bundle?, showFlags: Int) {
