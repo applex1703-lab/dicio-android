@@ -141,6 +141,7 @@ dependencies {
 
     // Android
     implementation(libs.appcompat)
+    implementation(libs.recyclerview)
 
     // Compose (check out https://developer.android.com/jetpack/compose/bom/bom-mapping)
     implementation(libs.activity.compose)

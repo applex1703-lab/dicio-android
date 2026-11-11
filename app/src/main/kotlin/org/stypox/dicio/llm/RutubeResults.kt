@@ -6,6 +6,9 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonObject
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -18,23 +21,34 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 internal data class RutubeVideo(val id: String, val title: String, val author: String, val thumbnail: String?)
+internal data class RutubePage(val videos: List<RutubeVideo>, val hasNext: Boolean)
 
 internal object RutubeResultsParser {
     private val idPattern = Regex("[a-fA-F0-9]{32}")
-    fun parse(body: String): List<RutubeVideo> {
-        val entries = Json.parseToJsonElement(body).jsonObject["results"]?.jsonArray ?: error("Missing results")
-        return entries.mapNotNull { entry ->
+    fun parse(body: String): List<RutubeVideo> = parsePage(body).videos
+
+    fun parsePage(body: String): RutubePage {
+        val root = Json.parseToJsonElement(body).jsonObject
+        val entries = root["results"]?.jsonArray ?: error("Missing results")
+        val hasNext = root["has_next"]?.let {
+            val primitive = it as? JsonPrimitive ?: error("Invalid has_next")
+            if (primitive.isString) error("Invalid has_next")
+            primitive.booleanOrNull ?: error("Invalid has_next")
+        } ?: false
+        val videos = entries.mapNotNull { entry ->
             runCatching {
                 val obj = entry.jsonObject
                 val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return@runCatching null
                 val title = obj["title"]?.jsonPrimitive?.contentOrNull?.trim()?.take(200) ?: return@runCatching null
                 if (!idPattern.matches(id) || title.isBlank()) return@runCatching null
-                val author = obj["author"]?.jsonObject?.get("name")?.jsonPrimitive?.contentOrNull?.trim()?.take(100).orEmpty()
+                val author = (obj["author"] as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull?.trim()?.take(100).orEmpty()
                 val image = obj["thumbnail_url"]?.jsonPrimitive?.contentOrNull?.toHttpUrlOrNull()
                 val thumbnail = image?.takeIf { it.isHttps && it.port == 443 && it.host in setOf("pic.rtbcdn.ru", "pic.rutube.ru") }?.toString()
                 RutubeVideo(id.lowercase(), title, author, thumbnail)
             }.getOrNull()
         }.distinctBy { it.id }.take(10)
+        check(entries.isEmpty() || videos.isNotEmpty()) { "Invalid Rutube results" }
+        return RutubePage(videos, hasNext)
     }
 }
 
@@ -42,10 +56,13 @@ internal class RutubeResults {
     private val client = OkHttpClient.Builder().callTimeout(15, TimeUnit.SECONDS)
         .followRedirects(false).followSslRedirects(false).build()
 
-    suspend fun search(query: String): List<RutubeVideo> {
+    suspend fun search(query: String): List<RutubeVideo> = searchPage(query, 1).videos
+
+    suspend fun searchPage(query: String, page: Int): RutubePage {
+        require(page >= 1) { "Page must be at least 1" }
         val url = "https://rutube.ru/api/search/video/".toHttpUrlOrNull()!!.newBuilder()
             .addQueryParameter("query", ContentSearch.validateQuery(query))
-            .addQueryParameter("page", "1").addQueryParameter("limit", "10").build()
+            .addQueryParameter("page", page.toString()).addQueryParameter("limit", "10").build()
         val request = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0")
             .header("Accept", "application/json").build()
         return suspendCancellableCoroutine { continuation ->
@@ -65,7 +82,7 @@ internal class RutubeResults {
                                 if (source.read(buffer, 8192) == -1L) break
                             }
                             if (buffer.size > 1_048_576) throw IOException("Response too large")
-                            RutubeResultsParser.parse(buffer.readUtf8())
+                            RutubeResultsParser.parsePage(buffer.readUtf8())
                         }
                         if (continuation.isActive) continuation.resume(result)
                     } catch (e: Exception) {

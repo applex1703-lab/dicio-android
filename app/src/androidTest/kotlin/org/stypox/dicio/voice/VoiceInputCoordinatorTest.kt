@@ -59,12 +59,14 @@ class VoiceInputCoordinatorTest {
         var pendingClarification = false
         var failCancel = false
         val choices = mutableListOf<Pair<Long, String>>()
+        val videoPages = mutableListOf<Pair<Long, Boolean>>()
         override fun processInputEvent(event: InputEvent) { events.add(event) }
         override fun cancelPendingInput() { cancellations++; pendingClarification = false; if (failCancel) throw IllegalStateException("evaluator") }
         override fun finishInputSession() { finishes++; cancellations++; if (failCancel) throw IllegalStateException("evaluator") }
         override fun hasPendingClarification() = pendingClarification
         override fun resetVoicePresentation() = Unit
         override fun selectChoice(choiceId: Long, optionId: String) { choices.add(choiceId to optionId) }
+        override fun loadNextVideoPage(rowId: Long, retry: Boolean) { videoPages.add(rowId to retry) }
     }
 
     private fun onMain(block: () -> Unit) =
@@ -338,6 +340,22 @@ class VoiceInputCoordinatorTest {
         coordinator.release(owner)
         coordinator.selectChoice(owner, 1, "a")
         assertEquals(listOf(1L to "a"), evaluator.choices)
+        assertEquals(0, input.starts)
+    }
+
+    @Test fun videoPageRequiresCurrentOwnerAndStopsAfterRelease() = onMain {
+        val input = Input()
+        val evaluator = Evaluator()
+        val coordinator = VoiceInputCoordinator(input, evaluator)
+        val owner = Any()
+        coordinator.loadNextVideoPage(owner, 5)
+        coordinator.submitText(owner, "test")
+        coordinator.loadNextVideoPage(Any(), 5)
+        coordinator.loadNextVideoPage(owner, 5)
+        coordinator.loadNextVideoPage(owner, 5, retry = true)
+        coordinator.release(owner)
+        coordinator.loadNextVideoPage(owner, 5)
+        assertEquals(listOf(5L to false, 5L to true), evaluator.videoPages)
         assertEquals(0, input.starts)
     }
 

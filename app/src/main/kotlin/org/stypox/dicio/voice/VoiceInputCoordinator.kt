@@ -217,6 +217,12 @@ class VoiceInputCoordinator @Inject constructor(
         evaluator.selectVideo(rowId, videoId)
     }
 
+    fun loadNextVideoPage(owner: Any, rowId: Long, retry: Boolean = false) {
+        checkMain()
+        if (tearingDown || evaluatorFaulted || evaluationLease?.owner !== owner || !inputCleanupSafe()) return
+        evaluator.loadNextVideoPage(rowId, retry)
+    }
+
     fun submitText(owner: Any, text: String) {
         checkMain()
         operationGeneration++

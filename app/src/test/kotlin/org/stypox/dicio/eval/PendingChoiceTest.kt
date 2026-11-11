@@ -6,6 +6,16 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 
 class PendingChoiceTest : StringSpec({
+    "appending choices keeps the snapshot but cannot resurrect a consumed row" {
+        val pending = PendingChoice<String>()
+        val old = pending.create("old", mapOf("a" to "A"))
+        val id = pending.create("query", mapOf("b" to "B"))
+        pending.extend(old, mapOf("x" to "X")) shouldBe false
+        pending.extend(id, mapOf("c" to "C")) shouldBe true
+        pending.consume(id, "c") shouldBe ("query" to "C")
+        pending.extend(id, mapOf("d" to "D")) shouldBe false
+        pending.consume(id, "b") shouldBe null
+    }
     "snapshot is one-shot and rejects unknown options" {
         val pending = PendingChoice<String>()
         val options = mutableMapOf("a" to "first")

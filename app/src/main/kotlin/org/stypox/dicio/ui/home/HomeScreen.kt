@@ -142,6 +142,9 @@ fun HomeScreen(
         onSelectVideo = { rowId, videoId ->
             activity?.let { it.voiceInputCoordinator.selectVideo(it, rowId, videoId) }
         },
+        onLoadVideoPage = { rowId, retry ->
+            activity?.let { it.voiceInputCoordinator.loadNextVideoPage(it, rowId, retry) }
+        },
         navigationIcon = navigationIcon,
         snackbarHost = {
             SnackbarHost(hostState = viewModel.snackbarHostState)
@@ -166,6 +169,7 @@ fun HomeScreen(
     snackbarHost: @Composable () -> Unit,
     onSelectChoice: (Long, String) -> Unit = { _, _ -> },
     onSelectVideo: (Long, String) -> Unit = { _, _ -> },
+    onLoadVideoPage: (Long, Boolean) -> Unit = { _, _ -> },
     vpnStatus: String? = null,
     onDismissVpnStatus: () -> Unit = {},
 ) {
@@ -212,6 +216,10 @@ fun HomeScreen(
                         ChoiceButtons(ChoicePresentation(row.id, row.cards.map {
                             org.stypox.dicio.eval.ChoiceOption(it.id, it.title)
                         }), onSelectVideo, Modifier.weight(1f, fill = false))
+                        if (row.hasNext) Button(onClick = { onLoadVideoPage(row.id, row.loadError) },
+                            enabled = !row.loading) {
+                            Text(if (row.loading) "Загрузка…" else if (row.loadError) "Повторить загрузку" else "Показать ещё")
+                        }
                     }
                 }
             }
@@ -232,8 +240,8 @@ fun HomeScreen(
 
 @Composable
 internal fun ChoiceButtons(choice: ChoicePresentation, onSelect: (Long, String) -> Unit, modifier: Modifier = Modifier) {
-    val focusRequester = remember(choice.id, choice.options) { FocusRequester() }
-    LaunchedEffect(choice.id, choice.options) {
+    val focusRequester = remember(choice.id) { FocusRequester() }
+    LaunchedEffect(choice.id) {
         if (choice.options.isNotEmpty()) focusRequester.requestFocus()
     }
     Column(modifier.fillMaxWidth().heightIn(max = 300.dp).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {

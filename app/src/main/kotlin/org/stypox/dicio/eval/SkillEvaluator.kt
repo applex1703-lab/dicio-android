@@ -74,6 +74,7 @@ interface SkillEvaluator {
     @MainThread fun resetVoicePresentation()
     @MainThread fun selectChoice(choiceId: Long, optionId: String) = Unit
     @MainThread fun selectVideo(rowId: Long, videoId: String) = Unit
+    @MainThread fun loadNextVideoPage(rowId: Long, retry: Boolean = false) = Unit
 }
 
 class SkillEvaluatorImpl(
@@ -94,6 +95,13 @@ class SkillEvaluatorImpl(
     private val pendingChoice = PendingChoice<ChoiceTarget>()
     private val pendingVideo = PendingChoice<String>()
     private val rutubeResults = RutubeResults()
+    private val videoPageRequests = LatestInputRequest(scope)
+    private class VideoPaging(val rowId: Long, val query: String, var nextPage: Int = 2)
+    private var videoPaging: VideoPaging? = null
+    private fun clearVideoPaging() {
+        videoPaging = null
+        videoPageRequests.cancel()
+    }
     private val pendingClarification = PendingClarification(scope) { android.os.SystemClock.elapsedRealtime() }
     private val conversationHistory = ConversationHistory(scope) { android.os.SystemClock.elapsedRealtime() }
 
@@ -124,6 +132,8 @@ class SkillEvaluatorImpl(
         requests.cancel()
         if (!directSpeechRequests.isCurrent(speechRequest)) return
         pendingChoice.clear()
+        clearVideoPaging()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
         pendingVideo.clear()
         presentation.clear()
         if (!directSpeechRequests.isCurrent(speechRequest)) return
@@ -139,6 +149,8 @@ class SkillEvaluatorImpl(
         requests.cancel()
         if (!directSpeechRequests.isCurrent(speechRequest)) return
         pendingChoice.clear()
+        clearVideoPaging()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
         pendingVideo.clear()
         sessionBoundary.afterVpnClear {
             if (directSpeechRequests.isCurrent(speechRequest)) {
@@ -169,6 +181,8 @@ class SkillEvaluatorImpl(
             if (!directSpeechRequests.isCurrent(speechRequest)) return@end
             requests.cancel()
             pendingChoice.clear()
+            clearVideoPaging()
+            if (!directSpeechRequests.isCurrent(speechRequest)) return@end
             pendingVideo.clear()
             if (!preserveClarification) pendingClarification.clear()
             outputSlot.clear()
@@ -221,7 +235,10 @@ class SkillEvaluatorImpl(
         checkEntry()
         val (_, id) = pendingVideo.consume(rowId, videoId) ?: return
         val speechRequest = directSpeechRequests.next()
+        clearVideoPaging()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
         presentation.openingVideo()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
         requests.replace {
             try {
                 directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.stopSpeaking() }
@@ -240,11 +257,24 @@ class SkillEvaluatorImpl(
     }
 
     private suspend fun showRutubeResults(query: String, speechRequest: Any) {
-        val videos = rutubeResults.search(query)
+        var pageNumber = 1
+        var page = rutubeResults.searchPage(query, pageNumber)
+        while (page.videos.isEmpty() && page.hasNext && pageNumber < 3) {
+            coroutineContext.ensureActive()
+            if (!directSpeechRequests.isCurrent(speechRequest)) return
+            page = rutubeResults.searchPage(query, ++pageNumber)
+        }
+        val videos = page.videos
         coroutineContext.ensureActive()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
+        if (videos.isEmpty() && page.hasNext) error("Rutube returned empty pages")
         outputSlot.clear()
+        coroutineContext.ensureActive()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
         previousFallback = null
         _state.value = InteractionLog(emptyList(), null)
+        coroutineContext.ensureActive()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
         if (videos.isEmpty()) {
             val message = "В Rutube ничего не найдено."
             presentation.answer(message)
@@ -252,7 +282,32 @@ class SkillEvaluatorImpl(
             return
         }
         val id = pendingVideo.create(query, videos.associate { it.id to it.id })
-        presentation.videos(id, videos.map { VideoCard(it.id, it.title, it.author, it.thumbnail) })
+        videoPaging = VideoPaging(id, query, nextPage = pageNumber + 1)
+        presentation.videos(id, videos.map { VideoCard(it.id, it.title, it.author, it.thumbnail) }, page.hasNext)
+    }
+
+    override fun loadNextVideoPage(rowId: Long, retry: Boolean) {
+        checkEntry()
+        val paging = videoPaging?.takeIf { it.rowId == rowId } ?: return
+        val row = presentation.state.value.videoRow?.takeIf { it.id == rowId } ?: return
+        if (!row.hasNext || row.loading || (row.loadError && !retry) || (!row.loadError && retry)) return
+        val page = paging.nextPage
+        if (!presentation.videoPageLoading(rowId) || videoPaging !== paging) return
+        videoPageRequests.replace {
+            try {
+                val result = rutubeResults.searchPage(paging.query, page)
+                coroutineContext.ensureActive()
+                if (videoPaging !== paging || paging.nextPage != page) return@replace
+                val cards = result.videos.map { VideoCard(it.id, it.title, it.author, it.thumbnail) }
+                if (!pendingVideo.extend(rowId, cards.associate { it.id to it.id })) return@replace
+                paging.nextPage++
+                presentation.videoPageLoaded(rowId, cards, result.hasNext)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                coroutineContext.ensureActive()
+                if (videoPaging === paging && paging.nextPage == page) presentation.videoPageFailed(rowId)
+            }
+        }
     }
 
     private suspend fun suspendProcessInputEvent(event: InputEvent, speechRequest: Any) {

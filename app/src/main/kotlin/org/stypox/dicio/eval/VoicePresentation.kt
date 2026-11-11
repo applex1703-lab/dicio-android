@@ -7,7 +7,13 @@ import org.dicio.skill.skill.SkillOutput
 data class ChoiceOption(val id: String, val label: String)
 data class ChoicePresentation(val id: Long, val options: List<ChoiceOption>)
 data class VideoCard(val id: String, val title: String, val author: String, val thumbnail: String?)
-data class VideoRow(val id: Long, val cards: List<VideoCard>)
+data class VideoRow(
+    val id: Long,
+    val cards: List<VideoCard>,
+    val hasNext: Boolean = false,
+    val loading: Boolean = false,
+    val loadError: Boolean = false,
+)
 
 /** Ephemeral presentation, independent of the history/settings Activity. No persisted transcript. */
 data class VoicePresentation(
@@ -39,9 +45,25 @@ internal class CurrentVoicePresentation {
             dismiss = false, choice = ChoicePresentation(id, options.toList()), videoRow = null)
     }
     fun choosing() { mutable.value = mutable.value.copy(choice = null, answer = "", status = "Выполняю…") }
-    fun videos(id: Long, cards: List<VideoCard>) {
+    fun videos(id: Long, cards: List<VideoCard>, hasNext: Boolean = false) {
         mutable.value = mutable.value.copy(status = "", answer = "", dismiss = false, choice = null,
-            videoRow = VideoRow(id, cards.toList()))
+            videoRow = VideoRow(id, cards.toList(), hasNext = hasNext))
+    }
+    fun videoPageLoading(id: Long): Boolean {
+        val row = mutable.value.videoRow?.takeIf { it.id == id && it.hasNext && !it.loading } ?: return false
+        mutable.value = mutable.value.copy(videoRow = row.copy(loading = true, loadError = false))
+        return true
+    }
+    fun videoPageLoaded(id: Long, cards: List<VideoCard>, hasNext: Boolean) {
+        val row = mutable.value.videoRow?.takeIf { it.id == id && it.loading } ?: return
+        val existing = row.cards.mapTo(HashSet()) { it.id }
+        val added = cards.filter { existing.add(it.id) }
+        mutable.value = mutable.value.copy(videoRow = row.copy(cards = row.cards + added,
+            hasNext = hasNext, loading = false, loadError = added.isEmpty() && hasNext))
+    }
+    fun videoPageFailed(id: Long) {
+        val row = mutable.value.videoRow?.takeIf { it.id == id && it.loading } ?: return
+        mutable.value = mutable.value.copy(videoRow = row.copy(loading = false, loadError = true))
     }
     fun openingVideo() { mutable.value = mutable.value.copy(videoRow = null, status = "Открываю…", answer = "") }
     fun noInput() {
@@ -70,6 +92,14 @@ internal class PendingChoice<T> {
         val option = snapshot.options[optionId] ?: return null
         current = null
         return snapshot.query to option
+    }
+
+    /** Extend only the still-current snapshot; consumed or superseded choices remain invalid. */
+    fun extend(id: Long, options: Map<String, T>): Boolean {
+        val snapshot = current ?: return false
+        if (snapshot.id != id) return false
+        current = snapshot.copy(options = snapshot.options + options)
+        return true
     }
 
     fun clear() { current = null }
