@@ -4,6 +4,33 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
 class VideoPageBoundaryTest : StringSpec({
+    "selecting one source invalidates both pending rows and ignores their late pages" {
+        val presentation = CurrentVoicePresentation()
+        val pending = PendingVideoRows<String>()
+        val rutube = pending.create("query", mapOf("shared" to "rutube target"))
+        val youtube = pending.create("query", mapOf("shared" to "youtube target"))
+        val card = VideoCard("shared", "Video", "", null)
+        presentation.upsertVideos(rutube, listOf(card), true, VideoSource.RUTUBE)
+        presentation.upsertVideos(youtube, listOf(card), true, VideoSource.YOUTUBE)
+        presentation.videoPageLoading(rutube) shouldBe true
+        presentation.videoPageLoading(youtube) shouldBe true
+
+        pending.consume(youtube, "shared") shouldBe ("query" to "youtube target")
+        presentation.openingVideo()
+        val afterSelection = presentation.state.value
+        pending.extend(rutube, mapOf("late" to "stale")) shouldBe false
+        pending.extend(youtube, mapOf("late" to "stale")) shouldBe false
+        pending.consume(rutube, "shared") shouldBe null
+        presentation.videoPageLoaded(rutube, listOf(VideoCard("late", "Late", "", null)), true)
+        presentation.videoPageFailed(youtube)
+        presentation.state.value shouldBe afterSelection
+
+        val replacement = pending.create("new", mapOf("shared" to "new target"))
+        presentation.upsertVideos(replacement, listOf(card), false, VideoSource.RUTUBE)
+        pending.consume(rutube, "shared") shouldBe null
+        pending.consume(replacement, "shared") shouldBe ("new" to "new target")
+    }
+
     "a late page cannot alter a replacement row or extend its selectable videos" {
         val presentation = CurrentVoicePresentation()
         val pending = PendingChoice<String>()

@@ -2,12 +2,16 @@ package org.stypox.dicio.voice
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.view.View
 import android.view.ViewGroup
 import android.view.KeyEvent
+import android.view.Gravity
 import android.view.animation.DecelerateInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
@@ -171,11 +175,36 @@ internal class VideoRail(
         setTextColor(Color.LTGRAY)
         visibility = View.GONE
     }
+    private val sourceIcon = object : View(context) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val path = Path()
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val w = width.toFloat()
+            val h = height.toFloat()
+            val youtube = row?.source == VideoSource.YOUTUBE
+            paint.style = Paint.Style.FILL
+            paint.color = if (youtube) 0xfffb1834.toInt() else 0xffff2850.toInt()
+            if (youtube) canvas.drawRoundRect(w * .06f, h * .16f, w * .94f, h * .84f, h * .18f, h * .18f, paint)
+            path.reset()
+            if (youtube) {
+                paint.color = Color.WHITE
+                path.moveTo(w * .42f, h * .33f); path.lineTo(w * .42f, h * .67f); path.lineTo(w * .68f, h * .5f)
+            } else {
+                path.moveTo(w * .20f, h * .12f); path.lineTo(w * .20f, h * .88f); path.lineTo(w * .85f, h * .5f)
+            }
+            path.close()
+            canvas.drawPath(path, paint)
+        }
+        init { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+    }
     private val heading = TextView(context).apply {
-        textSize = 17f
+        textSize = 18f
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        setTextColor(Color.rgb(226, 233, 244))
-        setPadding(dp(4), dp(6), 0, dp(4))
+        setTextColor(0xfff3f5fa.toInt())
+        includeFontPadding = false
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
     }
     private var row: VideoRow? = null
     private var released = false
@@ -189,7 +218,28 @@ internal class VideoRail(
         visibility = View.GONE
         clipChildren = false
         clipToPadding = false
-        addView(heading)
+        val header = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), 0, 0, dp(7))
+            addView(sourceIcon, LayoutParams(dp(24), dp(21)).apply { marginEnd = dp(7) })
+            addView(heading, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { weight = 0f })
+            addView(TextView(context).apply {
+                text = "›"; textSize = 19f; setTextColor(0xffc4d4ed.toInt()); gravity = Gravity.CENTER
+                includeFontPadding = false
+                background = GradientDrawable().apply { setColor(0x99506b9a.toInt()); cornerRadius = dp(20).toFloat() }
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LayoutParams(dp(26), dp(20)).apply { marginStart = dp(8) })
+            addView(View(context).apply {
+                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0x6688a4d0, 0x11758dbe))
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LayoutParams(0, maxOf(1, dp(1)), 1f).apply { marginStart = dp(12); marginEnd = dp(12) })
+            addView(TextView(context).apply {
+                text = "‹   ›"; textSize = 20f; setTextColor(0xffb5c9e9.toInt()); includeFontPadding = false
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            })
+        }
+        addView(header, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(list, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(loading, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
         addView(retry, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
@@ -202,6 +252,7 @@ internal class VideoRail(
         val newRow = previous?.id != row?.id || previous?.source != row?.source
         this.row = row
         heading.text = row?.source?.label.orEmpty()
+        sourceIcon.invalidate()
         val version = ++generation
         if (newRow) {
             list.cancelPendingNavigation()
@@ -304,6 +355,10 @@ internal class VideoRail(
 
     private inner class CardHolder : RecyclerView.ViewHolder(LinearLayout(context)) {
         private val item = itemView as LinearLayout
+        private val cardWidth = dp(((resources.displayMetrics.widthPixels / resources.displayMetrics.density - 112) / 4.35f).toInt().coerceIn(160, 210))
+        private val cardHeight = (cardWidth * 9f / 16f).toInt()
+        private val outer = FrameLayout(context)
+        private val halo = View(context)
         private val poster = FrameLayout(context)
         private val image = ImageView(context)
         private val border = View(context)
@@ -315,43 +370,57 @@ internal class VideoRail(
 
         init {
             item.orientation = VERTICAL
-            item.layoutParams = RecyclerView.LayoutParams(dp(150), LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(12) }
+            item.layoutParams = RecyclerView.LayoutParams(cardWidth, LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(16) }
             item.isFocusable = true
             item.isClickable = true
             item.clipChildren = false
-            poster.background = GradientDrawable().apply { setColor(Color.rgb(38, 48, 64)); cornerRadius = dp(9).toFloat() }
+            outer.clipChildren = false
+            halo.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                gradientType = GradientDrawable.RADIAL_GRADIENT
+                gradientRadius = dp(120).toFloat()
+                colors = intArrayOf(0x995a6dff.toInt(), Color.TRANSPARENT)
+            }
+            halo.alpha = 0f
+            halo.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            outer.addView(halo, FrameLayout.LayoutParams(-1, -1).apply { setMargins(-dp(9), -dp(8), -dp(9), -dp(8)) })
+            poster.background = GradientDrawable().apply { setColor(0xff293446.toInt()); cornerRadius = dp(10).toFloat() }
             poster.clipToOutline = true
             image.scaleType = ImageView.ScaleType.CENTER_CROP
             image.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             poster.addView(image, FrameLayout.LayoutParams(-1, -1))
             border.background = GradientDrawable().apply {
-                setColor(Color.TRANSPARENT); cornerRadius = dp(9).toFloat(); setStroke(maxOf(1, dp(2)), Color.WHITE)
+                setColor(Color.TRANSPARENT); cornerRadius = dp(10).toFloat(); setStroke(maxOf(1, dp(2)), 0xfff3f6ff.toInt())
             }
             border.alpha = 0f
             border.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             poster.addView(border, FrameLayout.LayoutParams(-1, -1))
-            item.addView(poster, LayoutParams(dp(150), dp(84)))
+            outer.addView(poster, FrameLayout.LayoutParams(-1, -1))
+            item.addView(outer, LayoutParams(cardWidth, cardHeight))
             title.textSize = 15f
-            title.setTextColor(Color.rgb(242, 246, 252))
+            title.setTextColor(0xfff3f5fa.toInt())
             title.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            title.includeFontPadding = false
             title.minLines = 2
             title.maxLines = 2
             title.ellipsize = TextUtils.TruncateAt.END
             title.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            item.addView(title, LayoutParams(-1, LayoutParams.WRAP_CONTENT).apply { topMargin = dp(5) })
+            item.addView(title, LayoutParams(-1, LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
             author.textSize = 12f
-            author.setTextColor(Color.rgb(174, 188, 207))
+            author.setTextColor(0xffa6b0c1.toInt())
+            author.includeFontPadding = false
             author.maxLines = 1
             author.ellipsize = TextUtils.TruncateAt.END
             author.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            item.addView(author, LayoutParams(-1, LayoutParams.WRAP_CONTENT))
+            item.addView(author, LayoutParams(-1, LayoutParams.WRAP_CONTENT).apply { topMargin = dp(3) })
             item.setOnFocusChangeListener { _, focused ->
                 border.animate().cancel()
                 poster.animate().cancel()
-                poster.animate().scaleX(if (focused) 1.025f else 1f).scaleY(if (focused) 1.025f else 1f)
-                    .translationY(if (focused) -dp(3).toFloat() else 0f)
-                    .setDuration(220).setInterpolator(DecelerateInterpolator()).start()
-                border.animate().alpha(if (focused) 1f else 0f).setDuration(220).start()
+                halo.animate().cancel()
+                poster.animate().scaleX(if (focused) 1.02f else 1f).scaleY(if (focused) 1.02f else 1f)
+                    .setDuration(150).setInterpolator(DecelerateInterpolator()).start()
+                border.animate().alpha(if (focused) 1f else 0f).setDuration(120).start()
+                halo.animate().alpha(if (focused) 1f else 0f).setDuration(120).start()
                 if (focused) {
                     scheduleNearEnd()
                 }
@@ -373,10 +442,13 @@ internal class VideoRail(
             author.text = card.author
             item.contentDescription = listOf(card.title, card.author).filter { it.isNotBlank() }.joinToString(", ")
             border.alpha = if (item.hasFocus()) 1f else 0f
+            halo.alpha = if (item.hasFocus()) 1f else 0f
+            poster.scaleX = if (item.hasFocus()) 1.02f else 1f
+            poster.scaleY = if (item.hasFocus()) 1.02f else 1f
             // The parser validates these URLs; repeat the boundary check before handing one to Coil.
             val url = card.thumbnail?.let { thumbnail -> row?.source?.let { allowedVideoThumbnail(thumbnail, it) } }
             if (url != null) request = imageLoader.enqueue(ImageRequest.Builder(context)
-                .data(url.toString()).size(dp(150), dp(84)).target(image).build())
+                .data(url.toString()).size(cardWidth, cardHeight).target(image).build())
         }
 
         fun clear() {
@@ -387,6 +459,9 @@ internal class VideoRail(
             boundRowId = null
             boundHolders.remove(this)
             border.animate().cancel()
+            halo.animate().cancel()
+            border.alpha = 0f
+            halo.alpha = 0f
             poster.animate().cancel()
             poster.scaleX = 1f
             poster.scaleY = 1f

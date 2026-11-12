@@ -4,7 +4,10 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
@@ -22,6 +25,7 @@ import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
@@ -108,6 +112,10 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private var videoImages: ImageLoader? = null
     private var videoFocusClaimed = false
     private lateinit var contentRoot: LinearLayout
+    private lateinit var normalBackground: Drawable
+    private lateinit var videoHeader: LinearLayout
+    private lateinit var videoQuery: TextView
+    private lateinit var voiceDivider: View
     private var renderedVideos: List<VideoRow> = emptyList()
     private var renderedChoice: ChoicePresentation? = null
     private var visible = false
@@ -175,6 +183,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                     colors = intArrayOf(Color.argb(120, 69, 91, 148), Color.TRANSPARENT)
                 },
             ))
+            normalBackground = background
             transcript = line(26, Color.rgb(196, 211, 231))
             if (Build.VERSION.SDK_INT >= 28) transcript.typeface = Typeface.create(voiceTypeface, 500, false)
             val divider = View(app).apply {
@@ -184,6 +193,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                 visibility = View.GONE
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
+            voiceDivider = divider
             addView(divider, LinearLayout.LayoutParams(dp(48), maxOf(1, dp(2))).apply {
                 topMargin = dp(12)
             })
@@ -195,6 +205,57 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                 if (params.width != desired) { params.width = desired; divider.layoutParams = params }
             }
             transcript.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateDividerWidth() }
+            videoHeader = LinearLayout(app).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                minimumHeight = dp(44)
+                setPadding(dp(13), dp(6), dp(18), dp(6))
+                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(
+                    0x995a538f.toInt(), 0x77443a77, 0x002f396d)).apply { cornerRadius = dp(28).toFloat() }
+                visibility = View.GONE
+                addView(object : View(app) {
+                    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = Color.rgb(237, 243, 255)
+                        style = Paint.Style.STROKE
+                        strokeCap = Paint.Cap.ROUND
+                    }
+                    override fun onDraw(canvas: Canvas) {
+                        super.onDraw(canvas)
+                        val unit = minOf(width, height).toFloat()
+                        paint.strokeWidth = unit * .065f
+                        canvas.drawCircle(width * .43f, height * .41f, unit * .25f, paint)
+                        canvas.drawLine(width * .61f, height * .60f, width * .79f, height * .78f, paint)
+                    }
+                }.apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }, LinearLayout.LayoutParams(dp(25), dp(25)))
+                addView(View(app).apply { setBackgroundColor(0x668da4ce) }, LinearLayout.LayoutParams(maxOf(1, dp(1)), dp(24)).apply {
+                    marginStart = dp(14); marginEnd = dp(14)
+                })
+                addView(TextView(app).apply {
+                    text = "Результаты поиска"
+                    textSize = 16f
+                    setTextColor(0xffc3ccdf.toInt())
+                    typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                    includeFontPadding = false
+                })
+                addView(TextView(app).apply {
+                    text = "·"; textSize = 17f; setTextColor(0xffa9b9d0.toInt())
+                    setPadding(dp(9), 0, dp(9), 0)
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                })
+                videoQuery = TextView(app).apply {
+                    textSize = 18f
+                    setTextColor(Color.rgb(243, 245, 250))
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    includeFontPadding = false
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                    accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+                }
+                addView(videoQuery, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            }
+            addView(videoHeader, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(23)
+            })
             fun TextView.responseStyle() {
                 val maxTextWidth = minOf((app.resources.displayMetrics.widthPixels * 0.7f).toInt(), dp(720))
                 maxWidth = maxTextWidth
@@ -220,10 +281,10 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                 view.addTextChangedListener(object : TextWatcher {
                     override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
                     override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                        transcript.visibility = if (transcript.text.isNullOrEmpty()) View.GONE else View.VISIBLE
+                        updateVideoHeader()
                         answer.visibility = if (answer.text.isNullOrEmpty()) View.GONE else View.VISIBLE
                         status.visibility = if (showVoiceStatus(status.text, answer.text)) View.VISIBLE else View.GONE
-                        divider.visibility = if (!transcript.text.isNullOrEmpty() &&
+                        divider.visibility = if (renderedVideos.isEmpty() && !transcript.text.isNullOrEmpty() &&
                             (!answer.text.isNullOrEmpty() || !status.text.isNullOrEmpty())) View.VISIBLE else View.GONE
                     }
                     override fun afterTextChanged(s: Editable?) = Unit
@@ -274,21 +335,64 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                     visibility = View.GONE
                 }.also { rails.addView(it, LinearLayout.LayoutParams(-1, -2)) }
             }
-            addView(ScrollView(app).apply { addView(rails) }, LinearLayout.LayoutParams(-1, 0, 1f))
+            val railsScroll = ScrollView(app).apply {
+                isVerticalScrollBarEnabled = false
+                addView(rails)
+            }
+            val scrollHint = TextView(app).apply {
+                text = "⌄"
+                textSize = 30f
+                gravity = Gravity.CENTER
+                setTextColor(0xffd4e7ff.toInt())
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                isClickable = false
+                visibility = View.GONE
+            }
+            fun updateScrollHint() {
+                scrollHint.visibility = if (renderedVideos.isNotEmpty() && railsScroll.canScrollVertically(1)) View.VISIBLE else View.GONE
+            }
+            railsScroll.setOnScrollChangeListener { _, _, _, _, _ -> updateScrollHint() }
+            railsScroll.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateScrollHint() }
+            rails.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateScrollHint() }
+            addView(FrameLayout(app).apply {
+                addView(railsScroll, FrameLayout.LayoutParams(-1, -1))
+                addView(scrollHint, FrameLayout.LayoutParams(dp(52), dp(31), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
+            }, LinearLayout.LayoutParams(-1, 0, 1f))
         }
     }
 
     private fun renderVideos(rows: List<VideoRow>) {
         if (videoRails.isEmpty() || renderedVideos == rows) return
-        val oldVisible = renderedVideos.any { it.cards.isNotEmpty() }
-        val newVisible = rows.any { it.cards.isNotEmpty() }
+        val wasVideo = renderedVideos.isNotEmpty()
+        val isVideo = rows.isNotEmpty()
         renderedVideos = rows
         if (rows.isEmpty()) videoFocusClaimed = false
-        if (oldVisible != newVisible) contentRoot.setPadding(dp(56), dp(if (newVisible) 24 else 72), dp(56), dp(32))
+        if (wasVideo != isVideo) {
+            contentRoot.setPadding(dp(if (isVideo) 48 else 56), dp(if (isVideo) 27 else 72), dp(if (isVideo) 48 else 56), dp(if (isVideo) 0 else 32))
+            contentRoot.background = if (isVideo) LayerDrawable(arrayOf(
+                GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xff132d59.toInt(), 0xff071934.toInt(), 0xff07152a.toInt())),
+                GradientDrawable().apply {
+                    gradientType = GradientDrawable.RADIAL_GRADIENT
+                    setGradientCenter(.82f, .03f)
+                    gradientRadius = app.resources.displayMetrics.widthPixels * .65f
+                    colors = intArrayOf(0x8b594078.toInt(), 0x292e468b, Color.TRANSPARENT)
+                },
+            )) else normalBackground
+        }
+        updateVideoHeader()
         val compact = rows.isNotEmpty() || renderedChoice != null
         transcript.maxLines = if (compact) 2 else Int.MAX_VALUE
         transcript.ellipsize = if (compact) TextUtils.TruncateAt.END else null
         videoRails.forEach { (source, rail) -> rail.render(rows.firstOrNull { it.source == source }) }
+    }
+
+    private fun updateVideoHeader() {
+        val hasQuery = !transcript.text.isNullOrEmpty()
+        val video = renderedVideos.isNotEmpty()
+        transcript.visibility = if (hasQuery && !video) View.VISIBLE else View.GONE
+        videoHeader.visibility = if (hasQuery && video) View.VISIBLE else View.GONE
+        videoQuery.text = transcript.text
+        voiceDivider.visibility = if (!video && hasQuery && (!answer.text.isNullOrEmpty() || !status.text.isNullOrEmpty())) View.VISIBLE else View.GONE
     }
 
     private fun renderChoice(choice: ChoicePresentation?) {

@@ -3,6 +3,7 @@ package org.stypox.dicio.voice
 import android.content.Context
 import android.view.View
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -45,8 +46,8 @@ class VideoRailTest {
             val second = VideoRail(context, { _, _ -> }, {}, { retried.add(it) }, loader)
             first.render(VideoRow(1, emptyList(), hasNext = true, loadError = true, source = VideoSource.RUTUBE))
             second.render(VideoRow(2, emptyList(), hasNext = true, loadError = true, source = VideoSource.YOUTUBE))
-            assertEquals("Rutube", (first.getChildAt(0) as TextView).text.toString())
-            assertEquals("YouTube", (second.getChildAt(0) as TextView).text.toString())
+            assertEquals("Rutube", heading(first).text.toString())
+            assertEquals("YouTube", heading(second).text.toString())
             first.release()
             (first.getChildAt(3) as Button).performClick()
             (second.getChildAt(3) as Button).performClick()
@@ -62,7 +63,7 @@ class VideoRailTest {
             val context = ApplicationProvider.getApplicationContext<Context>()
             val rail = VideoRail(context, { _, _ -> }, {}, { retried.add(it) })
             assertEquals(4, rail.childCount) // heading, cards, loading, retry; no duplicate title
-            val heading = rail.getChildAt(0) as TextView
+            val heading = heading(rail)
             val retry = rail.getChildAt(3) as Button
             val cards = listOf(VideoCard("video", "Title", "Author", null))
             rail.render(VideoRow(11, cards, hasNext = true, loadError = true, source = VideoSource.YOUTUBE))
@@ -100,4 +101,7 @@ class VideoRailTest {
             assertEquals(emptyList<Pair<Long, String>>(), selected)
         }
     }
+
+    private fun heading(rail: VideoRail): TextView =
+        (rail.getChildAt(0) as LinearLayout).getChildAt(1) as TextView
 }
