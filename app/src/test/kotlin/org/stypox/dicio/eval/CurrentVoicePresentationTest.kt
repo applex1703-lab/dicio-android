@@ -4,6 +4,79 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
 class CurrentVoicePresentationTest : StringSpec({
+    "finished video search clears thinking even when both providers have no cards" {
+        val current = CurrentVoicePresentation()
+        current.thinking("query")
+        current.videoSourceMessage(VideoSource.RUTUBE, "Rutube empty")
+        current.videoSourceMessage(VideoSource.YOUTUBE, "YouTube unavailable")
+        current.finishVideoSearch()
+        current.state.value.status shouldBe ""
+        current.state.value.videoSourceMessages.size shouldBe 2
+    }
+    "source messages do not overwrite results or other messages" {
+        val current = CurrentVoicePresentation()
+        val card = VideoCard("a", "A", "", null)
+        current.addVideos(1, listOf(card), false, VideoSource.RUTUBE) shouldBe true
+        current.videoSourceMessage(VideoSource.YOUTUBE, "Нет результатов")
+        current.videoSourceMessage(VideoSource.RUTUBE, "Предупреждение")
+        current.state.value.videoRows.single().cards shouldBe listOf(card)
+        current.clearVideoSourceMessage(VideoSource.RUTUBE)
+        current.state.value.videoSourceMessages shouldBe mapOf(VideoSource.YOUTUBE to "Нет результатов")
+        current.addVideos(2, listOf(card), false, VideoSource.YOUTUBE) shouldBe true
+        current.state.value.videoSourceMessages shouldBe emptyMap()
+        current.videoSourceMessage(VideoSource.YOUTUBE, "Ошибка")
+        current.videoSourceMessage(VideoSource.YOUTUBE, "")
+        current.state.value.videoSourceMessages shouldBe emptyMap()
+        current.videoSourceMessage(VideoSource.YOUTUBE, "Ошибка")
+        current.openingVideo()
+        current.state.value.videoSourceMessages shouldBe emptyMap()
+        current.videoSourceMessage(VideoSource.YOUTUBE, "Ошибка")
+        current.listening("new")
+        current.state.value.videoSourceMessages shouldBe emptyMap()
+    }
+    "two sources stay ordered and paginate independently" {
+        val current = CurrentVoicePresentation()
+        val rutube = VideoCard("same", "Rutube", "", null)
+        val youtube = VideoCard("same", "YouTube", "", null)
+        val next = VideoCard("next", "Next", "", null)
+        current.upsertVideos(2, listOf(youtube), true, VideoSource.YOUTUBE) shouldBe true
+        current.upsertVideos(1, listOf(rutube), true, VideoSource.RUTUBE) shouldBe true
+        current.state.value.videoRows.map { it.id } shouldBe listOf(1L, 2L)
+        current.state.value.videoRow?.id shouldBe 1L
+        current.upsertVideos(1, emptyList(), source = VideoSource.YOUTUBE) shouldBe false
+        current.videoPageLoading(1) shouldBe true
+        current.videoPageLoading(2) shouldBe true
+        current.videoPageFailed(1)
+        current.videoPageLoaded(2, listOf(youtube, next), false)
+        current.state.value.videoRows[0].cards shouldBe listOf(rutube)
+        current.state.value.videoRows[0].loadError shouldBe true
+        current.state.value.videoRows[1].cards shouldBe listOf(youtube, next)
+        current.state.value.videoRows[1].loadError shouldBe false
+        current.videoPageLoading(1) shouldBe true
+        current.upsertVideos(3, listOf(rutube), true, VideoSource.RUTUBE) shouldBe true
+        current.videoPageLoaded(1, listOf(next), false)
+        current.state.value.videoRows.map { it.id } shouldBe listOf(3L, 2L)
+        current.state.value.videoRows[0].cards shouldBe listOf(rutube)
+        current.state.value.videoRows[1].cards shouldBe listOf(youtube, next)
+    }
+    "opening and new input discard both rows and late pages" {
+        val current = CurrentVoicePresentation()
+        current.upsertVideos(1, emptyList(), true, VideoSource.RUTUBE)
+        current.upsertVideos(2, emptyList(), true, VideoSource.YOUTUBE)
+        current.videoPageLoading(1)
+        current.videoPageLoading(2)
+        current.openingVideo()
+        current.videoPageLoaded(1, listOf(VideoCard("late", "Late", "", null)), true)
+        current.videoPageFailed(2)
+        current.state.value.videoRows shouldBe emptyList()
+        current.upsertVideos(3, emptyList(), true, VideoSource.RUTUBE)
+        current.upsertVideos(4, emptyList(), true, VideoSource.YOUTUBE)
+        current.videoPageLoading(3)
+        current.thinking("new")
+        current.videoPageLoaded(3, emptyList(), true)
+        current.state.value.videoRows shouldBe emptyList()
+        current.state.value.request shouldBe "new"
+    }
     "video source defaults to Rutube and survives page updates" {
         val current = CurrentVoicePresentation()
         current.videos(1, emptyList())

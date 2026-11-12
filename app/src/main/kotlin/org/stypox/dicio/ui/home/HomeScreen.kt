@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -29,6 +32,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -53,6 +57,7 @@ import org.stypox.dicio.R
 import org.stypox.dicio.di.SkillContextImpl
 import org.stypox.dicio.eval.VoicePresentation
 import org.stypox.dicio.eval.ChoicePresentation
+import org.stypox.dicio.eval.VideoSource
 import org.stypox.dicio.io.input.SttState
 import org.stypox.dicio.ui.nav.SearchTopAppBar
 import org.stypox.dicio.ui.theme.AppTheme
@@ -176,7 +181,12 @@ fun HomeScreen(
 ) {
     var searchString by rememberSaveable { mutableStateOf<String?>(null) }
     val isTv = isTelevision()
-    BackHandler(enabled = searchString == null && ownsWork && (presentation.choice != null || presentation.videoRow != null || interactionLog.pendingQuestion != null || sttState == SttState.Listening || sttState == SttState.WaitingForResult || (sttState is SttState.Loading && sttState.thenStartListening))) { onCancel() }
+    val latestPresentation by rememberUpdatedState(presentation)
+    var videoInitialFocusClaimed by remember { mutableStateOf(false) }
+    LaunchedEffect(presentation.videoRows.isEmpty()) {
+        if (presentation.videoRows.isEmpty()) videoInitialFocusClaimed = false
+    }
+    BackHandler(enabled = searchString == null && ownsWork && (presentation.choice != null || presentation.videoRows.isNotEmpty() || presentation.videoSourceMessages.isNotEmpty() || interactionLog.pendingQuestion != null || sttState == SttState.Listening || sttState == SttState.WaitingForResult || (sttState is SttState.Loading && sttState.thenStartListening))) { onCancel() }
 
     Scaffold(
         topBar = {
@@ -213,14 +223,38 @@ fun HomeScreen(
                     presentation.choice?.let { choice ->
                         ChoiceButtons(choice, onSelectChoice, Modifier.weight(1f, fill = false))
                     }
-                    presentation.videoRow?.let { row ->
-                        Text(row.source.label, modifier = Modifier.padding(horizontal = 16.dp))
-                        ChoiceButtons(ChoicePresentation(row.id, row.cards.map {
-                            org.stypox.dicio.eval.ChoiceOption(it.id, it.title)
-                        }), onSelectVideo, Modifier.weight(1f, fill = false))
-                        if (row.hasNext) Button(onClick = { onLoadVideoPage(row.id, row.loadError) },
-                            enabled = !row.loading) {
-                            Text(if (row.loading) "Загрузка…" else if (row.loadError) "Повторить загрузку" else "Показать ещё")
+                    Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                        listOf(VideoSource.RUTUBE, VideoSource.YOUTUBE).forEach { source ->
+                            presentation.videoRows.firstOrNull { it.source == source }?.let { row ->
+                                key(row.id) {
+                                    val firstVideoFocus = remember { FocusRequester() }
+                                    Text(row.source.label, modifier = Modifier.padding(horizontal = 16.dp))
+                                    LazyRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                        itemsIndexed(row.cards, key = { _, card -> card.id }) { index, card ->
+                                            if (index == 0) LaunchedEffect(Unit) {
+                                                if (!videoInitialFocusClaimed) {
+                                                    firstVideoFocus.requestFocus()
+                                                    videoInitialFocusClaimed = true
+                                                }
+                                            }
+                                            Button(onClick = {
+                                                if (latestPresentation.videoRows.any { it.id == row.id && it.source == source && it.cards.any { current -> current.id == card.id } })
+                                                    onSelectVideo(row.id, card.id)
+                                            }, modifier = Modifier.padding(end = 8.dp)
+                                                .then(if (index == 0) Modifier.focusRequester(firstVideoFocus) else Modifier)) { Text(card.title) }
+                                        }
+                                    }
+                                    if (row.hasNext) Button(onClick = {
+                                        latestPresentation.videoRows.firstOrNull { it.id == row.id && it.source == source && it.hasNext && !it.loading }
+                                            ?.let { onLoadVideoPage(it.id, it.loadError) }
+                                    }, enabled = !row.loading) {
+                                        Text(if (row.loading) "Загрузка…" else if (row.loadError) "Повторить загрузку" else "Показать ещё")
+                                    }
+                                }
+                            }
+                            presentation.videoSourceMessages[source]?.takeIf { it.isNotBlank() }?.let { message ->
+                                Text("${source.label}: $message", modifier = Modifier.padding(horizontal = 16.dp))
+                            }
                         }
                     }
                 }

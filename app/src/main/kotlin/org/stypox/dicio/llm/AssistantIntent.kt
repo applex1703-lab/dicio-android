@@ -9,6 +9,7 @@ internal sealed interface AssistantIntent {
     data class OpenSettings(val section: SettingsSection) : AssistantIntent
     data class SearchRutube(val query: String) : AssistantIntent
     data class SearchYoutube(val query: String) : AssistantIntent
+    data class SearchVideos(val query: String) : AssistantIntent
     data class ChooseSearch(val query: String) : AssistantIntent
     data class Media(val command: MediaCommand) : AssistantIntent
     data object Time : AssistantIntent
@@ -29,7 +30,7 @@ internal enum class SettingsSection(val action: String, val label: String) {
 
 /** A single decision, not an arbitrary tool loop. All fields are checked again locally. */
 internal object IntentProtocol {
-    private val actions = listOf("reply", "clarify", "open_app", "open_settings", "get_time", "get_date", "search_rutube", "search_youtube", "choose_search", "media", "connect_happ")
+    private val actions = listOf("reply", "clarify", "open_app", "open_settings", "get_time", "get_date", "search_rutube", "search_youtube", "search_videos", "choose_search", "media", "connect_happ")
 
     fun request(model: String, text: String, apps: Map<String, String>, media: List<MediaTarget> = emptyList(),
         clarification: ClarificationContext? = null, history: List<ConversationMessage> = emptyList()): String {
@@ -47,9 +48,9 @@ internal object IntentProtocol {
                         "Для reply/clarify app_id должен быть пустым; для времени/даты тоже. " +
                         "При неоднозначном названии или отсутствии приложения уточняй, не выбирай похожее наугад. " +
                         "Отвечай кратко, обычно 1–2 предложения до 40 слов, без Markdown. " +
-                        "search_rutube — показать результаты поиска видео в Rutube без запуска видео; " +
-                        "также используй для поиска видео, мультфильмов или роликов без указанного сервиса. " +
-                        "search_youtube — показать результаты поиска в YouTube, без запуска видео. " +
+                        "search_rutube — поиск видео при явно указанном Rutube, без запуска видео. " +
+                        "search_videos — поиск видео, мультфильмов или роликов без явно указанного сервиса. " +
+                        "search_youtube — при явно указанном YouTube открыть поиск во внешнем приложении YouTube, без открытия конкретного видео. " +
                         "search_query содержит только поисковую фразу без команды и названия сервиса; " +
                         "choose_search — для поиска не видео, если поисковая фраза известна, но сервис не указан, предложить выбор сервиса. " +
                         "Для choose_search положи фразу только в search_query, а text, app_id и settings_section оставь пустыми. " +
@@ -141,7 +142,7 @@ internal object IntentProtocol {
         check(secondsValue != null && !secondsValue.isString) { "Недопустимое время медиакоманды." }
         val seconds = secondsValue.longOrNull ?: error("Недопустимое время медиакоманды.")
         check(action == "media" || (mediaId.isEmpty() && operation.isEmpty() && seconds == 0L)) { "Лишние параметры медиакоманды." }
-        check(action in setOf("search_rutube", "search_youtube", "choose_search") || query.isEmpty()) { "Поиск не разрешён для этого действия." }
+        check(action in setOf("search_rutube", "search_youtube", "search_videos", "choose_search") || query.isEmpty()) { "Поиск не разрешён для этого действия." }
         check(text.length <= 6000) { "Ответ модели слишком длинный." }
         return when (action) {
             "connect_happ" -> {
@@ -166,7 +167,7 @@ internal object IntentProtocol {
                 }
                 AssistantIntent.ChooseSearch(ContentSearch.validateQuery(query))
             }
-            "search_rutube", "search_youtube" -> {
+            "search_rutube", "search_youtube", "search_videos" -> {
                 if (id.isNotEmpty() || settings.isNotEmpty() || text.isNotEmpty()) {
                     // Record only field presence, never the model response or request contents.
                     java.util.logging.Logger.getLogger("DicioSearchProtocol").warning(
@@ -176,8 +177,11 @@ internal object IntentProtocol {
                 }
                 check(id.isEmpty() && settings.isEmpty() && text.isEmpty()) { "Недопустимые параметры поиска." }
                 val validated = ContentSearch.validateQuery(query)
-                if (action == "search_rutube") AssistantIntent.SearchRutube(validated)
-                else AssistantIntent.SearchYoutube(validated)
+                when (action) {
+                    "search_rutube" -> AssistantIntent.SearchRutube(validated)
+                    "search_youtube" -> AssistantIntent.SearchYoutube(validated)
+                    else -> AssistantIntent.SearchVideos(validated)
+                }
             }
             "reply", "clarify" -> {
                 check(id.isEmpty() && settings.isEmpty() && text.isNotBlank()) { "Некорректный ответ модели." }

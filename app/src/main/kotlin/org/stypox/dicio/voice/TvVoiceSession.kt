@@ -42,6 +42,8 @@ import org.stypox.dicio.di.SttInputDeviceWrapper
 import org.stypox.dicio.eval.SkillEvaluator
 import org.stypox.dicio.eval.ChoicePresentation
 import org.stypox.dicio.eval.VideoRow
+import org.stypox.dicio.eval.VideoSource
+import coil.ImageLoader
 import org.stypox.dicio.io.input.SttState
 
 @EntryPoint
@@ -101,9 +103,12 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private lateinit var answer: TextView
     private lateinit var choiceScroll: ScrollView
     private lateinit var choiceButtons: LinearLayout
-    private lateinit var videoRail: VideoRail
+    private val videoRails = mutableMapOf<VideoSource, VideoRail>()
+    private val videoMessages = mutableMapOf<VideoSource, TextView>()
+    private var videoImages: ImageLoader? = null
+    private var videoFocusClaimed = false
     private lateinit var contentRoot: LinearLayout
-    private var renderedVideos: VideoRow? = null
+    private var renderedVideos: List<VideoRow> = emptyList()
     private var renderedChoice: ChoicePresentation? = null
     private var visible = false
     private val assistGesture = ExplicitAssistGesture()
@@ -121,7 +126,8 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             updates?.cancel()
             updates = null
             renderChoice(null)
-            renderVideos(null)
+            renderVideos(emptyList())
+            videoMessages.values.forEach { it.text = ""; it.visibility = View.GONE }
             if (visible) answer.text = "Голосовой запрос прерван."
         },
         ensureUpdates = { ensureVoiceUpdates() },
@@ -140,6 +146,13 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private fun dp(value: Int) = (app.resources.displayMetrics.density * value).toInt()
 
     override fun onCreateContentView(): View {
+        videoRails.values.forEach { it.release() }
+        videoRails.clear()
+        videoMessages.clear()
+        videoImages?.shutdown()
+        videoImages = null
+        renderedVideos = emptyList()
+        videoFocusClaimed = false
         // Full-screen gradient keeps the TV visible but provides contrast behind the text.
         window?.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
@@ -242,31 +255,46 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             }
             addView(choiceScroll, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-            videoRail = VideoRail(app,
-                onVideo = { rowId, videoId -> coordinator.selectVideo(this@TvVoiceSession, rowId, videoId) },
-                onNearEnd = { rowId -> coordinator.loadNextVideoPage(this@TvVoiceSession, rowId) },
-                onRetry = { rowId -> coordinator.loadNextVideoPage(this@TvVoiceSession, rowId, retry = true) })
-            addView(videoRail, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            val images = videoImageLoader(app).also { videoImages = it }
+            val rails = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
+            listOf(VideoSource.RUTUBE, VideoSource.YOUTUBE).forEach { source ->
+                val rail = VideoRail(app,
+                    onVideo = { rowId, videoId -> coordinator.selectVideo(this@TvVoiceSession, rowId, videoId) },
+                    onNearEnd = { rowId -> coordinator.loadNextVideoPage(this@TvVoiceSession, rowId) },
+                    onRetry = { rowId -> coordinator.loadNextVideoPage(this@TvVoiceSession, rowId, retry = true) },
+                    sharedImageLoader = images,
+                    claimInitialFocus = { view ->
+                        if (videoFocusClaimed) false else view.requestFocus().also { if (it) videoFocusClaimed = true }
+                    })
+                videoRails[source] = rail
+                rails.addView(rail, LinearLayout.LayoutParams(-1, -2))
+                videoMessages[source] = TextView(app).apply {
+                    setTextColor(Color.LTGRAY)
+                    textSize = 16f
+                    visibility = View.GONE
+                }.also { rails.addView(it, LinearLayout.LayoutParams(-1, -2)) }
+            }
+            addView(ScrollView(app).apply { addView(rails) }, LinearLayout.LayoutParams(-1, 0, 1f))
         }
     }
 
-    private fun renderVideos(row: VideoRow?) {
-        if (!::videoRail.isInitialized || renderedVideos == row) return
-        val oldVisible = renderedVideos?.cards?.isNotEmpty() == true
-        val newVisible = row?.cards?.isNotEmpty() == true
-        renderedVideos = row
+    private fun renderVideos(rows: List<VideoRow>) {
+        if (videoRails.isEmpty() || renderedVideos == rows) return
+        val oldVisible = renderedVideos.any { it.cards.isNotEmpty() }
+        val newVisible = rows.any { it.cards.isNotEmpty() }
+        renderedVideos = rows
+        if (rows.isEmpty()) videoFocusClaimed = false
         if (oldVisible != newVisible) contentRoot.setPadding(dp(56), dp(if (newVisible) 24 else 72), dp(56), dp(32))
-        val compact = row != null || renderedChoice != null
+        val compact = rows.isNotEmpty() || renderedChoice != null
         transcript.maxLines = if (compact) 2 else Int.MAX_VALUE
         transcript.ellipsize = if (compact) TextUtils.TruncateAt.END else null
-        videoRail.render(row)
+        videoRails.forEach { (source, rail) -> rail.render(rows.firstOrNull { it.source == source }) }
     }
 
     private fun renderChoice(choice: ChoicePresentation?) {
         if (renderedChoice == choice) return
         renderedChoice = choice
-        val compact = choice != null || renderedVideos != null
+        val compact = choice != null || renderedVideos.isNotEmpty()
         transcript.maxLines = if (compact) 2 else Int.MAX_VALUE
         transcript.ellipsize = if (compact) TextUtils.TruncateAt.END else null
         answer.maxLines = if (choice == null) 8 else 2
@@ -346,7 +374,12 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                     transcript.text = presentation.request
                     answer.text = presentation.answer
                      renderChoice(presentation.choice)
-                    renderVideos(presentation.videoRow)
+                    renderVideos(presentation.videoRows)
+                    videoMessages.forEach { (source, view) ->
+                        val message = presentation.videoSourceMessages[source]
+                        view.text = if (message.isNullOrBlank()) "" else "${source.label}: $message"
+                        view.visibility = if (message.isNullOrBlank()) View.GONE else View.VISIBLE
+                    }
                     if (presentation.dismiss) hide()
                 }
         }
@@ -361,7 +394,8 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         updates?.cancel()
         updates = null
         if (::choiceButtons.isInitialized) renderChoice(null)
-        renderVideos(null)
+        renderVideos(emptyList())
+        videoMessages.values.forEach { it.text = ""; it.visibility = View.GONE }
         teardown.close()
     }
 
@@ -405,7 +439,8 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                         updates?.cancel()
                         updates = null
                         renderChoice(null)
-                        renderVideos(null)
+                        renderVideos(emptyList())
+                        videoMessages.values.forEach { it.text = ""; it.visibility = View.GONE }
                         if (visible) answer.text = "Голосовой запрос прерван."
                     }
                     if (started && visible) ensureVoiceUpdates()
@@ -426,7 +461,11 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         updates?.cancel()
         scope.cancel()
         releaseVoiceResources()
-        if (::videoRail.isInitialized) videoRail.release()
+        videoRails.values.forEach { it.release() }
+        videoRails.clear()
+        videoMessages.clear()
+        videoImages?.shutdown()
+        videoImages = null
         super.onDestroy()
     }
 

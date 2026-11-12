@@ -15,6 +15,26 @@ import org.stypox.dicio.eval.VideoSource
 
 /** Exercises only the isolated View; no microphone, network or external application. */
 class VideoRailTest {
+    @Test fun independentRailsKeepTheirOwnRowsAndRetryAfterPeerRelease() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val loader = videoImageLoader(context)
+            val retried = mutableListOf<Long>()
+            val first = VideoRail(context, { _, _ -> }, {}, { retried.add(it) }, loader)
+            val second = VideoRail(context, { _, _ -> }, {}, { retried.add(it) }, loader)
+            first.render(VideoRow(1, emptyList(), hasNext = true, loadError = true, source = VideoSource.RUTUBE))
+            second.render(VideoRow(2, emptyList(), hasNext = true, loadError = true, source = VideoSource.YOUTUBE))
+            assertEquals("Rutube", (first.getChildAt(0) as TextView).text.toString())
+            assertEquals("YouTube", (second.getChildAt(0) as TextView).text.toString())
+            first.release()
+            (first.getChildAt(4) as Button).performClick()
+            (second.getChildAt(4) as Button).performClick()
+            assertEquals(listOf(2L), retried)
+            second.release()
+            loader.shutdown()
+        }
+    }
+
     @Test fun sourceReplacementUpdatesHeadingAndRetryUsesOnlyCurrentRow() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val retried = mutableListOf<Long>()

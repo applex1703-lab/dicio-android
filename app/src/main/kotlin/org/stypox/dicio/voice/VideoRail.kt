@@ -5,6 +5,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
@@ -40,25 +42,30 @@ internal fun allowedVideoThumbnail(raw: String, source: VideoSource): String? {
     return url.takeIf { it.isHttps && it.port == 443 && it.host in hosts }?.toString()
 }
 
-/** Owns its image loader; call [release] when the containing UI is destroyed. */
+internal fun videoImageLoader(context: Context): ImageLoader = ImageLoader.Builder(context.applicationContext)
+    .memoryCache { MemoryCache.Builder(context.applicationContext).maxSizeBytes(16 * 1024 * 1024).build() }
+    .diskCache(null)
+    .bitmapFactoryMaxParallelism(2)
+    .okHttpClient {
+        OkHttpClient.Builder().dispatcher(Dispatcher().apply {
+            maxRequests = 3
+            maxRequestsPerHost = 3
+        }).followRedirects(false).followSslRedirects(false).build()
+    }.build()
+
+/** An injected loader is owned by the containing UI; otherwise this rail owns it. */
 internal class VideoRail(
     context: Context,
     private val onVideo: (Long, String) -> Unit,
     private val onNearEnd: (Long) -> Unit,
     private val onRetry: (Long) -> Unit,
+    sharedImageLoader: ImageLoader? = null,
+    private val claimInitialFocus: (View) -> Boolean = { it.requestFocus() },
 ) : LinearLayout(context) {
     private fun dp(value: Int) = (resources.displayMetrics.density * value).toInt()
 
-    private val imageLoader = ImageLoader.Builder(context.applicationContext)
-        .memoryCache { MemoryCache.Builder(context.applicationContext).maxSizeBytes(16 * 1024 * 1024).build() }
-        .diskCache(null)
-        .bitmapFactoryMaxParallelism(2)
-        .okHttpClient {
-            OkHttpClient.Builder().dispatcher(Dispatcher().apply {
-                maxRequests = 3
-                maxRequestsPerHost = 3
-            }).followRedirects(false).followSslRedirects(false).build()
-        }.build()
+    private val ownsImageLoader = sharedImageLoader == null
+    private val imageLoader = sharedImageLoader ?: videoImageLoader(context)
     private val layout = LinearLayoutManager(context, RecyclerView.HORIZONTAL, false)
     private val cards = CardAdapter()
     private val list = RecyclerView(context).apply {
@@ -92,6 +99,14 @@ internal class VideoRail(
         ellipsize = TextUtils.TruncateAt.END
         setPadding(dp(4), dp(8), dp(4), 0)
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        visibility = View.GONE
+        addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                visibility = if (s.isNullOrEmpty()) View.GONE else View.VISIBLE
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
     }
     private val heading = TextView(context).apply {
         textSize = 17f
@@ -158,9 +173,23 @@ internal class VideoRail(
     private fun focusFirstIfNeeded() {
         if (initialFocusRow != null && initialFocusRow == row?.id && cards.itemCount > 0 && isShown) {
             val first = list.findViewHolderForAdapterPosition(0)?.itemView ?: return
-            initialFocusRow = null
-            first.requestFocus()
+            // Do not steal focus from another video rail that appeared earlier.
+            val focused = rootView.findFocus()
+            if (focused != null && isVideoCard(focused)) {
+                initialFocusRow = null
+            } else if (claimInitialFocus(first)) {
+                initialFocusRow = null
+            }
         }
+    }
+
+    private fun isVideoCard(view: View): Boolean {
+        var parent = view.parent
+        while (parent is View) {
+            if (parent is VideoRail) return true
+            parent = parent.parent
+        }
+        return false
     }
 
     private fun scheduleNearEnd() {
@@ -169,13 +198,11 @@ internal class VideoRail(
         list.post {
             nearEndPosted = false
             val current = row ?: return@post
-            // YouTube searches consume quota: do not chain pages merely because a short
-            // page fits on screen. Require focus to approach the end of the loaded cards.
-            val nearEnd = if (current.source == VideoSource.YOUTUBE) {
-                val focused = list.findFocus()
-                val position = focused?.let { list.findContainingViewHolder(it)?.bindingAdapterPosition }
-                position != null && position != RecyclerView.NO_POSITION && position >= cards.itemCount - 3
-            } else layout.findLastVisibleItemPosition() >= cards.itemCount - 3
+            // A short visible row must not automatically chain page requests. Load as
+            // the user moves focus towards its end, independently for each source.
+            val focused = list.findFocus()
+            val position = focused?.let { list.findContainingViewHolder(it)?.bindingAdapterPosition }
+            val nearEnd = position != null && position != RecyclerView.NO_POSITION && position >= cards.itemCount - 3
             if (!released && current.hasNext && !current.loading && !current.loadError &&
                 cards.itemCount == current.cards.size && cards.itemCount > 0 &&
                 nearEnd) {
@@ -195,7 +222,7 @@ internal class VideoRail(
         cards.submitList(emptyList())
         list.adapter = null
         list.recycledViewPool.clear()
-        imageLoader.shutdown()
+        if (ownsImageLoader) imageLoader.shutdown()
         visibility = View.GONE
     }
 

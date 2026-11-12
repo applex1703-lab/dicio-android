@@ -65,6 +65,36 @@ class IntentProtocolTest : StringSpec({
             IntentProtocol.parse(decision("search_rutube", id = "app_1", query = "cosmos"), setOf("app_1"))
         }
     }
+    "video search is a strict validated model action and preserves clarification context" {
+        IntentProtocol.parse(decision("search_videos", query = "  космос & звёзды?  "), emptySet()) shouldBe
+            AssistantIntent.SearchVideos("космос & звёзды?")
+        for (query in listOf("", " ", "a".repeat(301), "hello\nworld")) {
+            shouldThrow<IllegalStateException> { IntentProtocol.parse(decision("search_videos", query = query), emptySet()) }
+        }
+        for (body in listOf(
+            decision("search_videos", id = "app_1", query = "x"),
+            decision("search_videos", settings = "WIFI", query = "x"),
+            decision("search_videos", text = "x", query = "x"),
+            decision("search_videos", query = "x").replace("\"media_id\":\"\"", "\"media_id\":\"m\""),
+            decision("search_videos", query = "x").replace("\"media_operation\":\"\"", "\"media_operation\":\"PAUSE\""),
+            decision("search_videos", query = "x").replace("\"media_seconds\":0", "\"media_seconds\":1"),
+            decision("search_videos", query = "x").replace("\"search_query\":\"x\"", "\"search_query\":42"),
+            decision("search_videos", query = "x").replaceFirst("{", "{\"extra\":true,"),
+        )) {
+            shouldThrow<IllegalStateException> { IntentProtocol.parse(body, setOf("app_1")) }
+        }
+        val request = Json.parseToJsonElement(IntentProtocol.request("model", "про космос", emptyMap(),
+            clarification = ClarificationContext("найди видео", "О чём?"))).jsonObject
+        val messages = request["messages"]!!.jsonArray
+        val system = messages[0].jsonObject["content"]!!.jsonPrimitive.content
+        system.contains("search_videos") shouldBe true
+        system.contains("внешнем приложении YouTube") shouldBe true
+        val payload = Json.parseToJsonElement(messages[1].jsonObject["content"]!!.jsonPrimitive.content).jsonObject
+        payload["request"]!!.jsonPrimitive.content shouldBe "про космос"
+        payload["previous_clarification"]!!.jsonObject["request"]!!.jsonPrimitive.content shouldBe "найди видео"
+        val actions = request["response_format"]!!.jsonObject["json_schema"]!!.jsonObject["schema"]!!.jsonObject["properties"]!!.jsonObject["action"]!!.jsonObject["enum"]!!.jsonArray
+        actions.map { it.jsonPrimitive.content }.containsAll(listOf("search_videos", "search_rutube", "search_youtube", "clarify")) shouldBe true
+    }
     "time and date have no invented output parameters" {
         IntentProtocol.parse(decision("get_time"), emptySet()) shouldBe AssistantIntent.Time
         IntentProtocol.parse(decision("get_date"), emptySet()) shouldBe AssistantIntent.Date

@@ -131,6 +131,7 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
             is AssistantIntent.Reply -> Execution(decision.text, true)
             is AssistantIntent.Clarify -> Execution(decision.text, true)
             is AssistantIntent.ChooseSearch -> error("Необходимо выбрать сервис поиска.")
+            is AssistantIntent.SearchVideos -> error("Видеопоиск должен обрабатываться внутренней лентой.")
             is AssistantIntent.SearchYoutube -> withContext(Dispatchers.Main) {
                 coroutineContext.ensureActive()
                 val query = ContentSearch.validateQuery(decision.query)

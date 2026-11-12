@@ -24,8 +24,11 @@ data class VoicePresentation(
     val answer: String = "",
     val dismiss: Boolean = false,
     val choice: ChoicePresentation? = null,
-    val videoRow: VideoRow? = null,
-)
+    val videoRows: List<VideoRow> = emptyList(),
+    val videoSourceMessages: Map<VideoSource, String> = emptyMap(),
+) {
+    val videoRow: VideoRow? get() = videoRows.firstOrNull()
+}
 
 /** Only the current request is retained; replacing or clearing it discards earlier text. */
 internal class CurrentVoicePresentation {
@@ -37,37 +40,63 @@ internal class CurrentVoicePresentation {
     fun thinking(text: String) { mutable.value = VoicePresentation(request = text, status = "Думаю…") }
     fun answer(text: String, silent: Boolean = false) {
         mutable.value = mutable.value.copy(status = if (silent) "Выполнено" else "Ответ",
-            answer = if (silent) "" else text, dismiss = silent, choice = null, videoRow = null)
+            answer = if (silent) "" else text, dismiss = silent, choice = null, videoRows = emptyList(), videoSourceMessages = emptyMap())
     }
     fun error(message: String) {
-        mutable.value = mutable.value.copy(status = "Не удалось выполнить запрос", answer = message, dismiss = false, choice = null, videoRow = null)
+        mutable.value = mutable.value.copy(status = "Не удалось выполнить запрос", answer = message, dismiss = false, choice = null, videoRows = emptyList(), videoSourceMessages = emptyMap())
     }
     fun choice(id: Long, options: List<ChoiceOption>, question: String, status: String = "Выберите сервис поиска") {
         mutable.value = mutable.value.copy(status = status, answer = question,
-            dismiss = false, choice = ChoicePresentation(id, options.toList()), videoRow = null)
+            dismiss = false, choice = ChoicePresentation(id, options.toList()), videoRows = emptyList(), videoSourceMessages = emptyMap())
     }
     fun choosing() { mutable.value = mutable.value.copy(choice = null, answer = "", status = "Выполняю…") }
     fun videos(id: Long, cards: List<VideoCard>, hasNext: Boolean = false, source: VideoSource = VideoSource.RUTUBE) {
         mutable.value = mutable.value.copy(status = "", answer = "", dismiss = false, choice = null,
-            videoRow = VideoRow(id, cards.toList(), hasNext = hasNext, source = source))
+            videoRows = listOf(VideoRow(id, cards.toList(), hasNext = hasNext, source = source)), videoSourceMessages = emptyMap())
+    }
+    fun addVideos(id: Long, cards: List<VideoCard>, hasNext: Boolean = false, source: VideoSource = VideoSource.RUTUBE): Boolean =
+        upsertVideos(id, cards, hasNext, source)
+
+    /** IDs must be unique across sources and never reused for a later row. */
+    fun upsertVideos(id: Long, cards: List<VideoCard>, hasNext: Boolean = false, source: VideoSource = VideoSource.RUTUBE): Boolean {
+        val rows = mutable.value.videoRows
+        if (rows.any { it.id == id && it.source != source }) return false
+        val row = VideoRow(id, cards.toList(), hasNext = hasNext, source = source)
+        mutable.value = mutable.value.copy(status = "", answer = "", dismiss = false, choice = null,
+            videoRows = (rows.filterNot { it.source == source } + row).sortedBy { it.source.ordinal },
+            videoSourceMessages = mutable.value.videoSourceMessages - source)
+        return true
+    }
+    fun videoSourceMessage(source: VideoSource, message: String) {
+        mutable.value = mutable.value.copy(videoSourceMessages = if (message.isBlank())
+            mutable.value.videoSourceMessages - source else mutable.value.videoSourceMessages + (source to message))
+    }
+    fun clearVideoSourceMessage(source: VideoSource) {
+        mutable.value = mutable.value.copy(videoSourceMessages = mutable.value.videoSourceMessages - source)
+    }
+    fun finishVideoSearch() {
+        mutable.value = mutable.value.copy(status = "")
     }
     fun videoPageLoading(id: Long): Boolean {
-        val row = mutable.value.videoRow?.takeIf { it.id == id && it.hasNext && !it.loading } ?: return false
-        mutable.value = mutable.value.copy(videoRow = row.copy(loading = true, loadError = false))
+        val row = mutable.value.videoRows.find { it.id == id && it.hasNext && !it.loading } ?: return false
+        updateRow(row.copy(loading = true, loadError = false))
         return true
     }
     fun videoPageLoaded(id: Long, cards: List<VideoCard>, hasNext: Boolean) {
-        val row = mutable.value.videoRow?.takeIf { it.id == id && it.loading } ?: return
+        val row = mutable.value.videoRows.find { it.id == id && it.loading } ?: return
         val existing = row.cards.mapTo(HashSet()) { it.id }
         val added = cards.filter { existing.add(it.id) }
-        mutable.value = mutable.value.copy(videoRow = row.copy(cards = row.cards + added,
+        updateRow(row.copy(cards = row.cards + added,
             hasNext = hasNext, loading = false, loadError = added.isEmpty() && hasNext))
     }
     fun videoPageFailed(id: Long) {
-        val row = mutable.value.videoRow?.takeIf { it.id == id && it.loading } ?: return
-        mutable.value = mutable.value.copy(videoRow = row.copy(loading = false, loadError = true))
+        val row = mutable.value.videoRows.find { it.id == id && it.loading } ?: return
+        updateRow(row.copy(loading = false, loadError = true))
     }
-    fun openingVideo() { mutable.value = mutable.value.copy(videoRow = null, status = "Открываю…", answer = "") }
+    private fun updateRow(row: VideoRow) {
+        mutable.value = mutable.value.copy(videoRows = mutable.value.videoRows.map { if (it.id == row.id) row else it })
+    }
+    fun openingVideo() { mutable.value = mutable.value.copy(videoRows = emptyList(), videoSourceMessages = emptyMap(), status = "Открываю…", answer = "") }
     fun noInput() {
         mutable.value = VoicePresentation(status = "Речь не распознана",
             answer = "Речь не распознана.")
