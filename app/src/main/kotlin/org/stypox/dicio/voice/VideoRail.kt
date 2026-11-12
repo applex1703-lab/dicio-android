@@ -7,6 +7,7 @@ import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.view.View
 import android.view.ViewGroup
+import android.view.KeyEvent
 import android.view.animation.DecelerateInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
@@ -53,6 +54,68 @@ internal fun videoImageLoader(context: Context): ImageLoader = ImageLoader.Build
 
 /** Horizontal navigation stays in this row; vertical navigation remains Android's default. */
 internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
+    private var pendingPosition: Int? = null
+    private var pendingDirection = 0
+
+    fun cancelPendingNavigation() {
+        pendingPosition = null
+        pendingDirection = 0
+        stopScroll()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN &&
+            (event.keyCode == KeyEvent.KEYCODE_DPAD_UP || event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN)) {
+            cancelPendingNavigation()
+        }
+        if (event.action == KeyEvent.ACTION_DOWN && !event.isCanceled &&
+            (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+            val focused = findFocus()
+            val holder = focused?.let { findContainingViewHolder(it) }
+            val position = holder?.bindingAdapterPosition ?: NO_POSITION
+            if (position != NO_POSITION) {
+                val direction = if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1
+                if (pendingPosition != null) {
+                    if (direction == pendingDirection) return true
+                    cancelPendingNavigation()
+                }
+                val target = position + direction
+                if (target !in 0 until (adapter?.itemCount ?: 0)) return true
+                val next = findViewHolderForAdapterPosition(target)?.itemView
+                if (next != null && next.requestFocus()) return true
+                pendingPosition = target
+                pendingDirection = direction
+                smoothScrollToPosition(target)
+                postOnAnimation { completePendingNavigation() }
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun completePendingNavigation() {
+        val target = pendingPosition ?: return
+        if (findFocus() == null || target !in 0 until (adapter?.itemCount ?: 0)) {
+            cancelPendingNavigation()
+            return
+        }
+        val next = findViewHolderForAdapterPosition(target)?.itemView ?: return
+        if (next.requestFocus()) {
+            pendingPosition = null
+            pendingDirection = 0
+        }
+    }
+
+    override fun onChildAttachedToWindow(child: View) {
+        super.onChildAttachedToWindow(child)
+        if (pendingPosition != null) postOnAnimation { completePendingNavigation() }
+    }
+
+    override fun onScrollStateChanged(state: Int) {
+        super.onScrollStateChanged(state)
+        if (state == SCROLL_STATE_IDLE && pendingPosition != null) completePendingNavigation()
+    }
+
     internal fun constrainFocus(focused: View, direction: Int, candidate: View?): View? {
         val horizontal = direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT
         if (horizontal && findContainingItemView(focused) != null &&
@@ -130,11 +193,13 @@ internal class VideoRail(
     fun render(row: VideoRow?) {
         if (released) return
         val previous = this.row
+        if (previous == row) return
         val newRow = previous?.id != row?.id || previous?.source != row?.source
         this.row = row
         heading.text = row?.source?.label.orEmpty()
         val version = ++generation
         if (newRow) {
+            list.cancelPendingNavigation()
             boundHolders.toList().forEach { it.clear() }
             // A different row must rebind even if it contains the same video IDs.
             cards.submitList(null)
@@ -208,6 +273,7 @@ internal class VideoRail(
         if (released) return
         released = true
         generation++
+        list.cancelPendingNavigation()
         row = null
         initialFocusRow = null
         boundHolders.toList().forEach { it.clear() }
