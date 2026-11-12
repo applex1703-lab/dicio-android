@@ -29,6 +29,7 @@ import coil.request.ImageRequest
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import org.stypox.dicio.R
 import org.stypox.dicio.eval.VideoCard
 import org.stypox.dicio.eval.VideoRow
 import org.stypox.dicio.eval.VideoSource
@@ -146,6 +147,10 @@ internal class VideoRail(
     private val claimInitialFocus: (View) -> Boolean = { it.requestFocus() },
 ) : LinearLayout(context) {
     private fun dp(value: Int) = (resources.displayMetrics.density * value).toInt()
+    private val cardTypeface by lazy {
+        try { Typeface.createFromAsset(context.assets, "fonts/Nunito[wght].ttf") }
+        catch (_: RuntimeException) { Typeface.create("sans-serif", Typeface.NORMAL) }
+    }
 
     private val ownsImageLoader = sharedImageLoader == null
     private val imageLoader = sharedImageLoader ?: videoImageLoader(context)
@@ -178,21 +183,27 @@ internal class VideoRail(
     private val sourceIcon = object : View(context) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val path = Path()
+        private val rutubeIcon = context.getDrawable(R.drawable.video_rutube_icon)
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             val w = width.toFloat()
             val h = height.toFloat()
             val youtube = row?.source == VideoSource.YOUTUBE
-            paint.style = Paint.Style.FILL
-            paint.color = if (youtube) 0xfffb1834.toInt() else 0xffff2850.toInt()
-            if (youtube) canvas.drawRoundRect(w * .06f, h * .16f, w * .94f, h * .84f, h * .18f, h * .18f, paint)
-            path.reset()
-            if (youtube) {
-                paint.color = Color.WHITE
-                path.moveTo(w * .42f, h * .33f); path.lineTo(w * .42f, h * .67f); path.lineTo(w * .68f, h * .5f)
-            } else {
-                path.moveTo(w * .20f, h * .12f); path.lineTo(w * .20f, h * .88f); path.lineTo(w * .85f, h * .5f)
+            if (!youtube) {
+                val icon = rutubeIcon ?: return
+                val size = minOf(width, height)
+                val left = (width - size) / 2
+                val top = (height - size) / 2
+                icon.setBounds(left, top, left + size, top + size)
+                icon.draw(canvas)
+                return
             }
+            paint.style = Paint.Style.FILL
+            paint.color = 0xffff0000.toInt()
+            canvas.drawRoundRect(w * .04f, h * .16f, w * .96f, h * .84f, h * .17f, h * .17f, paint)
+            path.reset()
+            paint.color = Color.WHITE
+            path.moveTo(w * .42f, h * .33f); path.lineTo(w * .42f, h * .67f); path.lineTo(w * .67f, h * .5f)
             path.close()
             canvas.drawPath(path, paint)
         }
@@ -206,43 +217,77 @@ internal class VideoRail(
         maxLines = 1
         ellipsize = TextUtils.TruncateAt.END
     }
+    private fun chevron(direction: Int, circular: Boolean): View = object : View(context) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val path = Path()
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val cx = width / 2f
+            val cy = height / 2f
+            if (circular) {
+                paint.style = Paint.Style.FILL
+                paint.color = 0x66506b9a
+                canvas.drawCircle(cx, cy, minOf(width, height) / 2f, paint)
+            }
+            paint.color = 0xffc4d4ed.toInt()
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = resources.displayMetrics.density * 1.5f
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeJoin = Paint.Join.ROUND
+            val dx = resources.displayMetrics.density * 3f * direction
+            val dy = resources.displayMetrics.density * 5f
+            path.reset()
+            path.moveTo(cx - dx / 2, cy - dy)
+            path.lineTo(cx + dx / 2, cy)
+            path.lineTo(cx - dx / 2, cy + dy)
+            canvas.drawPath(path, paint)
+        }
+        init { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+    }
     private var row: VideoRow? = null
     private var released = false
     private var generation = 0L
     private var initialFocusRow: Long? = null
     private var nearEndPosted = false
     private val boundHolders = mutableSetOf<CardHolder>()
+    private val separatorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0x1f9db6df
+        strokeWidth = maxOf(1, dp(1)).toFloat()
+    }
 
     init {
         orientation = VERTICAL
         visibility = View.GONE
         clipChildren = false
         clipToPadding = false
+        setWillNotDraw(false)
+        setPadding(0, 0, 0, dp(12))
         val header = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(4), 0, 0, dp(7))
             addView(sourceIcon, LayoutParams(dp(24), dp(21)).apply { marginEnd = dp(7) })
             addView(heading, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { weight = 0f })
-            addView(TextView(context).apply {
-                text = "›"; textSize = 19f; setTextColor(0xffc4d4ed.toInt()); gravity = Gravity.CENTER
-                includeFontPadding = false
-                background = GradientDrawable().apply { setColor(0x99506b9a.toInt()); cornerRadius = dp(20).toFloat() }
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            addView(chevron(1, false).apply {
+                background = GradientDrawable().apply { setColor(0x66506b9a); cornerRadius = dp(20).toFloat() }
             }, LayoutParams(dp(26), dp(20)).apply { marginStart = dp(8) })
             addView(View(context).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0x6688a4d0, 0x11758dbe))
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, LayoutParams(0, maxOf(1, dp(1)), 1f).apply { marginStart = dp(12); marginEnd = dp(12) })
-            addView(TextView(context).apply {
-                text = "‹   ›"; textSize = 20f; setTextColor(0xffb5c9e9.toInt()); includeFontPadding = false
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            })
+            addView(chevron(-1, true), LayoutParams(dp(24), dp(24)).apply { marginEnd = dp(8) })
+            addView(chevron(1, true), LayoutParams(dp(24), dp(24)))
         }
         addView(header, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(list, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(loading, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
         addView(retry, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val y = height - dp(5).toFloat()
+        canvas.drawLine(dp(4).toFloat(), y, (width - dp(4)).toFloat(), y, separatorPaint)
     }
 
     fun render(row: VideoRow?) {
@@ -355,10 +400,27 @@ internal class VideoRail(
 
     private inner class CardHolder : RecyclerView.ViewHolder(LinearLayout(context)) {
         private val item = itemView as LinearLayout
-        private val cardWidth = dp(((resources.displayMetrics.widthPixels / resources.displayMetrics.density - 112) / 4.35f).toInt().coerceIn(160, 210))
-        private val cardHeight = (cardWidth * 9f / 16f).toInt()
+        private val cardWidth = dp(((resources.displayMetrics.widthPixels / resources.displayMetrics.density - 112) / 4.5f).toInt().coerceIn(155, 205))
+        private val cardHeight = (cardWidth * 9f / 16f).toInt() - 3
         private val outer = FrameLayout(context)
-        private val halo = View(context)
+        private val halo = object : View(context) {
+            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                val density = resources.displayMetrics.density
+                for (i in 3 downTo 1) {
+                    val inset = i * density
+                    paint.strokeWidth = 2f * density
+                    paint.color = when (i) {
+                        3 -> 0x185c67ff
+                        2 -> 0x306674ff
+                        else -> 0x506f7cff
+                    }
+                    val radius = (10f + i) * density
+                    canvas.drawRoundRect(inset, inset, width - inset, height - inset, radius, radius, paint)
+                }
+            }
+        }
         private val poster = FrameLayout(context)
         private val image = ImageView(context)
         private val border = View(context)
@@ -375,12 +437,6 @@ internal class VideoRail(
             item.isClickable = true
             item.clipChildren = false
             outer.clipChildren = false
-            halo.background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                gradientType = GradientDrawable.RADIAL_GRADIENT
-                gradientRadius = dp(120).toFloat()
-                colors = intArrayOf(0x995a6dff.toInt(), Color.TRANSPARENT)
-            }
             halo.alpha = 0f
             halo.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             outer.addView(halo, FrameLayout.LayoutParams(-1, -1).apply { setMargins(-dp(9), -dp(8), -dp(9), -dp(8)) })
@@ -397,17 +453,19 @@ internal class VideoRail(
             poster.addView(border, FrameLayout.LayoutParams(-1, -1))
             outer.addView(poster, FrameLayout.LayoutParams(-1, -1))
             item.addView(outer, LayoutParams(cardWidth, cardHeight))
-            title.textSize = 15f
+            title.textSize = 14f
             title.setTextColor(0xfff3f5fa.toInt())
-            title.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            title.typeface = if (android.os.Build.VERSION.SDK_INT >= 28) Typeface.create(cardTypeface, 650, false)
+                else Typeface.create(cardTypeface, Typeface.BOLD)
             title.includeFontPadding = false
             title.minLines = 2
             title.maxLines = 2
             title.ellipsize = TextUtils.TruncateAt.END
             title.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             item.addView(title, LayoutParams(-1, LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
-            author.textSize = 12f
-            author.setTextColor(0xffa6b0c1.toInt())
+            author.textSize = 11f
+            author.setTextColor(0xffa0aaba.toInt())
+            author.typeface = cardTypeface
             author.includeFontPadding = false
             author.maxLines = 1
             author.ellipsize = TextUtils.TruncateAt.END

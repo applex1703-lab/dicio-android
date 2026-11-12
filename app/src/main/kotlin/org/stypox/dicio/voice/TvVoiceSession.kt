@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.BitmapFactory
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -42,6 +43,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import org.stypox.dicio.R
 import org.stypox.dicio.di.SttInputDeviceWrapper
 import org.stypox.dicio.eval.SkillEvaluator
 import org.stypox.dicio.eval.ChoicePresentation
@@ -101,6 +106,10 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private val teardown = VoiceSessionTeardown(coordinator, this)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val voiceTypeface by lazy { Typeface.createFromAsset(app.assets, "fonts/sofia_sans_condensed.ttf") }
+    private val videoTypeface by lazy {
+        try { Typeface.createFromAsset(app.assets, "fonts/Nunito[wght].ttf") }
+        catch (_: RuntimeException) { Typeface.create("sans-serif", Typeface.NORMAL) }
+    }
     private var updates: Job? = null
     private lateinit var status: TextView
     private lateinit var transcript: TextView
@@ -116,6 +125,8 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private lateinit var videoHeader: LinearLayout
     private lateinit var videoQuery: TextView
     private lateinit var voiceDivider: View
+    private var videoBackgroundJob: Job? = null
+    private val backgroundDecodeLock = Mutex()
     private var renderedVideos: List<VideoRow> = emptyList()
     private var renderedChoice: ChoicePresentation? = null
     private var visible = false
@@ -154,6 +165,8 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private fun dp(value: Int) = (app.resources.displayMetrics.density * value).toInt()
 
     override fun onCreateContentView(): View {
+        videoBackgroundJob?.cancel()
+        videoBackgroundJob = null
         videoRails.values.forEach { it.release() }
         videoRails.clear()
         videoMessages.clear()
@@ -211,7 +224,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                 minimumHeight = dp(44)
                 setPadding(dp(13), dp(6), dp(18), dp(6))
                 background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(
-                    0x995a538f.toInt(), 0x77443a77, 0x002f396d)).apply { cornerRadius = dp(28).toFloat() }
+                    0x775a538f, 0x55443a77, 0x002f396d, 0x002f396d)).apply { cornerRadius = dp(28).toFloat() }
                 visibility = View.GONE
                 addView(object : View(app) {
                     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -245,7 +258,8 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                 videoQuery = TextView(app).apply {
                     textSize = 18f
                     setTextColor(Color.rgb(243, 245, 250))
-                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    typeface = if (Build.VERSION.SDK_INT >= 28) Typeface.create(videoTypeface, 750, false)
+                        else Typeface.create(videoTypeface, Typeface.BOLD)
                     includeFontPadding = false
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
@@ -368,16 +382,36 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         renderedVideos = rows
         if (rows.isEmpty()) videoFocusClaimed = false
         if (wasVideo != isVideo) {
-            contentRoot.setPadding(dp(if (isVideo) 48 else 56), dp(if (isVideo) 27 else 72), dp(if (isVideo) 48 else 56), dp(if (isVideo) 0 else 32))
-            contentRoot.background = if (isVideo) LayerDrawable(arrayOf(
-                GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xff132d59.toInt(), 0xff071934.toInt(), 0xff07152a.toInt())),
-                GradientDrawable().apply {
-                    gradientType = GradientDrawable.RADIAL_GRADIENT
-                    setGradientCenter(.82f, .03f)
-                    gradientRadius = app.resources.displayMetrics.widthPixels * .65f
-                    colors = intArrayOf(0x8b594078.toInt(), 0x292e468b, Color.TRANSPARENT)
-                },
-            )) else normalBackground
+            contentRoot.setPadding(dp(if (isVideo) 44 else 56), dp(if (isVideo) 27 else 72), dp(if (isVideo) 48 else 56), dp(if (isVideo) 0 else 32))
+            videoBackgroundJob?.cancel()
+            videoBackgroundJob = null
+            if (isVideo) {
+                // Show a cheap fallback immediately; image decoding never blocks the UI thread.
+                contentRoot.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(0xff10264b.toInt(), 0xff07152a.toInt()))
+                val target = contentRoot
+                videoBackgroundJob = scope.launch {
+                    val bitmap = withContext(Dispatchers.IO) { backgroundDecodeLock.withLock {
+                        try {
+                            val metrics = app.resources.displayMetrics
+                            val info = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                            BitmapFactory.decodeResource(app.resources, R.drawable.video_rail_background, info)
+                            val options = BitmapFactory.Options().apply {
+                                inSampleSize = 1
+                                while (info.outWidth / (inSampleSize * 2) >= metrics.widthPixels &&
+                                    info.outHeight / (inSampleSize * 2) >= metrics.heightPixels) inSampleSize *= 2
+                            }
+                            BitmapFactory.decodeResource(app.resources, R.drawable.video_rail_background, options)
+                        } catch (error: RuntimeException) {
+                            Log.w("DicioVideoBackground", "Background image unavailable", error)
+                            null
+                        }
+                    } }
+                    if (bitmap != null && renderedVideos.isNotEmpty() && contentRoot === target) {
+                        target.background = VideoBackground(bitmap)
+                    }
+                }
+            } else contentRoot.background = normalBackground
         }
         updateVideoHeader()
         val compact = rows.isNotEmpty() || renderedChoice != null
