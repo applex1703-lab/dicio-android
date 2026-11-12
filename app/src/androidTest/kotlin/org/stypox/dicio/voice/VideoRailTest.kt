@@ -8,6 +8,8 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.stypox.dicio.eval.VideoCard
 import org.stypox.dicio.eval.VideoRow
@@ -15,6 +17,23 @@ import org.stypox.dicio.eval.VideoSource
 
 /** Exercises only the isolated View; no microphone, network or external application. */
 class VideoRailTest {
+    @Test fun horizontalFocusCannotEscapeRowButVerticalNavigationCan() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val list = VideoRecyclerView(context)
+            val first = View(context)
+            val second = View(context)
+            val otherRow = View(context)
+            list.addView(first)
+            list.addView(second)
+            assertSame(second, list.constrainFocus(first, View.FOCUS_RIGHT, second))
+            assertSame(first, list.constrainFocus(first, View.FOCUS_RIGHT, otherRow))
+            assertSame(first, list.constrainFocus(first, View.FOCUS_LEFT, null))
+            assertSame(otherRow, list.constrainFocus(first, View.FOCUS_UP, otherRow))
+            assertNull(list.constrainFocus(first, View.FOCUS_DOWN, null))
+            assertSame(second, list.constrainFocus(otherRow, View.FOCUS_RIGHT, second))
+        }
+    }
     @Test fun independentRailsKeepTheirOwnRowsAndRetryAfterPeerRelease() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val context = ApplicationProvider.getApplicationContext<Context>()
@@ -27,8 +46,8 @@ class VideoRailTest {
             assertEquals("Rutube", (first.getChildAt(0) as TextView).text.toString())
             assertEquals("YouTube", (second.getChildAt(0) as TextView).text.toString())
             first.release()
-            (first.getChildAt(4) as Button).performClick()
-            (second.getChildAt(4) as Button).performClick()
+            (first.getChildAt(3) as Button).performClick()
+            (second.getChildAt(3) as Button).performClick()
             assertEquals(listOf(2L), retried)
             second.release()
             loader.shutdown()
@@ -40,8 +59,9 @@ class VideoRailTest {
             val retried = mutableListOf<Long>()
             val context = ApplicationProvider.getApplicationContext<Context>()
             val rail = VideoRail(context, { _, _ -> }, {}, { retried.add(it) })
+            assertEquals(4, rail.childCount) // heading, cards, loading, retry; no duplicate title
             val heading = rail.getChildAt(0) as TextView
-            val retry = rail.getChildAt(4) as Button
+            val retry = rail.getChildAt(3) as Button
             val cards = listOf(VideoCard("video", "Title", "Author", null))
             rail.render(VideoRow(11, cards, hasNext = true, loadError = true, source = VideoSource.YOUTUBE))
             assertEquals("YouTube", heading.text.toString())

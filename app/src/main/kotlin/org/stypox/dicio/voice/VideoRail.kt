@@ -5,8 +5,6 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
@@ -53,6 +51,19 @@ internal fun videoImageLoader(context: Context): ImageLoader = ImageLoader.Build
         }).followRedirects(false).followSslRedirects(false).build()
     }.build()
 
+/** Horizontal navigation stays in this row; vertical navigation remains Android's default. */
+internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
+    internal fun constrainFocus(focused: View, direction: Int, candidate: View?): View? {
+        val horizontal = direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT
+        if (horizontal && findContainingItemView(focused) != null &&
+            (candidate == null || findContainingItemView(candidate) == null)) return focused
+        return candidate
+    }
+
+    override fun focusSearch(focused: View, direction: Int): View? =
+        constrainFocus(focused, direction, super.focusSearch(focused, direction))
+}
+
 /** An injected loader is owned by the containing UI; otherwise this rail owns it. */
 internal class VideoRail(
     context: Context,
@@ -68,7 +79,7 @@ internal class VideoRail(
     private val imageLoader = sharedImageLoader ?: videoImageLoader(context)
     private val layout = LinearLayoutManager(context, RecyclerView.HORIZONTAL, false)
     private val cards = CardAdapter()
-    private val list = RecyclerView(context).apply {
+    private val list = VideoRecyclerView(context).apply {
         layoutManager = layout
         adapter = cards
         itemAnimator = null
@@ -92,22 +103,6 @@ internal class VideoRail(
         setTextColor(Color.LTGRAY)
         visibility = View.GONE
     }
-    private val details = TextView(context).apply {
-        textSize = 14f
-        setTextColor(Color.rgb(220, 229, 241))
-        setLines(3)
-        ellipsize = TextUtils.TruncateAt.END
-        setPadding(dp(4), dp(8), dp(4), 0)
-        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        visibility = View.GONE
-        addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                visibility = if (s.isNullOrEmpty()) View.GONE else View.VISIBLE
-            }
-            override fun afterTextChanged(s: Editable?) = Unit
-        })
-    }
     private val heading = TextView(context).apply {
         textSize = 17f
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
@@ -128,7 +123,6 @@ internal class VideoRail(
         clipToPadding = false
         addView(heading)
         addView(list, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-        addView(details, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(loading, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
         addView(retry, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
     }
@@ -141,7 +135,6 @@ internal class VideoRail(
         heading.text = row?.source?.label.orEmpty()
         val version = ++generation
         if (newRow) {
-            details.text = ""
             boundHolders.toList().forEach { it.clear() }
             // A different row must rebind even if it contains the same video IDs.
             cards.submitList(null)
@@ -216,7 +209,6 @@ internal class VideoRail(
         released = true
         generation++
         row = null
-        details.text = ""
         initialFocusRow = null
         boundHolders.toList().forEach { it.clear() }
         cards.submitList(emptyList())
@@ -291,21 +283,6 @@ internal class VideoRail(
                 border.animate().alpha(if (focused) 1f else 0f).setDuration(220).start()
                 if (focused) {
                     scheduleNearEnd()
-                    val expectedId = cardId
-                    val expectedRow = boundRowId
-                    item.post {
-                        if (!released && item.hasFocus() && expectedId != null && cardId == expectedId &&
-                            boundRowId == expectedRow && row?.id == expectedRow) {
-                            fun truncated(textView: TextView) = textView.layout?.let { textLayout ->
-                                (0 until textLayout.lineCount).any { textLayout.getEllipsisCount(it) > 0 }
-                            } == true
-                            details.tag = expectedId
-                            details.text = if (truncated(title) || truncated(author)) item.contentDescription else ""
-                        }
-                    }
-                } else if (details.tag == cardId) {
-                    details.tag = null
-                    details.text = ""
                 }
             }
             item.setOnClickListener {
@@ -334,7 +311,6 @@ internal class VideoRail(
         fun clear() {
             request?.dispose()
             request = null
-            if (cardId != null && details.tag == cardId) { details.tag = null; details.text = "" }
             image.setImageDrawable(null)
             cardId = null
             boundRowId = null
