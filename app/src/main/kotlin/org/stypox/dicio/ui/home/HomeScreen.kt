@@ -244,11 +244,17 @@ fun HomeScreen(
 internal fun ChoiceButtons(choice: ChoicePresentation, onSelect: (Long, String) -> Unit, modifier: Modifier = Modifier) {
     key(choice.id) {
         val focusRequester = remember { FocusRequester() }
-        LaunchedEffect(choice.options.isNotEmpty()) {
-            if (choice.options.isNotEmpty()) focusRequester.requestFocus()
-        }
+        var initialFocusRequested by remember { mutableStateOf(false) }
         LazyColumn(modifier.fillMaxWidth().heightIn(max = 300.dp).padding(horizontal = 16.dp)) {
             itemsIndexed(choice.options, key = { _, option -> option.id }) { index, option ->
+                if (index == 0) {
+                    LaunchedEffect(Unit) {
+                        if (!initialFocusRequested) {
+                            focusRequester.requestFocus()
+                            initialFocusRequested = true
+                        }
+                    }
+                }
                 val interaction = remember(choice.id, option.id) { MutableInteractionSource() }
                 val focused by interaction.collectIsFocusedAsState()
                 Button(
