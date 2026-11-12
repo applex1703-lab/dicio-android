@@ -4,6 +4,16 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
 class CurrentVoicePresentationTest : StringSpec({
+    "video source defaults to Rutube and survives page updates" {
+        val current = CurrentVoicePresentation()
+        current.videos(1, emptyList())
+        current.state.value.videoRow?.source shouldBe VideoSource.RUTUBE
+        current.videos(2, emptyList(), true, VideoSource.YOUTUBE)
+        current.videoPageLoading(2) shouldBe true
+        current.videoPageLoaded(2, emptyList(), false)
+        current.state.value.videoRow?.source shouldBe VideoSource.YOUTUBE
+        VideoSource.YOUTUBE.label shouldBe "YouTube"
+    }
     "pages preserve row identity, reject stale updates and expose explicit retry" {
         val current = CurrentVoicePresentation()
         val a = VideoCard("a", "A", "", null)

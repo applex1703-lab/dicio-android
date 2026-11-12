@@ -2,6 +2,8 @@ package org.stypox.dicio.voice
 
 import android.content.Context
 import android.view.View
+import android.widget.Button
+import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -9,9 +11,32 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.stypox.dicio.eval.VideoCard
 import org.stypox.dicio.eval.VideoRow
+import org.stypox.dicio.eval.VideoSource
 
 /** Exercises only the isolated View; no microphone, network or external application. */
 class VideoRailTest {
+    @Test fun sourceReplacementUpdatesHeadingAndRetryUsesOnlyCurrentRow() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val retried = mutableListOf<Long>()
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val rail = VideoRail(context, { _, _ -> }, {}, { retried.add(it) })
+            val heading = rail.getChildAt(0) as TextView
+            val retry = rail.getChildAt(4) as Button
+            val cards = listOf(VideoCard("video", "Title", "Author", null))
+            rail.render(VideoRow(11, cards, hasNext = true, loadError = true, source = VideoSource.YOUTUBE))
+            assertEquals("YouTube", heading.text.toString())
+            retry.performClick()
+            rail.render(VideoRow(12, cards, hasNext = true, loading = true, source = VideoSource.RUTUBE))
+            assertEquals("Rutube", heading.text.toString())
+            retry.performClick()
+            rail.render(VideoRow(12, cards, hasNext = true, loadError = true, source = VideoSource.RUTUBE))
+            retry.performClick()
+            rail.release()
+            retry.performClick()
+            assertEquals(listOf(11L, 12L), retried)
+        }
+    }
+
     @Test fun bindingDoesNotSelectAndReleaseRejectsLateClick() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {

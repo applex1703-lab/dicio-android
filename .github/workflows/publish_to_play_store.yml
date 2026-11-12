@@ -8,10 +8,14 @@ env:
 
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Delete incomplete metadata folder
         run: |
@@ -58,6 +62,7 @@ jobs:
 
       - name: Run Fastlane to build the bundle, publish to Play Store and update metadata
         env:
+          DICIO_YOUTUBE_API_KEY: ${{ secrets.DICIO_YOUTUBE_API_KEY }}
           KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
         run: |

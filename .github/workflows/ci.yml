@@ -134,7 +134,13 @@ jobs:
           distribution: temurin
           cache: gradle
       - name: Build APK for TV package
+        env:
+          DICIO_YOUTUBE_API_KEY: ${{ secrets.DICIO_YOUTUBE_API_KEY }}
         run: |
+          if [[ -z "${DICIO_YOUTUBE_API_KEY//[[:space:]]/}" ]]; then
+            echo "::error::DICIO_YOUTUBE_API_KEY secret is required for the signed TV APK"
+            exit 1
+          fi
           git checkout -B main "$GITHUB_SHA"
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace

@@ -7,12 +7,14 @@ import org.dicio.skill.skill.SkillOutput
 data class ChoiceOption(val id: String, val label: String)
 data class ChoicePresentation(val id: Long, val options: List<ChoiceOption>)
 data class VideoCard(val id: String, val title: String, val author: String, val thumbnail: String?)
+enum class VideoSource(val label: String) { RUTUBE("Rutube"), YOUTUBE("YouTube") }
 data class VideoRow(
     val id: Long,
     val cards: List<VideoCard>,
     val hasNext: Boolean = false,
     val loading: Boolean = false,
     val loadError: Boolean = false,
+    val source: VideoSource = VideoSource.RUTUBE,
 )
 
 /** Ephemeral presentation, independent of the history/settings Activity. No persisted transcript. */
@@ -45,9 +47,9 @@ internal class CurrentVoicePresentation {
             dismiss = false, choice = ChoicePresentation(id, options.toList()), videoRow = null)
     }
     fun choosing() { mutable.value = mutable.value.copy(choice = null, answer = "", status = "Выполняю…") }
-    fun videos(id: Long, cards: List<VideoCard>, hasNext: Boolean = false) {
+    fun videos(id: Long, cards: List<VideoCard>, hasNext: Boolean = false, source: VideoSource = VideoSource.RUTUBE) {
         mutable.value = mutable.value.copy(status = "", answer = "", dismiss = false, choice = null,
-            videoRow = VideoRow(id, cards.toList(), hasNext = hasNext))
+            videoRow = VideoRow(id, cards.toList(), hasNext = hasNext, source = source))
     }
     fun videoPageLoading(id: Long): Boolean {
         val row = mutable.value.videoRow?.takeIf { it.id == id && it.hasNext && !it.loading } ?: return false

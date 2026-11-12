@@ -26,6 +26,19 @@ import okhttp3.OkHttpClient
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.stypox.dicio.eval.VideoCard
 import org.stypox.dicio.eval.VideoRow
+import org.stypox.dicio.eval.VideoSource
+
+internal fun allowedVideoThumbnail(raw: String, source: VideoSource): String? {
+    val uri = try { java.net.URI(raw) } catch (_: java.net.URISyntaxException) { return null }
+    val authority = uri.rawAuthority ?: return null
+    if ('@' in authority) return null
+    val url = raw.toHttpUrlOrNull() ?: return null
+    val hosts = when (source) {
+        VideoSource.RUTUBE -> setOf("pic.rtbcdn.ru", "pic.rutube.ru")
+        VideoSource.YOUTUBE -> setOf("i.ytimg.com")
+    }
+    return url.takeIf { it.isHttps && it.port == 443 && it.host in hosts }?.toString()
+}
 
 /** Owns its image loader; call [release] when the containing UI is destroyed. */
 internal class VideoRail(
@@ -80,6 +93,12 @@ internal class VideoRail(
         setPadding(dp(4), dp(8), dp(4), 0)
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
     }
+    private val heading = TextView(context).apply {
+        textSize = 17f
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        setTextColor(Color.rgb(226, 233, 244))
+        setPadding(dp(4), dp(6), 0, dp(4))
+    }
     private var row: VideoRow? = null
     private var released = false
     private var generation = 0L
@@ -92,13 +111,7 @@ internal class VideoRail(
         visibility = View.GONE
         clipChildren = false
         clipToPadding = false
-        addView(TextView(context).apply {
-            text = "Rutube"
-            textSize = 17f
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setTextColor(Color.rgb(226, 233, 244))
-            setPadding(dp(4), dp(6), 0, dp(4))
-        })
+        addView(heading)
         addView(list, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(details, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(loading, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
@@ -108,8 +121,9 @@ internal class VideoRail(
     fun render(row: VideoRow?) {
         if (released) return
         val previous = this.row
-        val newRow = previous?.id != row?.id
+        val newRow = previous?.id != row?.id || previous?.source != row?.source
         this.row = row
+        heading.text = row?.source?.label.orEmpty()
         val version = ++generation
         if (newRow) {
             details.text = ""
@@ -155,9 +169,16 @@ internal class VideoRail(
         list.post {
             nearEndPosted = false
             val current = row ?: return@post
+            // YouTube searches consume quota: do not chain pages merely because a short
+            // page fits on screen. Require focus to approach the end of the loaded cards.
+            val nearEnd = if (current.source == VideoSource.YOUTUBE) {
+                val focused = list.findFocus()
+                val position = focused?.let { list.findContainingViewHolder(it)?.bindingAdapterPosition }
+                position != null && position != RecyclerView.NO_POSITION && position >= cards.itemCount - 3
+            } else layout.findLastVisibleItemPosition() >= cards.itemCount - 3
             if (!released && current.hasNext && !current.loading && !current.loadError &&
                 cards.itemCount == current.cards.size && cards.itemCount > 0 &&
-                layout.findLastVisibleItemPosition() >= cards.itemCount - 3) {
+                nearEnd) {
                 onNearEnd(current.id)
             }
         }
@@ -278,9 +299,7 @@ internal class VideoRail(
             item.contentDescription = listOf(card.title, card.author).filter { it.isNotBlank() }.joinToString(", ")
             border.alpha = if (item.hasFocus()) 1f else 0f
             // The parser validates these URLs; repeat the boundary check before handing one to Coil.
-            val url = card.thumbnail?.toHttpUrlOrNull()?.takeIf {
-                it.isHttps && it.port == 443 && it.host in setOf("pic.rtbcdn.ru", "pic.rutube.ru")
-            }
+            val url = card.thumbnail?.let { thumbnail -> row?.source?.let { allowedVideoThumbnail(thumbnail, it) } }
             if (url != null) request = imageLoader.enqueue(ImageRequest.Builder(context)
                 .data(url.toString()).size(dp(150), dp(84)).target(image).build())
         }

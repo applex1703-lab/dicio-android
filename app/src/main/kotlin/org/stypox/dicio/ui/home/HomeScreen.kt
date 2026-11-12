@@ -5,8 +5,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -213,6 +214,7 @@ fun HomeScreen(
                         ChoiceButtons(choice, onSelectChoice, Modifier.weight(1f, fill = false))
                     }
                     presentation.videoRow?.let { row ->
+                        Text(row.source.label, modifier = Modifier.padding(horizontal = 16.dp))
                         ChoiceButtons(ChoicePresentation(row.id, row.cards.map {
                             org.stypox.dicio.eval.ChoiceOption(it.id, it.title)
                         }), onSelectVideo, Modifier.weight(1f, fill = false))
@@ -240,21 +242,23 @@ fun HomeScreen(
 
 @Composable
 internal fun ChoiceButtons(choice: ChoicePresentation, onSelect: (Long, String) -> Unit, modifier: Modifier = Modifier) {
-    val focusRequester = remember(choice.id) { FocusRequester() }
-    LaunchedEffect(choice.id) {
-        if (choice.options.isNotEmpty()) focusRequester.requestFocus()
-    }
-    Column(modifier.fillMaxWidth().heightIn(max = 300.dp).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-        choice.options.forEachIndexed { index, option ->
-            val interaction = remember(choice.id, option.id) { MutableInteractionSource() }
-            val focused by interaction.collectIsFocusedAsState()
-            Button(
-                onClick = { onSelect(choice.id, option.id) },
-                interactionSource = interaction,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                    .then(if (index == 0) Modifier.focusRequester(focusRequester) else Modifier)
-                    .then(if (focused) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, MaterialTheme.shapes.small) else Modifier),
-            ) { Text(option.label) }
+    key(choice.id) {
+        val focusRequester = remember { FocusRequester() }
+        LaunchedEffect(choice.options.isNotEmpty()) {
+            if (choice.options.isNotEmpty()) focusRequester.requestFocus()
+        }
+        LazyColumn(modifier.fillMaxWidth().heightIn(max = 300.dp).padding(horizontal = 16.dp)) {
+            itemsIndexed(choice.options, key = { _, option -> option.id }) { index, option ->
+                val interaction = remember(choice.id, option.id) { MutableInteractionSource() }
+                val focused by interaction.collectIsFocusedAsState()
+                Button(
+                    onClick = { onSelect(choice.id, option.id) },
+                    interactionSource = interaction,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        .then(if (index == 0) Modifier.focusRequester(focusRequester) else Modifier)
+                        .then(if (focused) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, MaterialTheme.shapes.small) else Modifier),
+                ) { Text(option.label) }
+            }
         }
     }
 }

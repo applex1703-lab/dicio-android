@@ -25,11 +25,27 @@ plugins {
     alias(libs.plugins.dicio.unicode.cldr.plugin)
 }
 
+// buildConfigField expects a Java string literal, not a raw environment value.
+val youtubeApiKey = providers.environmentVariable("DICIO_YOUTUBE_API_KEY").orElse("").get()
+val youtubeApiKeyLiteral = buildString {
+    append('"')
+    youtubeApiKey.forEach { char ->
+        when (char) {
+            '\\' -> append("\\\\")
+            '"' -> append("\\\"")
+            in '\u0000'..'\u001f', '\u007f' -> append("\\%03o".format(char.code))
+            else -> append(char)
+        }
+    }
+    append('"')
+}
+
 android {
     namespace = "org.stypox.dicio"
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
+        buildConfigField("String", "YOUTUBE_API_KEY", youtubeApiKeyLiteral)
         applicationId = "org.stypox.dicio"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
@@ -91,6 +107,14 @@ tasks.withType<Test>().configureEach {
     useJUnitPlatform()
 }
 
+val requireReleaseYoutubeApiKey = tasks.register("requireReleaseYoutubeApiKey") {
+    doLast {
+        check(youtubeApiKey.isNotBlank()) {
+            "DICIO_YOUTUBE_API_KEY is required to build a release APK or AAB"
+        }
+    }
+}
+
 protobuf {
     protoc {
         artifact = libs.protobuf.protoc.get().toString()
@@ -115,6 +139,12 @@ protobuf {
 // remove when not needed anymore
 val kspKotlinRegex = "^ksp(.*)Kotlin$".toRegex()
 androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        val variantName = variant.name.replaceFirstChar { it.uppercase() }
+        tasks.matching { it.name == "generate${variantName}BuildConfig" }.configureEach {
+            dependsOn(requireReleaseYoutubeApiKey)
+        }
+    }
     onVariants(selector().all()) { variant ->
         afterEvaluate {
             tasks.named(kspKotlinRegex::matches).configureEach {

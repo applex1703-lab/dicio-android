@@ -63,6 +63,17 @@ class TvActions @Inject constructor(@ApplicationContext private val context: Con
         context.startActivity(intent)
     }
 
+    internal suspend fun openYoutubeVideo(id: String) = withContext(Dispatchers.Main) {
+        require(Regex("[A-Za-z0-9_-]{11}").matches(id))
+        val uri = android.net.Uri.Builder().scheme("https").authority("www.youtube.com")
+            .path("/watch").appendQueryParameter("v", id).build()
+        val intent = Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
+            .setPackage("com.google.android.youtube.tv").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        check(intent.resolveActivity(context.packageManager) != null) { "Приложение YouTube недоступно." }
+        coroutineContext.ensureActive()
+        context.startActivity(intent)
+    }
+
     internal suspend fun catalog(forceRefresh: Boolean = false): List<App> = withContext(Dispatchers.IO) { catalogMutex.withLock {
         val now = android.os.SystemClock.elapsedRealtime()
         val locale = androidx.core.os.ConfigurationCompat.getLocales(context.resources.configuration).toLanguageTags()

@@ -42,11 +42,16 @@ import org.stypox.dicio.llm.LocalMediaRequest
 import org.stypox.dicio.llm.LocalOpenAppRequest
 import org.stypox.dicio.llm.MediaCommand
 import org.stypox.dicio.llm.RutubeResults
+import org.stypox.dicio.llm.YoutubeResults
+import org.stypox.dicio.BuildConfig
 
 internal sealed interface ChoiceTarget {
     data class Search(val target: SearchTarget) : ChoiceTarget
     data class Vpn(val optionId: String) : ChoiceTarget
 }
+
+internal fun nextYoutubePageToken(next: String?, current: String?, previous: Set<String>): String? =
+    next?.takeUnless { it == current || it in previous }
 
 internal enum class LocalVpnRequest { GENERAL, HAPP, DISCONNECT, NONE }
 internal fun classifyLocalVpnRequest(text: String): LocalVpnRequest = when {
@@ -93,10 +98,15 @@ class SkillEvaluatorImpl(
     private val sessionBoundary = InputSessionBoundary(scope, onClearFailure = ::reportVpnClearFailure, clearVpn = clearVpn)
     private val legacyLock = Mutex()
     private val pendingChoice = PendingChoice<ChoiceTarget>()
-    private val pendingVideo = PendingChoice<String>()
+    private data class VideoTarget(val source: VideoSource, val id: String)
+    private val pendingVideo = PendingChoice<VideoTarget>()
     private val rutubeResults = RutubeResults()
+    private val youtubeResults = YoutubeResults(BuildConfig.YOUTUBE_API_KEY)
     private val videoPageRequests = LatestInputRequest(scope)
-    private class VideoPaging(val rowId: Long, val query: String, var nextPage: Int = 2)
+    private class VideoPaging(val rowId: Long, val query: String, val source: VideoSource,
+        var nextPage: Int = 2, var nextToken: String? = null) {
+        val seenTokens = mutableSetOf<String>()
+    }
     private var videoPaging: VideoPaging? = null
     private fun clearVideoPaging() {
         videoPaging = null
@@ -233,7 +243,7 @@ class SkillEvaluatorImpl(
 
     override fun selectVideo(rowId: Long, videoId: String) {
         checkEntry()
-        val (_, id) = pendingVideo.consume(rowId, videoId) ?: return
+        val (_, target) = pendingVideo.consume(rowId, videoId) ?: return
         val speechRequest = directSpeechRequests.next()
         clearVideoPaging()
         if (!directSpeechRequests.isCurrent(speechRequest)) return
@@ -243,13 +253,16 @@ class SkillEvaluatorImpl(
             try {
                 directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.stopSpeaking() }
                 coroutineContext.ensureActive()
-                tvActions.openRutubeVideo(id)
+                when (target.source) {
+                    VideoSource.RUTUBE -> tvActions.openRutubeVideo(target.id)
+                    VideoSource.YOUTUBE -> tvActions.openYoutubeVideo(target.id)
+                }
                 coroutineContext.ensureActive()
                 presentation.answer("", silent = true)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) {
                 coroutineContext.ensureActive()
-                val message = "Не удалось открыть видео в Rutube."
+                val message = "Не удалось открыть видео в ${if (target.source == VideoSource.YOUTUBE) "YouTube" else "Rutube"}."
                 presentation.error(message)
                 directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
             }
@@ -281,9 +294,33 @@ class SkillEvaluatorImpl(
             directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
             return
         }
-        val id = pendingVideo.create(query, videos.associate { it.id to it.id })
-        videoPaging = VideoPaging(id, query, nextPage = pageNumber + 1)
+        val id = pendingVideo.create(query, videos.associate { it.id to VideoTarget(VideoSource.RUTUBE, it.id) })
+        videoPaging = VideoPaging(id, query, VideoSource.RUTUBE, nextPage = pageNumber + 1)
         presentation.videos(id, videos.map { VideoCard(it.id, it.title, it.author, it.thumbnail) }, page.hasNext)
+    }
+
+    private suspend fun showYoutubeResults(query: String, speechRequest: Any) {
+        val page = youtubeResults.searchPage(query)
+        coroutineContext.ensureActive()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
+        outputSlot.clear()
+        coroutineContext.ensureActive()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
+        previousFallback = null
+        _state.value = InteractionLog(emptyList(), null)
+        coroutineContext.ensureActive()
+        if (!directSpeechRequests.isCurrent(speechRequest)) return
+        if (page.videos.isEmpty()) {
+            val message = if (page.nextPageToken == null) "В YouTube ничего не найдено."
+                else "Не удалось загрузить результаты YouTube. Попробуйте снова."
+            if (page.nextPageToken == null) presentation.answer(message) else presentation.error(message)
+            directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
+            return
+        }
+        val id = pendingVideo.create(query, page.videos.associate { it.id to VideoTarget(VideoSource.YOUTUBE, it.id) })
+        videoPaging = VideoPaging(id, query, VideoSource.YOUTUBE, nextToken = page.nextPageToken)
+        presentation.videos(id, page.videos.map { VideoCard(it.id, it.title, it.author, it.thumbnail) },
+            page.nextPageToken != null, VideoSource.YOUTUBE)
     }
 
     override fun loadNextVideoPage(rowId: Long, retry: Boolean) {
@@ -292,16 +329,32 @@ class SkillEvaluatorImpl(
         val row = presentation.state.value.videoRow?.takeIf { it.id == rowId } ?: return
         if (!row.hasNext || row.loading || (row.loadError && !retry) || (!row.loadError && retry)) return
         val page = paging.nextPage
+        val token = paging.nextToken
+        if (paging.source == VideoSource.YOUTUBE && token == null) return
         if (!presentation.videoPageLoading(rowId) || videoPaging !== paging) return
         videoPageRequests.replace {
             try {
-                val result = rutubeResults.searchPage(paging.query, page)
+                val cards: List<VideoCard>
+                val hasNext: Boolean
+                val nextToken: String?
+                if (paging.source == VideoSource.RUTUBE) {
+                    val result = rutubeResults.searchPage(paging.query, page)
+                    cards = result.videos.map { VideoCard(it.id, it.title, it.author, it.thumbnail) }
+                    hasNext = result.hasNext
+                    nextToken = null
+                } else {
+                    val result = youtubeResults.searchPage(paging.query, token)
+                    cards = result.videos.map { VideoCard(it.id, it.title, it.author, it.thumbnail) }
+                    nextToken = nextYoutubePageToken(result.nextPageToken, token, paging.seenTokens)
+                    hasNext = nextToken != null
+                }
                 coroutineContext.ensureActive()
-                if (videoPaging !== paging || paging.nextPage != page) return@replace
-                val cards = result.videos.map { VideoCard(it.id, it.title, it.author, it.thumbnail) }
-                if (!pendingVideo.extend(rowId, cards.associate { it.id to it.id })) return@replace
+                if (videoPaging !== paging || paging.nextPage != page || paging.nextToken != token) return@replace
+                if (!pendingVideo.extend(rowId, cards.associate { it.id to VideoTarget(paging.source, it.id) })) return@replace
                 paging.nextPage++
-                presentation.videoPageLoaded(rowId, cards, result.hasNext)
+                if (token != null) paging.seenTokens.add(token)
+                paging.nextToken = nextToken
+                presentation.videoPageLoaded(rowId, cards, hasNext)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) {
                 coroutineContext.ensureActive()
@@ -450,6 +503,26 @@ class SkillEvaluatorImpl(
                                 outputSlot.clear()
                                 _state.value = InteractionLog(emptyList(), null)
                                 val message = "Не удалось загрузить результаты Rutube. Проверьте сеть и попробуйте снова."
+                                presentation.error(message)
+                                directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
+                            }
+                            return
+                        }
+                        if (decision is AssistantIntent.SearchYoutube) {
+                            try { showYoutubeResults(decision.query, speechRequest) }
+                            catch (cancelled: CancellationException) { throw cancelled }
+                            catch (_: Exception) {
+                                coroutineContext.ensureActive()
+                                if (!directSpeechRequests.isCurrent(speechRequest)) return
+                                outputSlot.clear()
+                                coroutineContext.ensureActive()
+                                if (!directSpeechRequests.isCurrent(speechRequest)) return
+                                _state.value = InteractionLog(emptyList(), null)
+                                coroutineContext.ensureActive()
+                                if (!directSpeechRequests.isCurrent(speechRequest)) return
+                                val message = if (BuildConfig.YOUTUBE_API_KEY.isBlank())
+                                    "Ключ YouTube не настроен в сборке Dicio."
+                                else "Не удалось загрузить YouTube. Проверьте сеть, доступ к API и его квоту."
                                 presentation.error(message)
                                 directSpeechRequests.ifCurrent(speechRequest) { skillContext.speechOutputDevice.speak(message) }
                             }
