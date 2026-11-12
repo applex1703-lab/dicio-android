@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -21,6 +22,7 @@ class VideoRailTest {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val context = ApplicationProvider.getApplicationContext<Context>()
             val list = VideoRecyclerView(context)
+            list.layoutManager = LinearLayoutManager(context, RecyclerView.HORIZONTAL, false)
             val first = View(context)
             val second = View(context)
             val otherRow = View(context)
