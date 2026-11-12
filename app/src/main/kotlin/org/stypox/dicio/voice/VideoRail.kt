@@ -113,7 +113,12 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
 
     override fun onScrollStateChanged(state: Int) {
         super.onScrollStateChanged(state)
-        if (state == SCROLL_STATE_IDLE && pendingPosition != null) completePendingNavigation()
+        if (state == SCROLL_STATE_IDLE && pendingPosition != null) {
+            completePendingNavigation()
+            // If layout could not produce the target, allow the next key press to retry.
+            pendingPosition = null
+            pendingDirection = 0
+        }
     }
 
     internal fun constrainFocus(focused: View, direction: Int, candidate: View?): View? {
