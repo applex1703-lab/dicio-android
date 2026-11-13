@@ -128,9 +128,15 @@ class VideoRailNavigationTest {
                     VideoCard("rt-$it", "Rutube video $it", "Channel", null)
                 }, source = VideoSource.RUTUBE))
                 lower.render(youtube)
-                scroll.viewTreeObserver.addOnGlobalFocusChangeListener { _, next ->
+                scroll.viewTreeObserver.addOnGlobalFocusChangeListener { old, next ->
                     if (watch && (next == null || !isDescendant(lower, next))) {
-                        escapes.add("focus=${next?.javaClass?.simpleName}, scrollY=${scroll.scrollY}")
+                        val list = lower.getChildAt(1) as RecyclerView
+                        val current = list.findFocus()
+                        val holder = current?.let { list.findContainingViewHolder(it) }
+                        escapes.add("old=${old?.javaClass?.simpleName}, next=${next?.javaClass?.simpleName}, " +
+                            "listFocus=${current?.javaClass?.simpleName}, position=${holder?.bindingAdapterPosition}, " +
+                            "scrollState=${list.scrollState}, window=${list.hasWindowFocus()}, " +
+                            "attached=${list.isAttachedToWindow}, scrollY=${scroll.scrollY}")
                     }
                 }
                 scroll
