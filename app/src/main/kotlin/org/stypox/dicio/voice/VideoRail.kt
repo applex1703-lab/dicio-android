@@ -231,28 +231,6 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
         }
     }
 
-    override fun removeDetachedView(child: View, animate: Boolean) {
-        // RecyclerView may discard a focused scrap view during a layout following
-        // an async list update. Move focus before Android asks the root window to
-        // choose a replacement, which can otherwise select a different rail.
-        if (child.hasFocus() && pendingPosition == null && !recoveringFocus && isAttachedToWindow) {
-            val origin = getChildViewHolder(child).bindingAdapterPosition.takeIf { it != NO_POSITION }
-            if (parkFocusInRow()) {
-                recoveringFocus = true
-                val operation = ++navigationGeneration
-                postOnAnimation {
-                    if (operation == navigationGeneration && recoveringFocus && findFocus() === this) {
-                        if (focusAttached(origin) || focusAnyAttachedCard()) {
-                            recoveringFocus = false
-                            restoreFocusable()
-                        }
-                    }
-                }
-            }
-        }
-        super.removeDetachedView(child, animate)
-    }
-
     override fun onScrollStateChanged(state: Int) {
         super.onScrollStateChanged(state)
         if (state == SCROLL_STATE_IDLE && pendingPosition != null) {
