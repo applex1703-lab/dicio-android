@@ -139,7 +139,7 @@ class VideoRailNavigationTest {
                             "rootFocus=${scroll.rootView.findFocus()?.javaClass?.simpleName}, " +
                             "scrollState=${list.scrollState}, window=${list.hasWindowFocus()}, " +
                             "attached=${list.isAttachedToWindow}, scrollY=${scroll.scrollY}, " +
-                            "stack=${Throwable().stackTrace.take(20).joinToString(" <- ")}")
+                            "stack=${Throwable().stackTrace.take(60).joinToString(" <- ")}")
                     }
                 }
                 scroll
