@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.res.Configuration
 import android.view.View
 import android.view.ViewGroup
-import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
@@ -58,13 +57,7 @@ class VideoCardTypographyTest {
                         val gap = authorView.top - title.bottom
                         val expectedGap = (2 * context.resources.displayMetrics.density).toInt()
                         assertEquals("Author should immediately follow the title", expectedGap, gap)
-                        val node = AccessibilityNodeInfo.obtain()
-                        try {
-                            item.onInitializeAccessibilityNodeInfo(node)
-                            assertEquals("Full text must be accessible", "$titleText, $author", node.contentDescription.toString())
-                        } finally {
-                            node.recycle()
-                        }
+                        assertEquals("Full text must be accessible", "$titleText, $author", item.contentDescription.toString())
                         return authorView.top to item.measuredHeight
                     }
 
