@@ -107,7 +107,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val voiceTypeface by lazy { Typeface.createFromAsset(app.assets, "fonts/sofia_sans_condensed.ttf") }
     private val videoTypeface by lazy {
-        try { Typeface.createFromAsset(app.assets, "fonts/Nunito[wght].ttf") }
+        try { Typeface.createFromAsset(app.assets, "fonts/karminabold.otf") }
         catch (_: RuntimeException) { Typeface.create("sans-serif", Typeface.NORMAL) }
     }
     private var updates: Job? = null
@@ -221,10 +221,10 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
             videoHeader = LinearLayout(app).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                minimumHeight = dp(44)
-                setPadding(dp(13), dp(6), dp(18), dp(6))
+                minimumHeight = dp(40)
+                setPadding(dp(13), dp(4), dp(18), dp(4))
                 background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(
-                    0x775a538f, 0x55443a77, 0x002f396d, 0x002f396d)).apply { cornerRadius = dp(28).toFloat() }
+                    0x665a538f, 0x44443a77, 0x002f396d, 0x002f396d)).apply { cornerRadius = dp(28).toFloat() }
                 visibility = View.GONE
                 addView(object : View(app) {
                     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -247,7 +247,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                     text = "Результаты поиска"
                     textSize = 16f
                     setTextColor(0xffc3ccdf.toInt())
-                    typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                    typeface = videoTypeface
                     includeFontPadding = false
                 })
                 addView(TextView(app).apply {
@@ -256,10 +256,9 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                 })
                 videoQuery = TextView(app).apply {
-                    textSize = 18f
+                    textSize = 19f
                     setTextColor(Color.rgb(243, 245, 250))
-                    typeface = if (Build.VERSION.SDK_INT >= 28) Typeface.create(videoTypeface, 750, false)
-                        else Typeface.create(videoTypeface, Typeface.BOLD)
+                    typeface = videoTypeface
                     includeFontPadding = false
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
@@ -346,6 +345,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                 videoMessages[source] = TextView(app).apply {
                     setTextColor(Color.LTGRAY)
                     textSize = 16f
+                    typeface = videoTypeface
                     visibility = View.GONE
                 }.also { rails.addView(it, LinearLayout.LayoutParams(-1, -2)) }
             }
