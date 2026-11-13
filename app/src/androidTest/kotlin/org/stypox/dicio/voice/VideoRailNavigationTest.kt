@@ -133,8 +133,10 @@ class VideoRailNavigationTest {
                         val list = lower.getChildAt(1) as RecyclerView
                         val current = list.findFocus()
                         val holder = current?.let { list.findContainingViewHolder(it) }
-                        escapes.add("old=${old?.javaClass?.simpleName}, next=${next?.javaClass?.simpleName}, " +
+                        escapes.add("old=${old?.javaClass?.simpleName}@${System.identityHashCode(old)}, " +
+                            "next=${next?.javaClass?.simpleName}@${System.identityHashCode(next)}, same=${old === next}, " +
                             "listFocus=${current?.javaClass?.simpleName}, position=${holder?.bindingAdapterPosition}, " +
+                            "rootFocus=${scroll.rootView.findFocus()?.javaClass?.simpleName}, " +
                             "scrollState=${list.scrollState}, window=${list.hasWindowFocus()}, " +
                             "attached=${list.isAttachedToWindow}, scrollY=${scroll.scrollY}")
                     }
