@@ -66,6 +66,15 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
     private var pendingPosition: Int? = null
     private var pendingDirection = 0
     private var pendingOrigin: Int? = null
+    private var navigationGeneration = 0L
+    private var recoveringFocus = false
+    private var originalFocusable: Boolean? = null
+
+    private fun restoreFocusable() {
+        val previous = originalFocusable
+        originalFocusable = null
+        previous?.let { isFocusable = it }
+    }
 
     private fun focusAttached(position: Int?): Boolean {
         if (position == null) return false
@@ -85,25 +94,58 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
         // Park focus on this RecyclerView so its parent cannot choose a different row.
         val oldPolicy = descendantFocusability
         val oldFocusable = isFocusable
+        originalFocusable = oldFocusable
         isFocusable = true
         descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         val parked = requestFocus()
         descendantFocusability = oldPolicy
-        if (!parked) isFocusable = oldFocusable
+        if (!parked) restoreFocusable()
         return parked
     }
 
-    fun cancelPendingNavigation() {
-        if (findFocus() === this) focusAttached(pendingOrigin) || focusAttached(pendingPosition) || focusAnyAttachedCard()
+    fun cancelPendingNavigation(restoreFocus: Boolean = true) {
+        if (pendingPosition == null && !recoveringFocus && originalFocusable == null) return
+        val parked = findFocus() === this
+        val origin = pendingOrigin
+        val target = pendingPosition
         pendingPosition = null
         pendingDirection = 0
         pendingOrigin = null
+        navigationGeneration++
+        recoveringFocus = restoreFocus && parked
         stopScroll()
+        if (recoveringFocus) {
+            if (focusAttached(origin) || focusAttached(target) || focusAnyAttachedCard()) {
+                recoveringFocus = false
+            }
+        }
+        if (!recoveringFocus) restoreFocusable()
+    }
+
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
+        super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+        if (!gainFocus) {
+            recoveringFocus = false
+            restoreFocusable()
+        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN &&
             (event.keyCode == KeyEvent.KEYCODE_DPAD_UP || event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN)) {
+            if (findFocus() === this) {
+                // Restore the origin where possible so vertical search starts at a card,
+                // not at the full-width RecyclerView rectangle.
+                cancelPendingNavigation()
+                val restored = findFocus()
+                if (restored != null && restored !== this) {
+                    val direction = if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP) View.FOCUS_UP else View.FOCUS_DOWN
+                    val next = super.focusSearch(restored, direction)
+                    if (next != null && next !== this && findContainingItemView(next) == null && next.requestFocus()) return true
+                    return super.dispatchKeyEvent(event)
+                }
+                return true
+            }
             cancelPendingNavigation()
         }
         if (event.action == KeyEvent.ACTION_DOWN && !event.isCanceled &&
@@ -131,6 +173,8 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
                 pendingPosition = target
                 pendingDirection = direction
                 pendingOrigin = position
+                recoveringFocus = false
+                val operation = ++navigationGeneration
                 if (!parkFocusInRow()) {
                     pendingPosition = null
                     pendingDirection = 0
@@ -138,7 +182,7 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
                     return true
                 }
                 smoothScrollToPosition(target)
-                postOnAnimation { completePendingNavigation() }
+                postOnAnimation { completePendingNavigation(operation) }
                 return true
             }
             // During asynchronous list updates a focused holder can temporarily lose its
@@ -149,9 +193,10 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
         return super.dispatchKeyEvent(event)
     }
 
-    private fun completePendingNavigation() {
+    private fun completePendingNavigation(operation: Long) {
+        if (operation != navigationGeneration) return
         val target = pendingPosition ?: return
-        if (findFocus() == null || target !in 0 until (adapter?.itemCount ?: 0)) {
+        if (findFocus() !== this || target !in 0 until (adapter?.itemCount ?: 0)) {
             cancelPendingNavigation()
             return
         }
@@ -160,20 +205,36 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
             pendingPosition = null
             pendingDirection = 0
             pendingOrigin = null
+            navigationGeneration++
+            restoreFocusable()
         }
     }
 
     override fun onChildAttachedToWindow(child: View) {
         super.onChildAttachedToWindow(child)
-        if (pendingPosition != null) postOnAnimation { completePendingNavigation() }
+        val operation = navigationGeneration
+        if (pendingPosition != null || recoveringFocus) postOnAnimation {
+            if (operation != navigationGeneration) return@postOnAnimation
+            if (recoveringFocus && findFocus() === this && focusAnyAttachedCard()) {
+                recoveringFocus = false
+                restoreFocusable()
+            } else {
+                completePendingNavigation(operation)
+            }
+        }
     }
 
     override fun onScrollStateChanged(state: Int) {
         super.onScrollStateChanged(state)
         if (state == SCROLL_STATE_IDLE && pendingPosition != null) {
-            completePendingNavigation()
+            completePendingNavigation(navigationGeneration)
             if (pendingPosition != null) cancelPendingNavigation()
         }
+    }
+
+    override fun onDetachedFromWindow() {
+        cancelPendingNavigation(restoreFocus = false)
+        super.onDetachedFromWindow()
     }
 
     internal fun constrainFocus(focused: View, direction: Int, candidate: View?): View? {
@@ -393,9 +454,12 @@ internal class VideoRail(
         // Loading a subsequent page must not change the rail height or move another row.
         loading.visibility = View.GONE
         if (!newRow && previous?.cards == row?.cards) {
-            list.post { if (!released) { focusFirstIfNeeded(); scheduleNearEnd() } }
+            list.post { if (!released && version == generation) { focusFirstIfNeeded(); scheduleNearEnd() } }
             return
         }
+        val appendOnly = previous != null && row != null && previous.cards.size <= row.cards.size &&
+            previous.cards.indices.all { previous.cards[it].id == row.cards[it].id }
+        if (!newRow && !appendOnly) list.cancelPendingNavigation()
         cards.submitList(row?.cards?.toList() ?: emptyList()) {
             if (released || version != generation || row == null || this.row?.id != row.id) return@submitList
             list.post {
@@ -408,7 +472,8 @@ internal class VideoRail(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        list.post { if (!released) focusFirstIfNeeded() }
+        val version = generation
+        list.post { if (!released && version == generation) focusFirstIfNeeded() }
     }
 
     private fun focusFirstIfNeeded() {
@@ -436,8 +501,13 @@ internal class VideoRail(
     private fun scheduleNearEnd() {
         if (nearEndPosted || released) return
         nearEndPosted = true
+        val version = generation
         list.post {
             nearEndPosted = false
+            if (version != generation) {
+                scheduleNearEnd()
+                return@post
+            }
             val current = row ?: return@post
             // A short visible row must not automatically chain page requests. Load as
             // the user moves focus towards its end, independently for each source.
@@ -456,7 +526,7 @@ internal class VideoRail(
         if (released) return
         released = true
         generation++
-        list.cancelPendingNavigation()
+        list.cancelPendingNavigation(restoreFocus = false)
         row = null
         initialFocusRow = null
         boundHolders.toList().forEach { it.clear() }
@@ -471,11 +541,19 @@ internal class VideoRail(
         override fun areItemsTheSame(oldItem: VideoCard, newItem: VideoCard) = oldItem.id == newItem.id
         override fun areContentsTheSame(oldItem: VideoCard, newItem: VideoCard) = oldItem == newItem
     }) {
+        override fun onCurrentListChanged(previousList: List<VideoCard>, currentList: List<VideoCard>) {
+            super.onCurrentListChanged(previousList, currentList)
+            // A new navigation may have started while AsyncListDiffer computed its diff.
+            val appendOnly = previousList.size <= currentList.size &&
+                previousList.indices.all { previousList[it].id == currentList[it].id }
+            if (!appendOnly) list.cancelPendingNavigation(restoreFocus = false)
+        }
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = CardHolder()
         override fun onBindViewHolder(holder: CardHolder, position: Int) = holder.bind(getItem(position))
         override fun onViewAttachedToWindow(holder: CardHolder) {
             super.onViewAttachedToWindow(holder)
-            list.post { if (!released) focusFirstIfNeeded() }
+            val version = generation
+            list.post { if (!released && version == generation) focusFirstIfNeeded() }
         }
         override fun onViewRecycled(holder: CardHolder) { holder.clear(); super.onViewRecycled(holder) }
     }
