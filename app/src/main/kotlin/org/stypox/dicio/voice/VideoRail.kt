@@ -277,6 +277,7 @@ internal class VideoRail(
     private val ownsImageLoader = sharedImageLoader == null
     private val imageLoader = sharedImageLoader ?: videoImageLoader(context)
     private val layout = LinearLayoutManager(context, RecyclerView.HORIZONTAL, false)
+    private var pendingListSubmission: (() -> Unit)? = null
     private val cards = CardAdapter()
     private val list = VideoRecyclerView(context).apply {
         layoutManager = layout
@@ -289,6 +290,13 @@ internal class VideoRail(
         setItemViewCacheSize(2)
         addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) = scheduleNearEnd()
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    val submission = pendingListSubmission
+                    pendingListSubmission = null
+                    submission?.invoke()
+                }
+            }
         })
     }
     private val retry = Button(context).apply {
@@ -448,6 +456,7 @@ internal class VideoRail(
         heading.text = row?.source?.label.orEmpty()
         sourceIcon.invalidate()
         val version = ++generation
+        pendingListSubmission = null
         if (newRow) {
             list.cancelPendingNavigation()
             boundHolders.toList().forEach { it.clear() }
@@ -460,21 +469,28 @@ internal class VideoRail(
         retry.visibility = if (row?.loadError == true && !row.loading) View.VISIBLE else View.GONE
         // Loading a subsequent page must not change the rail height or move another row.
         loading.visibility = View.GONE
-        if (!newRow && previous?.cards == row?.cards) {
+        if (!newRow && cards.currentList == (row?.cards ?: emptyList())) {
             list.post { if (!released && version == generation) { focusFirstIfNeeded(); scheduleNearEnd() } }
             return
         }
         val appendOnly = previous != null && row != null && previous.cards.size <= row.cards.size &&
             previous.cards.indices.all { previous.cards[it].id == row.cards[it].id }
         if (!newRow && !appendOnly) list.cancelPendingNavigation()
-        cards.submitList(row?.cards?.toList() ?: emptyList()) {
-            if (released || version != generation || row == null || this.row?.id != row.id) return@submitList
-            list.post {
-                if (released || version != generation || this.row?.id != row.id) return@post
-                focusFirstIfNeeded()
-                scheduleNearEnd()
+        val submit = {
+            if (!released && version == generation) {
+                cards.submitList(row?.cards?.toList() ?: emptyList()) {
+                    if (released || version != generation || row == null || this.row?.id != row.id) return@submitList
+                    list.post {
+                        if (released || version != generation || this.row?.id != row.id) return@post
+                        focusFirstIfNeeded()
+                        scheduleNearEnd()
+                    }
+                }
             }
         }
+        if (!newRow && appendOnly && list.scrollState != RecyclerView.SCROLL_STATE_IDLE) {
+            pendingListSubmission = submit
+        } else submit()
     }
 
     override fun onAttachedToWindow() {
@@ -533,6 +549,7 @@ internal class VideoRail(
         if (released) return
         released = true
         generation++
+        pendingListSubmission = null
         list.cancelPendingNavigation(restoreFocus = false)
         row = null
         initialFocusRow = null
