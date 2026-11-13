@@ -65,10 +65,39 @@ internal fun videoImageLoader(context: Context): ImageLoader = ImageLoader.Build
 internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
     private var pendingPosition: Int? = null
     private var pendingDirection = 0
+    private var pendingOrigin: Int? = null
+
+    private fun focusAttached(position: Int?): Boolean {
+        if (position == null) return false
+        return findViewHolderForAdapterPosition(position)?.itemView?.requestFocus() == true
+    }
+
+    private fun focusAnyAttachedCard(): Boolean {
+        for (index in 0 until childCount) {
+            val child = getChildAt(index)
+            if (child.isFocusable && child.requestFocus()) return true
+        }
+        return false
+    }
+
+    private fun parkFocusInRow(): Boolean {
+        // The focused child can be detached before the next holder is laid out.
+        // Park focus on this RecyclerView so its parent cannot choose a different row.
+        val oldPolicy = descendantFocusability
+        val oldFocusable = isFocusable
+        isFocusable = true
+        descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        val parked = requestFocus()
+        descendantFocusability = oldPolicy
+        if (!parked) isFocusable = oldFocusable
+        return parked
+    }
 
     fun cancelPendingNavigation() {
+        if (findFocus() === this) focusAttached(pendingOrigin) || focusAttached(pendingPosition) || focusAnyAttachedCard()
         pendingPosition = null
         pendingDirection = 0
+        pendingOrigin = null
         stopScroll()
     }
 
@@ -79,21 +108,35 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
         }
         if (event.action == KeyEvent.ACTION_DOWN && !event.isCanceled &&
             (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+            val direction = if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1
+            if (pendingPosition != null) {
+                if (direction == pendingDirection) return true
+                cancelPendingNavigation()
+                // If the original holder is no longer attached, keep focus in the row;
+                // the next event can move from a holder after layout.
+                if (findFocus() === this) return true
+            }
             val focused = findFocus()
+            if (focused === this) {
+                focusAnyAttachedCard()
+                return true
+            }
             val holder = focused?.let { findContainingViewHolder(it) }
             val position = holder?.bindingAdapterPosition ?: NO_POSITION
             if (position != NO_POSITION) {
-                val direction = if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1
-                if (pendingPosition != null) {
-                    if (direction == pendingDirection) return true
-                    cancelPendingNavigation()
-                }
                 val target = position + direction
                 if (target !in 0 until (adapter?.itemCount ?: 0)) return true
                 val next = findViewHolderForAdapterPosition(target)?.itemView
                 if (next != null && next.requestFocus()) return true
                 pendingPosition = target
                 pendingDirection = direction
+                pendingOrigin = position
+                if (!parkFocusInRow()) {
+                    pendingPosition = null
+                    pendingDirection = 0
+                    pendingOrigin = null
+                    return true
+                }
                 smoothScrollToPosition(target)
                 postOnAnimation { completePendingNavigation() }
                 return true
@@ -116,6 +159,7 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
         if (next.requestFocus()) {
             pendingPosition = null
             pendingDirection = 0
+            pendingOrigin = null
         }
     }
 
@@ -128,9 +172,7 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
         super.onScrollStateChanged(state)
         if (state == SCROLL_STATE_IDLE && pendingPosition != null) {
             completePendingNavigation()
-            // If layout could not produce the target, allow the next key press to retry.
-            pendingPosition = null
-            pendingDirection = 0
+            if (pendingPosition != null) cancelPendingNavigation()
         }
     }
 
