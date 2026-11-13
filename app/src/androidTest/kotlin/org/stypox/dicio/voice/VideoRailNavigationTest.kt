@@ -138,7 +138,8 @@ class VideoRailNavigationTest {
                             "listFocus=${current?.javaClass?.simpleName}, position=${holder?.bindingAdapterPosition}, " +
                             "rootFocus=${scroll.rootView.findFocus()?.javaClass?.simpleName}, " +
                             "scrollState=${list.scrollState}, window=${list.hasWindowFocus()}, " +
-                            "attached=${list.isAttachedToWindow}, scrollY=${scroll.scrollY}")
+                            "attached=${list.isAttachedToWindow}, scrollY=${scroll.scrollY}, " +
+                            "stack=${Throwable().stackTrace.take(20).joinToString(" <- ")}")
                     }
                 }
                 scroll
@@ -151,6 +152,9 @@ class VideoRailNavigationTest {
             val list = lower.getChildAt(1) as RecyclerView
             assertTrue(list.findViewHolderForAdapterPosition(0)!!.itemView.requestFocus())
             scroll.scrollTo(0, scroll.getChildAt(0).height)
+            val focused = list.findFocus()
+            assertTrue("The initial YouTube card must retain focus after vertical scrolling",
+                focused != null && list.findContainingViewHolder(focused)?.bindingAdapterPosition == 0)
             watch = true
         }
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -162,12 +166,21 @@ class VideoRailNavigationTest {
         }
         instrumentation.sendKeySync(KeyEvent(downTime, SystemClock.uptimeMillis(),
             KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_RIGHT, 0))
+        compose.waitUntil(5_000) {
+            val list = lower.getChildAt(1) as RecyclerView
+            val focused = list.findFocus()
+            list.scrollState == RecyclerView.SCROLL_STATE_IDLE && focused != null &&
+                (list.findContainingViewHolder(focused)?.bindingAdapterPosition ?: RecyclerView.NO_POSITION) != RecyclerView.NO_POSITION
+        }
         compose.waitForIdle()
         compose.runOnIdle {
             assertTrue("Expected a pagination request during navigation", pageRequests > 0)
             assertTrue("Focus left YouTube during right input: $escapes", escapes.isEmpty())
             val focused = scroll.findFocus()
             assertTrue("Focus must remain in YouTube", focused != null && isDescendant(lower, focused))
+            val list = lower.getChildAt(1) as RecyclerView
+            assertTrue("Navigation must advance beyond the initial card",
+                (focused?.let { list.findContainingViewHolder(it)?.bindingAdapterPosition } ?: -1) > 0)
             upper.release()
             lower.release()
         }
