@@ -174,6 +174,9 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
             val position = holder?.bindingAdapterPosition ?: NO_POSITION
             if (position != NO_POSITION) {
                 val target = position + direction
+                // A previous smooth scroll may still be running after its target
+                // received focus. Do not let it recycle the newly focused card.
+                if (scrollState != SCROLL_STATE_IDLE) stopScroll()
                 if (target !in 0 until (adapter?.itemCount ?: 0)) return true
                 val next = findViewHolderForAdapterPosition(target)?.itemView
                 if (next != null && next.requestFocus()) return true
@@ -213,6 +216,9 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
             pendingDirection = 0
             pendingOrigin = null
             navigationGeneration++
+            // Clear pending state before stopping: stopScroll can synchronously
+            // dispatch SCROLL_STATE_IDLE and re-enter onScrollStateChanged.
+            stopScroll()
             restoreFocusable()
         }
     }
