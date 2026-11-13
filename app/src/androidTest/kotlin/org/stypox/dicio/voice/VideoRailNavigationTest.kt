@@ -90,16 +90,22 @@ class VideoRailNavigationTest {
         }
     }
 
-    @Test fun rapidRightDuringPaginationKeepsFocusInScrolledLowerRail() {
+    @Test fun rapidRightDuringPaginationKeepsFocusInScrolledLowerRail() =
+        rapidRightInScrolledLowerRail(paginate = true)
+
+    @Test fun rapidRightWithoutPaginationKeepsFocusInScrolledLowerRail() =
+        rapidRightInScrolledLowerRail(paginate = false)
+
+    private fun rapidRightInScrolledLowerRail(paginate: Boolean) {
         lateinit var upper: VideoRail
         lateinit var lower: VideoRail
         lateinit var scroll: ScrollView
         var watch = false
         val escapes = mutableListOf<String>()
         var pageRequests = 0
-        var youtube = VideoRow(2, (0 until 8).map {
+        var youtube = VideoRow(2, (0 until if (paginate) 8 else 64).map {
             VideoCard("yt-$it", "YouTube video $it", "Channel", null)
-        }, hasNext = true, source = VideoSource.YOUTUBE)
+        }, hasNext = paginate, source = VideoSource.YOUTUBE)
         compose.setContent {
             AndroidView(modifier = Modifier.fillMaxWidth().height(230.dp), factory = { context ->
                 val rows = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -174,7 +180,7 @@ class VideoRailNavigationTest {
         }
         compose.waitForIdle()
         compose.runOnIdle {
-            assertTrue("Expected a pagination request during navigation", pageRequests > 0)
+            assertTrue("Unexpected pagination request count: $pageRequests", if (paginate) pageRequests > 0 else pageRequests == 0)
             assertTrue("Focus left YouTube during right input: $escapes", escapes.isEmpty())
             val focused = scroll.findFocus()
             assertTrue("Focus must remain in YouTube", focused != null && isDescendant(lower, focused))
