@@ -125,8 +125,15 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
     override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
         if (!gainFocus) {
-            recoveringFocus = false
-            restoreFocusable()
+            // Do not change focusability reentrantly while Android is moving focus
+            // from this temporary anchor to a child. A later explicit departure
+            // invalidates the operation without pulling focus back into the row.
+            val operation = navigationGeneration
+            post {
+                if (operation == navigationGeneration && !isFocused) {
+                    cancelPendingNavigation(restoreFocus = false)
+                }
+            }
         }
     }
 

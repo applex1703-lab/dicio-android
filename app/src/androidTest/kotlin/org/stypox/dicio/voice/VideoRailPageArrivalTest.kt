@@ -1,6 +1,5 @@
 package org.stypox.dicio.voice
 
-import android.content.Intent
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
@@ -18,9 +17,7 @@ class VideoRailPageArrivalTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
 
     @Test fun delayedAppendKeepsEveryFocusEventOnLastYoutubeCard() {
-        val intent = Intent().setClassName(instrumentation.context, VideoRailTestActivity::class.java.name)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val activity = instrumentation.startActivitySync(intent) as VideoRailTestActivity
+        val activity = VideoRailTestActivity.launch()
         val list = activity.youtube.getChildAt(1) as RecyclerView
         val events = mutableListOf<String>()
         val violations = mutableListOf<String>()

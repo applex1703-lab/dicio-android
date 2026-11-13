@@ -2,7 +2,6 @@ package org.stypox.dicio.voice
 
 import android.app.Activity
 import android.content.Intent
-import android.os.Bundle
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
@@ -16,8 +15,10 @@ import org.stypox.dicio.eval.VideoCard
 import org.stypox.dicio.eval.VideoRow
 import org.stypox.dicio.eval.VideoSource
 
-/** A plain test-APK Activity: no Compose, voice, thumbnails, or video intents. */
-class VideoRailTestActivity : Activity() {
+/** Test-only content in a plain target Activity window, without voice or video intents. */
+internal class VideoRailTestActivity(private val host: Activity) {
+    val window get() = host.window
+    fun hasWindowFocus() = host.hasWindowFocus()
     internal lateinit var upper: VideoRail
     internal lateinit var youtube: VideoRail
     internal lateinit var scroll: ScrollView
@@ -27,11 +28,10 @@ class VideoRailTestActivity : Activity() {
     internal var opened = 0
     private var row = VideoRow(2, cards("yt", 0, 8), hasNext = true, source = VideoSource.YOUTUBE)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        upper = VideoRail(this, { _, _ -> opened++ }, {}, {}, claimInitialFocus = { false })
-        youtube = VideoRail(this, { _, _ -> opened++ }, {
+    init {
+        val rows = LinearLayout(host).apply { orientation = LinearLayout.VERTICAL }
+        upper = VideoRail(host, { _, _ -> opened++ }, {}, {}, claimInitialFocus = { false })
+        youtube = VideoRail(host, { _, _ -> opened++ }, {
             if (it == row.id && !row.loading && requests == 0) {
                 requests++
                 row = row.copy(loading = true)
@@ -40,16 +40,19 @@ class VideoRailTestActivity : Activity() {
         }, {}, claimInitialFocus = { false })
         rows.addView(upper, LinearLayout.LayoutParams(-1, -2))
         rows.addView(youtube, LinearLayout.LayoutParams(-1, -2))
-        scroll = ScrollView(this).apply { addView(rows) }
-        val root = LinearLayout(this).apply {
+        scroll = ScrollView(host).apply { addView(rows) }
+        val root = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
             addView(scroll, LinearLayout.LayoutParams(-1, (230 * resources.displayMetrics.density).toInt()))
         }
-        setContentView(root)
+        host.setContentView(root)
         root.viewTreeObserver.addOnGlobalFocusChangeListener { old, next ->
             if (watching && (next == null || !inside(youtube, next))) {
                 escapes.add("view focus $old -> $next, scrollY=${scroll.scrollY}")
             }
+        }
+        root.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
+            if (watching && !hasFocus) escapes.add("Activity window lost focus")
         }
         upper.render(VideoRow(1, cards("rt", 0, 8), source = VideoSource.RUTUBE))
         youtube.render(row)
@@ -62,19 +65,24 @@ class VideoRailTestActivity : Activity() {
         youtube.render(row)
     }
 
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (watching && !hasFocus) escapes.add("Activity window lost focus")
-    }
-
-    override fun onDestroy() {
+    fun finish() {
         watching = false
         upper.release()
         youtube.release()
-        super.onDestroy()
+        host.finish()
     }
 
     companion object {
+        fun launch(): VideoRailTestActivity {
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            val intent = Intent(instrumentation.targetContext, BindDiagnosticActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val host = instrumentation.startActivitySync(intent)
+            lateinit var fixture: VideoRailTestActivity
+            instrumentation.runOnMainSync { fixture = VideoRailTestActivity(host) }
+            return fixture
+        }
+
         private fun cards(prefix: String, start: Int, end: Int) = (start until end).map {
             VideoCard("$prefix-$it", "Video $it", "Channel", null)
         }
@@ -93,9 +101,7 @@ class VideoRailActivityNavigationTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
 
     @Test fun rapidRightAcrossAsyncAppendStaysInYoutubeAndUpReachesOtherRail() {
-        val intent = Intent().setClassName(instrumentation.context, VideoRailTestActivity::class.java.name)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val activity = instrumentation.startActivitySync(intent) as VideoRailTestActivity
+        val activity = VideoRailTestActivity.launch()
         try {
             val list = activity.youtube.getChildAt(1) as RecyclerView
             await { activity.hasWindowFocus() && list.findViewHolderForAdapterPosition(0) != null }

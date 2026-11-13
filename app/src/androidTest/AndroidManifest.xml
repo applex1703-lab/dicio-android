@@ -2,6 +2,5 @@
     <application>
         <!-- Test APK only: inert service for platform bind/unbind coverage. -->
         <service android:name="org.stypox.dicio.voice.ProbeTestService" android:exported="true" />
-        <activity android:name="org.stypox.dicio.voice.VideoRailTestActivity" android:exported="true" />
     </application>
 </manifest>

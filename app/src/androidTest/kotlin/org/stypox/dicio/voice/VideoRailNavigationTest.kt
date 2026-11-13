@@ -70,6 +70,14 @@ class VideoRailNavigationTest {
         }
         instrumentation.sendKeySync(KeyEvent(downTime, SystemClock.uptimeMillis(),
             KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_RIGHT, 0))
+        // Compose idleness does not wait for RecyclerView's scroll animator. Require
+        // a real focused card after it settles; a stuck parked focus times out.
+        compose.waitUntil(5_000) {
+            val list = lower.getChildAt(1) as RecyclerView
+            val focused = list.findFocus()
+            list.scrollState == RecyclerView.SCROLL_STATE_IDLE && focused != null &&
+                (list.findContainingViewHolder(focused)?.bindingAdapterPosition ?: RecyclerView.NO_POSITION) != RecyclerView.NO_POSITION
+        }
         compose.waitForIdle()
         compose.runOnIdle {
             assertFalse("Horizontal input moved focus to the upper row", escaped)
