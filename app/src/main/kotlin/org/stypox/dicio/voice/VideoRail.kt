@@ -7,6 +7,8 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.Bitmap
+import android.graphics.LinearGradient
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
@@ -96,6 +98,10 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
                 postOnAnimation { completePendingNavigation() }
                 return true
             }
+            // During asynchronous list updates a focused holder can temporarily lose its
+            // adapter position. Never hand a horizontal key to a parent while that holder
+            // still owns focus: the parent's geometric search could leave this row.
+            if (focused != null && holder != null) return true
         }
         return super.dispatchKeyEvent(event)
     }
@@ -153,6 +159,10 @@ internal class VideoRail(
         try { Typeface.createFromAsset(context.assets, "fonts/karminabold.otf") }
         catch (_: RuntimeException) { Typeface.create("sans-serif", Typeface.NORMAL) }
     }
+    private val headingTypeface by lazy {
+        try { Typeface.createFromAsset(context.assets, "fonts/Gnocchi-Regular.ttf") }
+        catch (_: RuntimeException) { Typeface.create("sans-serif", Typeface.NORMAL) }
+    }
 
     private val ownsImageLoader = sharedImageLoader == null
     private val imageLoader = sharedImageLoader ?: videoImageLoader(context)
@@ -165,7 +175,7 @@ internal class VideoRail(
         isHorizontalScrollBarEnabled = false
         clipChildren = false
         clipToPadding = false
-        setPadding(dp(9), dp(9), dp(12), dp(9))
+        setPadding(dp(14), dp(12), dp(14), dp(12))
         setItemViewCacheSize(2)
         addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) = scheduleNearEnd()
@@ -221,7 +231,7 @@ internal class VideoRail(
     }
     private val heading = TextView(context).apply {
         textSize = 18f
-        typeface = cardTypeface
+        typeface = headingTypeface
         setTextColor(0xfff3f5fa.toInt())
         includeFontPadding = false
         maxLines = 1
@@ -280,7 +290,15 @@ internal class VideoRail(
                 val edge = minOf(x, y, width - 1 - x, height - 1 - y)
                 val fade = (edge / 2f).coerceIn(0f, 1f)
                 val alpha = (100f * kotlin.math.exp(-distance / (2.5f * density)) * fade).toInt().coerceIn(0, 255)
-                pixels[y * width + x] = (alpha shl 24) or 0x00667cff
+                // Match the border's horizontal cyan -> blue -> purple gradient.
+                val t = (x / maxOf(1f, width - 1f)).coerceIn(0f, 1f) * 2f
+                val start = if (t < 1f) 0xff36e7f2.toInt() else 0xff477fff.toInt()
+                val end = if (t < 1f) 0xff477fff.toInt() else 0xffb65cff.toInt()
+                val mix = if (t < 1f) t else t - 1f
+                val red = (Color.red(start) + (Color.red(end) - Color.red(start)) * mix).toInt()
+                val green = (Color.green(start) + (Color.green(end) - Color.green(start)) * mix).toInt()
+                val blue = (Color.blue(start) + (Color.blue(end) - Color.blue(start)) * mix).toInt()
+                pixels[y * width + x] = Color.argb(alpha, red, green, blue)
             }
         }
         return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888).also { glowBitmap = it }
@@ -330,7 +348,8 @@ internal class VideoRail(
         }
         visibility = if (row == null) View.GONE else View.VISIBLE
         retry.visibility = if (row?.loadError == true && !row.loading) View.VISIBLE else View.GONE
-        loading.visibility = if (row?.loading == true) View.VISIBLE else View.GONE
+        // Loading a subsequent page must not change the rail height or move another row.
+        loading.visibility = View.GONE
         if (!newRow && previous?.cards == row?.cards) {
             list.post { if (!released) { focusFirstIfNeeded(); scheduleNearEnd() } }
             return
@@ -440,7 +459,29 @@ internal class VideoRail(
         }
         private val poster = FrameLayout(context)
         private val image = ImageView(context)
-        private val border = View(context)
+        private val border = object : View(context) {
+            private val stroke = resources.displayMetrics.density * 1.5f
+            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = stroke
+            }
+
+            override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+                super.onSizeChanged(w, h, oldw, oldh)
+                paint.shader = if (w > 0) LinearGradient(
+                    0f, 0f, w.toFloat(), 0f,
+                    intArrayOf(0xff36e7f2.toInt(), 0xff477fff.toInt(), 0xffb65cff.toInt()),
+                    null, Shader.TileMode.CLAMP
+                ) else null
+            }
+
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                val inset = stroke / 2f
+                val radius = dp(10).toFloat() - inset
+                canvas.drawRoundRect(inset, inset, width - inset, height - inset, radius, radius, paint)
+            }
+        }
         private val title = TextView(context)
         private val author = TextView(context)
         private var request: Disposable? = null
@@ -462,9 +503,6 @@ internal class VideoRail(
             image.scaleType = ImageView.ScaleType.CENTER_CROP
             image.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             poster.addView(image, FrameLayout.LayoutParams(-1, -1))
-            border.background = GradientDrawable().apply {
-                setColor(Color.TRANSPARENT); cornerRadius = dp(10).toFloat(); setStroke(maxOf(1, dp(2)), 0xfff3f6ff.toInt())
-            }
             border.alpha = 0f
             border.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             poster.addView(border, FrameLayout.LayoutParams(-1, -1))
@@ -489,12 +527,12 @@ internal class VideoRail(
             updateMinimumHeight()
             item.setOnFocusChangeListener { _, focused ->
                 border.animate().cancel()
-                poster.animate().cancel()
+                outer.animate().cancel()
                 halo.animate().cancel()
-                poster.animate().scaleX(if (focused) 1.02f else 1f).scaleY(if (focused) 1.02f else 1f)
-                    .setDuration(150).setInterpolator(DecelerateInterpolator()).start()
-                border.animate().alpha(if (focused) 1f else 0f).setDuration(120).start()
-                halo.animate().alpha(if (focused) 1f else 0f).setDuration(120).start()
+                outer.animate().scaleX(if (focused) 1.035f else 1f).scaleY(if (focused) 1.035f else 1f)
+                    .setDuration(180).setInterpolator(DecelerateInterpolator()).start()
+                border.animate().alpha(if (focused) 1f else 0f).setDuration(180).start()
+                halo.animate().alpha(if (focused) 1f else 0f).setDuration(180).start()
                 if (focused) {
                     scheduleNearEnd()
                 }
@@ -518,8 +556,8 @@ internal class VideoRail(
             item.contentDescription = listOf(card.title, card.author).filter { it.isNotBlank() }.joinToString(", ")
             border.alpha = if (item.hasFocus()) 1f else 0f
             halo.alpha = if (item.hasFocus()) 1f else 0f
-            poster.scaleX = if (item.hasFocus()) 1.02f else 1f
-            poster.scaleY = if (item.hasFocus()) 1.02f else 1f
+            outer.scaleX = if (item.hasFocus()) 1.035f else 1f
+            outer.scaleY = if (item.hasFocus()) 1.035f else 1f
             // The parser validates these URLs; repeat the boundary check before handing one to Coil.
             val url = card.thumbnail?.let { thumbnail -> row?.source?.let { allowedVideoThumbnail(thumbnail, it) } }
             if (url != null) request = imageLoader.enqueue(ImageRequest.Builder(context)
@@ -543,10 +581,9 @@ internal class VideoRail(
             halo.animate().cancel()
             border.alpha = 0f
             halo.alpha = 0f
-            poster.animate().cancel()
-            poster.scaleX = 1f
-            poster.scaleY = 1f
-            poster.translationY = 0f
+            outer.animate().cancel()
+            outer.scaleX = 1f
+            outer.scaleY = 1f
         }
     }
 }

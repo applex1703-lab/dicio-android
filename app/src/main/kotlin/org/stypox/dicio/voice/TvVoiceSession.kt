@@ -110,6 +110,10 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
         try { Typeface.createFromAsset(app.assets, "fonts/karminabold.otf") }
         catch (_: RuntimeException) { Typeface.create("sans-serif", Typeface.NORMAL) }
     }
+    private val videoHeadingTypeface by lazy {
+        try { Typeface.createFromAsset(app.assets, "fonts/Gnocchi-Regular.ttf") }
+        catch (_: RuntimeException) { Typeface.create("sans-serif", Typeface.NORMAL) }
+    }
     private var updates: Job? = null
     private lateinit var status: TextView
     private lateinit var transcript: TextView
@@ -247,7 +251,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                     text = "Результаты поиска"
                     textSize = 16f
                     setTextColor(0xffc3ccdf.toInt())
-                    typeface = videoTypeface
+                    typeface = videoHeadingTypeface
                     includeFontPadding = false
                 })
                 addView(TextView(app).apply {
@@ -258,7 +262,7 @@ class TvVoiceSession(private val app: Context) : VoiceInteractionSession(app) {
                 videoQuery = TextView(app).apply {
                     textSize = 19f
                     setTextColor(Color.rgb(243, 245, 250))
-                    typeface = videoTypeface
+                    typeface = videoHeadingTypeface
                     includeFontPadding = false
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
