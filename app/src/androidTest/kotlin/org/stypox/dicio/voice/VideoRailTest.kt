@@ -35,6 +35,11 @@ class VideoRailTest {
             assertSame(otherRow, list.constrainFocus(first, View.FOCUS_UP, otherRow))
             assertNull(list.constrainFocus(first, View.FOCUS_DOWN, null))
             assertSame(second, list.constrainFocus(otherRow, View.FOCUS_RIGHT, second))
+            assertSame(list, list.constrainFocus(list, View.FOCUS_RIGHT, otherRow))
+            assertSame(list, list.constrainFocus(list, View.FOCUS_LEFT, null))
+            assertSame(second, list.constrainFocus(list, View.FOCUS_RIGHT, second))
+            assertSame(otherRow, list.constrainFocus(list, View.FOCUS_UP, otherRow))
+            assertSame(otherRow, list.constrainFocus(list, View.FOCUS_DOWN, otherRow))
         }
     }
     @Test fun independentRailsKeepTheirOwnRowsAndRetryAfterPeerRelease() {

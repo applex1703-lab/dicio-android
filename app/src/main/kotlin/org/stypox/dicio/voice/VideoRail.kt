@@ -246,7 +246,9 @@ internal class VideoRecyclerView(context: Context) : RecyclerView(context) {
 
     internal fun constrainFocus(focused: View, direction: Int, candidate: View?): View? {
         val horizontal = direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT
-        if (horizontal && findContainingItemView(focused) != null &&
+        // The list itself can temporarily hold focus while an off-screen card is
+        // being attached. Horizontal focus search must not escape in that state.
+        if (horizontal && (focused === this || findContainingItemView(focused) != null) &&
             (candidate == null || findContainingItemView(candidate) == null)) return focused
         return candidate
     }
