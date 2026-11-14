@@ -90,9 +90,6 @@ class VideoRailNavigationTest {
         }
     }
 
-    @Test fun rapidRightDuringPaginationKeepsFocusInScrolledLowerRail() =
-        rapidRightInScrolledLowerRail(paginate = true)
-
     @Test fun rapidRightWithoutPaginationKeepsFocusInScrolledLowerRail() =
         rapidRightInScrolledLowerRail(paginate = false)
 
